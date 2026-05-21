@@ -14,9 +14,12 @@ export function setFlipPreset(type, el) {
   el.classList.add('active');
   const p = FLIP_PRESETS[type] || FLIP_PRESETS.regional;
   document.getElementById('f-hold').value   = p.hold;
-  document.getElementById('f-carry').value  = p.carry;
-  document.getElementById('f-target').value = p.target;
+  document.getElementById('f-carry').value  = p.carry.toLocaleString();
+  document.getElementById('f-target').value = p.target.toLocaleString();
   calcRepair();
+  // Trigger carry total update
+  const e = document.getElementById('f-carry');
+  if (e) e.dispatchEvent(new Event('input'));
 }
 
 export function analyzeFlip() {

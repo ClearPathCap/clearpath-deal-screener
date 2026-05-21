@@ -17,9 +17,9 @@ export function setRentalPreset(type, el) {
   document.getElementById('v-occ').value     = p.occ;
   document.getElementById('v-mgmt').value    = p.mgmt;
   document.getElementById('v-pm').value      = p.pm;
-  document.getElementById('v-tax').value     = p.tax;
-  document.getElementById('v-maint').value   = p.maint;
-  document.getElementById('v-furnish').value = p.furnish;
+  document.getElementById('v-tax').value     = p.tax.toLocaleString();
+  document.getElementById('v-maint').value   = p.maint.toLocaleString();
+  document.getElementById('v-furnish').value = p.furnish.toLocaleString();
   document.getElementById('v-target').value  = p.target;
 }
 
@@ -99,10 +99,11 @@ export function analyzeRental() {
     rent,
     occ:    +document.getElementById('v-occ').value,
     mgmt:   +document.getElementById('v-mgmt').value,
-    pm:     +document.getElementById('v-pm').value,
+    pm:     selfManage ? 0 : +document.getElementById('v-pm').value,
     tax, maint, furnish, tgtCoc,
     cashflow, coc, capRate, noi, debt, downAmt, grm,
     verdict, cls,
+    hot: cls === 'hot',
   };
 
   const r = document.getElementById('rental-results');

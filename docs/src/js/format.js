@@ -22,12 +22,9 @@ export function fmtCurrencyInput(el) {
 
 export function initCurrencyInputs() {
   document.querySelectorAll('[data-currency]').forEach(el => {
+    // Format any pre-populated values on init
+    if (el.value) fmtCurrencyInput(el);
     el.addEventListener('input', () => fmtCurrencyInput(el));
-    el.addEventListener('focus', () => {
-      // Move cursor to end after reformatting
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
-    });
   });
 }
 

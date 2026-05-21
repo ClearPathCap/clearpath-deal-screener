@@ -1,8 +1,9 @@
 // ─── Fix & Flip analyzer ──────────────────────────────────────────────────────
 
-import { fmt, pct, cClass, buildMetrics, buildRows } from './format.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseComma } from './format.js';
 import { FLIP_PRESETS } from './markets.js';
 import { calcRepair } from './repair.js';
+import { maybeShowFundingButton } from './clearpath.js';
 
 let lastFlipResult = null;
 
@@ -20,17 +21,17 @@ export function setFlipPreset(type, el) {
 
 export function analyzeFlip() {
   const addr   = document.getElementById('f-addr').value.trim();
-  const ask    = +document.getElementById('f-ask').value || 0;
-  const arv    = +document.getElementById('f-arv').value || 0;
-  const rep    = +document.getElementById('f-rep').value || 0;
+  const ask    = parseComma(document.getElementById('f-ask').value);
+  const arv    = parseComma(document.getElementById('f-arv').value);
+  const rep    = parseComma(document.getElementById('f-rep').value);
   const hold   = +document.getElementById('f-hold').value || 5;
   const cc1    = (+document.getElementById('f-cc1').value || 2) / 100;
-  const cc2    = (+document.getElementById('f-cc2').value || 6) / 100;
-  const carry  = +document.getElementById('f-carry').value || 900;
-  const target = +document.getElementById('f-target').value || 40000;
+  const cc2    = (+document.getElementById('f-cc2').value || 5) / 100;
+  const carry  = parseComma(document.getElementById('f-carry').value) || 900;
+  const target = parseComma(document.getElementById('f-target').value) || 40000;
   const sqft   = +document.getElementById('sqft').value || 0;
   const self   = document.getElementById('self-reno').checked;
-  if (!ask || !arv) { alert('Enter at least Asking Price and ARV.'); return; }
+  if (!ask || !arv) { return; } // validation handled by wrapper in main.js
 
   const buyCost  = ask * cc1;
   const sellCost = arv * cc2;
@@ -41,20 +42,24 @@ export function analyzeFlip() {
   const maxOffer = arv * (self ? 0.75 : 0.70) - rep;
   const ltv      = (ask / arv) * 100;
 
+  const beginner = localStorage.getItem('beginner_mode') === '1';
   let verdict, vsub, cls;
   if (profit >= target && roi >= 20) {
     verdict = 'Hot Deal'; cls = 'hot';
     vsub = 'Hits your profit target and ROI. ' + (self
       ? 'Self-performing gives you maximum margin here.'
       : 'Consider self-performing to push profit even higher.');
+    if (beginner) vsub += ' This deal meets your return target — worth pursuing. Verify your ARV with comps.';
   } else if (profit >= target * 0.75 && roi >= 12) {
     verdict = 'Negotiate Hard'; cls = 'warm';
     vsub = 'Close to your target. Counter at ' + fmt(maxOffer) + ' max offer' + (self
       ? ' — your labor advantage could close the gap.'
       : '.');
+    if (beginner) vsub += ' Numbers are close to your target. Counter at the Max Offer price shown.';
   } else {
     verdict = 'Pass on This One'; cls = 'pass';
     vsub = "Numbers don't work at asking. Max you can pay: " + fmt(maxOffer) + '. Walk away or counter hard.';
+    if (beginner) vsub += " This deal doesn't hit your minimum profit — the numbers don't work at this price.";
   }
 
   document.getElementById('flip-verdict').className = 'verdict ' + cls;
@@ -86,15 +91,19 @@ export function analyzeFlip() {
     carry, target, sqft, self,
     profit, roi, ltv, maxOffer, buyCost, sellCost, holdCost, totalIn,
     verdict, cls,
+    hot: cls === 'hot',
   };
 
   const r = document.getElementById('flip-results');
   r.style.display = 'block';
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  maybeShowFundingButton(lastFlipResult);
 }
 
 export function resetFlip() {
   document.getElementById('flip-results').style.display = 'none';
   document.getElementById('flip-notes').value = '';
+  document.getElementById('flip-funding-btn').innerHTML = '';
   lastFlipResult = null;
 }

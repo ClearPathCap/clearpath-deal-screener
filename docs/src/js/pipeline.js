@@ -50,11 +50,7 @@ export function saveDeal(type) {
   deals.unshift(deal);
   saveDeals(deals);
 
-  const confirm = document.getElementById(type + '-save-confirm');
-  confirm.style.display = 'block';
-  setTimeout(() => { confirm.style.display = 'none'; }, 2500);
-  document.getElementById(nameId).value  = '';
-  document.getElementById(notesId).value = '';
+  // Keep fields intact — only show brief confirmation (Section 5g)
   window.showToast && window.showToast('Deal saved to pipeline');
 }
 

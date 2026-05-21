@@ -31,6 +31,14 @@ export function calcRepair() {
   document.getElementById('repair-est').textContent = '$' + rLow.toLocaleString() + ' – $' + rHigh.toLocaleString();
   document.getElementById('repair-result').style.display = 'flex';
   document.getElementById('use-est-btn').style.display = 'block';
+
+  // Auto-fill repair costs field with midpoint (Section 5b)
+  const repField = document.getElementById('f-rep');
+  if (repField && !repField.dataset.userEdited) {
+    const mid = Math.round((sqft * (low + high) / 2) / 1000) * 1000;
+    repField.value = mid.toLocaleString();
+    repField.classList.add('auto-filled');
+  }
 }
 
 export function useRepairEstimate() {
@@ -39,5 +47,9 @@ export function useRepairEstimate() {
   let low = currentTier.low, high = currentTier.high;
   if (self) { low = Math.round(low * 0.65); high = Math.round(high * 0.65); }
   const mid = Math.round((sqft * (low + high) / 2) / 1000) * 1000;
-  document.getElementById('f-rep').value = mid;
+  const repField = document.getElementById('f-rep');
+  repField.value = mid.toLocaleString();
+  // Highlight field with accent border to signal auto-fill (Section 5b)
+  repField.classList.add('auto-filled');
+  repField.addEventListener('input', () => repField.classList.remove('auto-filled'), { once: true });
 }

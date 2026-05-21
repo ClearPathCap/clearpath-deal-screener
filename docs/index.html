@@ -8,8 +8,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Deal Screener">
-<title>Deal Screener — Charlotte, Lake Murray &amp; STR Markets</title>
-<link rel="apple-touch-icon" href="icons/icon-192.svg">
+<title>Deal Screener — Powered by Clear Path Capital</title>
+<link rel="apple-touch-icon" href="icons/clearpath-mark.png">
 <link rel="icon" href="favicon.svg">
 <link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -30,9 +30,14 @@
 ════════════════════════════════════════ -->
 <div class="page active" id="page-flip">
   <div class="header">
-    <div class="logo">Deal Screener</div>
-    <h1>Fix &amp; Flip</h1>
-    <p>Charlotte · Lake Murray · Regional</p>
+    <div class="header-brand">
+      <img src="icons/clearpath-logo.png" alt="Clear Path Capital" class="cpc-logo">
+      <div class="app-subtitle">Deal Screener</div>
+    </div>
+    <div class="header-meta">
+      <h1>Fix &amp; Flip</h1>
+      <p>Charlotte · Lake Murray · Regional</p>
+    </div>
     <div class="header-actions">
       <button class="icon-btn" title="Share app" onclick="openShareApp()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a3 3 0 1 0-2.83-4M6 12a3 3 0 1 0 0 0M18 20a3 3 0 1 0-2.83-4M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
@@ -40,14 +45,23 @@
       <button class="icon-btn" title="Install as app" onclick="openInstall()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
       </button>
+      <div class="tier-badge">Free</div>
+      <div class="mode-toggle-wrap" title="Beginner/Pro mode">
+        <span class="mode-label-pro">Pro</span>
+        <label class="toggle toggle-sm">
+          <input type="checkbox" id="beginner-toggle" onchange="toggleBeginnerMode(this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+        <span class="mode-label-beg">Guide</span>
+      </div>
     </div>
   </div>
 
   <div class="slabel">Market Preset</div>
   <div class="presets">
-    <button class="preset active" onclick="setFlipPreset('charlotte',this)">Charlotte NC</button>
-    <button class="preset" onclick="setFlipPreset('lake-murray',this)">Lake Murray SC</button>
-    <button class="preset" onclick="setFlipPreset('regional',this)">Regional (1hr+)</button>
+    <button class="preset active" onclick="setFlipPreset('charlotte',this)" data-tier="free">Charlotte NC</button>
+    <button class="preset" onclick="setFlipPreset('lake-murray',this)" data-tier="pro">Lake Murray SC <span class="lock-icon">🔒</span></button>
+    <button class="preset" onclick="setFlipPreset('regional',this)" data-tier="pro">Regional (1hr+) <span class="lock-icon">🔒</span></button>
   </div>
 
   <div class="slabel">Renovation Scope</div>
@@ -70,11 +84,13 @@
   <div class="field-row">
     <div class="field">
       <label>Asking Price</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="number" id="f-ask" class="has-pfx" placeholder="185,000"></div>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-ask" class="has-pfx" placeholder="185,000" data-currency></div>
+      <div class="field-hint beginner-only">The price you'd pay to buy the property</div>
     </div>
     <div class="field">
-      <label>After Repair Value <span>(ARV)</span></label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="number" id="f-arv" class="has-pfx" placeholder="340,000"></div>
+      <label><span class="pro-only">ARV</span><span class="beginner-only">ARV (After Repair Value)</span></label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-arv" class="has-pfx" placeholder="340,000" data-currency></div>
+      <div class="field-hint beginner-only">What the property will be worth after all repairs are done</div>
     </div>
   </div>
 
@@ -112,33 +128,42 @@
   <div class="field-row">
     <div class="field">
       <label>Repair Costs</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="number" id="f-rep" class="has-pfx" placeholder="60,000"></div>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-rep" class="has-pfx" placeholder="60,000" data-currency></div>
+      <div class="field-hint beginner-only">Your total budget to fix up the property</div>
     </div>
     <div class="field">
-      <label>Hold Period</label>
-      <div class="input-wrap"><input type="number" id="f-hold" class="has-sfx" value="5" placeholder="5"><span class="sfx">mo</span></div>
+      <label>Hold Period (months)</label>
+      <div class="input-wrap"><input type="number" id="f-hold" class="has-sfx" value="5" placeholder="5" oninput="updateCarryTotal()"><span class="sfx">mo</span></div>
+      <div class="field-hint beginner-only">How many months you expect to own it before selling</div>
     </div>
+  </div>
+
+  <div class="carry-total-row" id="carry-total-row" style="display:none">
+    <span class="carry-total-text" id="carry-total-text"></span>
   </div>
 
   <div class="slabel">Your Cost Assumptions</div>
   <div class="field-row">
     <div class="field">
-      <label>Buy Closing</label>
+      <label>Purchase Costs %</label>
       <div class="input-wrap"><input type="number" id="f-cc1" class="has-sfx" value="2" placeholder="2"><span class="sfx">%</span></div>
+      <div class="field-hint beginner-only">Fees at closing when you buy — title, escrow, inspections</div>
     </div>
     <div class="field">
-      <label>Sell Closing</label>
-      <div class="input-wrap"><input type="number" id="f-cc2" class="has-sfx" value="6" placeholder="6"><span class="sfx">%</span></div>
+      <label>Sale Costs %</label>
+      <div class="input-wrap"><input type="number" id="f-cc2" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
+      <div class="field-hint beginner-only">Agent commissions + closing fees when you sell. Post-2024 this runs 4.5–5.5% — we default to 5% as a safe estimate.</div>
     </div>
   </div>
   <div class="field-row">
     <div class="field">
-      <label>Carrying Cost/Mo</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="number" id="f-carry" class="has-pfx" value="900" placeholder="900"></div>
+      <label>Monthly Hold Cost</label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-carry" class="has-pfx" value="900" placeholder="900" data-currency oninput="updateCarryTotal()"></div>
+      <div class="field-hint beginner-only">Monthly costs while you own it — taxes, insurance, utilities, loan payments</div>
     </div>
     <div class="field">
       <label>Min Profit Target</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="number" id="f-target" class="has-pfx" value="40000" placeholder="40,000"></div>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-target" class="has-pfx" value="40,000" placeholder="40,000" data-currency></div>
     </div>
   </div>
 
@@ -152,11 +177,12 @@
     </div>
     <div class="metrics" id="flip-metrics"></div>
     <div class="breakdown"><div class="btitle">Cost Breakdown</div><div id="flip-breakdown"></div></div>
+    <div id="flip-funding-btn"></div>
 
     <div class="slabel">Save This Deal</div>
     <div class="save-row">
       <input type="text" id="flip-deal-name" placeholder="Deal name e.g. 412 Oak St">
-      <button class="btn-save" onclick="saveDeal('flip')">Save</button>
+      <button class="btn-save" id="flip-save-btn" onclick="saveDeal('flip')">Save</button>
     </div>
     <div class="field full" style="margin-top:6px">
       <label>Notes <span>(optional)</span></label>
@@ -165,7 +191,7 @@
     <div class="save-confirm" id="flip-save-confirm">Deal saved to pipeline!</div>
 
     <div class="btn-row">
-      <button class="btn-secondary" onclick="resetFlip()">Clear &amp; New Deal</button>
+      <button class="btn-secondary" onclick="clearNewDeal('flip')">Clear &amp; New Deal</button>
     </div>
   </div>
 </div>
@@ -175,9 +201,14 @@
 ════════════════════════════════════════ -->
 <div class="page" id="page-rental">
   <div class="header">
-    <div class="logo">Deal Screener</div>
-    <h1>Short-Term Rental</h1>
-    <p>Ocean Lakes · Gatlinburg · Pigeon Forge</p>
+    <div class="header-brand">
+      <img src="icons/clearpath-logo.png" alt="Clear Path Capital" class="cpc-logo">
+      <div class="app-subtitle">Deal Screener</div>
+    </div>
+    <div class="header-meta">
+      <h1>Short-Term Rental</h1>
+      <p>Ocean Lakes · Gatlinburg · Pigeon Forge</p>
+    </div>
     <div class="header-actions">
       <button class="icon-btn" title="Share app" onclick="openShareApp()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a3 3 0 1 0-2.83-4M6 12a3 3 0 1 0 0 0M18 20a3 3 0 1 0-2.83-4M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
@@ -185,16 +216,17 @@
       <button class="icon-btn" title="Install as app" onclick="openInstall()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
       </button>
+      <div class="tier-badge">Free</div>
     </div>
   </div>
 
   <div class="slabel">Market Preset</div>
   <div class="presets">
-    <button class="preset active" onclick="setRentalPreset('ocean-lakes',this)">Ocean Lakes SC</button>
-    <button class="preset" onclick="setRentalPreset('gatlinburg',this)">Gatlinburg TN</button>
-    <button class="preset" onclick="setRentalPreset('pigeon-forge',this)">Pigeon Forge TN</button>
-    <button class="preset" onclick="setRentalPreset('lake-murray',this)">Lake Murray SC</button>
-    <button class="preset" onclick="setRentalPreset('custom',this)">Custom</button>
+    <button class="preset active" onclick="setRentalPreset('ocean-lakes',this)" data-tier="free">Ocean Lakes SC</button>
+    <button class="preset" onclick="setRentalPreset('gatlinburg',this)" data-tier="pro">Gatlinburg TN <span class="lock-icon">🔒</span></button>
+    <button class="preset" onclick="setRentalPreset('pigeon-forge',this)" data-tier="pro">Pigeon Forge TN <span class="lock-icon">🔒</span></button>
+    <button class="preset" onclick="setRentalPreset('lake-murray',this)" data-tier="pro">Lake Murray SC <span class="lock-icon">🔒</span></button>
+    <button class="preset" onclick="setRentalPreset('custom',this)" data-tier="free">Custom</button>
   </div>
 
   <div class="slabel">Property Info</div>
@@ -205,17 +237,20 @@
   <div class="field-row">
     <div class="field">
       <label>Purchase Price</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="number" id="v-price" class="has-pfx" placeholder="420,000"></div>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-price" class="has-pfx" placeholder="420,000" data-currency></div>
+      <div class="field-hint beginner-only">The price you'd pay to buy the property</div>
     </div>
     <div class="field">
       <label>Down Payment</label>
       <div class="input-wrap"><input type="number" id="v-down" class="has-sfx" value="20" placeholder="20"><span class="sfx">%</span></div>
+      <div class="field-hint beginner-only">20% = conventional financing. Hard money lenders may require less — check with your lender.</div>
     </div>
   </div>
   <div class="field-row">
     <div class="field">
       <label>Gross Annual Rent <span>(STR)</span></label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="number" id="v-rent" class="has-pfx" placeholder="55,000"></div>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-rent" class="has-pfx" placeholder="55,000" data-currency></div>
+      <div class="rent-range-hint" id="rent-range-hint" style="display:none"></div>
     </div>
     <div class="field">
       <label>Occupancy Rate</label>
@@ -226,28 +261,39 @@
   <div class="slabel">Annual Expenses</div>
   <div class="field-row">
     <div class="field">
-      <label>STR Mgmt Fee <span>(Airbnb etc)</span></label>
+      <label>Platform Fee <span>(Airbnb/VRBO)</span></label>
       <div class="input-wrap"><input type="number" id="v-mgmt" class="has-sfx" value="15" placeholder="15"><span class="sfx">%</span></div>
+      <div class="field-hint">Airbnb charges hosts ~3%; total guest + host fees avg 14–20%. Default 15% is conservative.</div>
     </div>
     <div class="field">
-      <label>Property Manager <span>(optional)</span></label>
-      <div class="input-wrap"><input type="number" id="v-pm" class="has-sfx" value="0" placeholder="0"><span class="sfx">%</span></div>
+      <label>Property Manager</label>
+      <div class="self-manage-toggle-row">
+        <span class="self-manage-label" id="self-manage-label">Self-Managing — saves 8–12% annually</span>
+        <label class="toggle toggle-sm">
+          <input type="checkbox" id="self-manage-toggle" checked onchange="updateSelfManage()">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+      <div id="self-manage-field" style="display:none">
+        <div class="input-wrap"><input type="number" id="v-pm" class="has-sfx" value="0" placeholder="8"><span class="sfx">%</span></div>
+        <div class="field-hint">Typical range: 8–12%</div>
+      </div>
     </div>
   </div>
   <div class="field-row">
     <div class="field">
       <label>Taxes + Insurance</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="number" id="v-tax" class="has-pfx" value="5500" placeholder="5,500"></div>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-tax" class="has-pfx" value="5,500" placeholder="5,500" data-currency></div>
     </div>
     <div class="field">
       <label>Maintenance/Yr</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="number" id="v-maint" class="has-pfx" value="3000" placeholder="3,000"></div>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-maint" class="has-pfx" value="3,000" placeholder="3,000" data-currency></div>
     </div>
   </div>
   <div class="field-row">
     <div class="field">
       <label>Furnishing/Setup <span>(one-time)</span></label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="number" id="v-furnish" class="has-pfx" value="15000" placeholder="15,000"></div>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-furnish" class="has-pfx" value="15,000" placeholder="15,000" data-currency></div>
     </div>
     <div class="field">
       <label>Min Cash-on-Cash</label>
@@ -265,11 +311,12 @@
     </div>
     <div class="metrics" id="rental-metrics"></div>
     <div class="breakdown"><div class="btitle">Income &amp; Expense Breakdown</div><div id="rental-breakdown"></div></div>
+    <div id="rental-funding-btn"></div>
 
     <div class="slabel">Save This Deal</div>
     <div class="save-row">
       <input type="text" id="rental-deal-name" placeholder="Deal name e.g. 3BR Cabin Gatlinburg">
-      <button class="btn-save" onclick="saveDeal('rental')">Save</button>
+      <button class="btn-save" id="rental-save-btn" onclick="saveDeal('rental')">Save</button>
     </div>
     <div class="field full" style="margin-top:6px">
       <label>Notes <span>(optional)</span></label>
@@ -278,7 +325,7 @@
     <div class="save-confirm" id="rental-save-confirm">Deal saved to pipeline!</div>
 
     <div class="btn-row">
-      <button class="btn-secondary" onclick="resetRental()">Clear &amp; New Deal</button>
+      <button class="btn-secondary" onclick="clearNewDeal('rental')">Clear &amp; New Deal</button>
     </div>
   </div>
 </div>
@@ -317,16 +364,30 @@
   </div>
   <div style="padding:0 20px">
 
-    <div class="tip-card warn">
-      <div class="tc-label">Market Update — May 2026</div>
-      <p>Rates have eased into the mid-6s after the 2024–2025 highs. Charlotte continues to outperform but the 12–18% YoY price spikes of 2022–2023 have normalized to ~5–7%. STR markets cooled meaningfully through 2024 as supply caught up with demand — Pigeon Forge especially saw 8–15% revenue declines per listing. Insurance in coastal SC is up 25–40% over 2023. Always verify current numbers in AirDNA, Zillow, and recent local comps before pulling the trigger.</p>
+    <div class="locked-section">
+      <div class="locked-content">
+        <div class="tip-card warn">
+          <div class="tc-label">Market Update — May 2026</div>
+          <p>Rates have eased into the mid-6s after the 2024–2025 highs. Charlotte continues to outperform but the 12–18% YoY price spikes of 2022–2023 have normalized to ~5–7%. STR markets cooled meaningfully through 2024 as supply caught up with demand — Pigeon Forge especially saw 8–15% revenue declines per listing. Insurance in coastal SC is up 25–40% over 2023. Always verify current numbers in AirDNA, Zillow, and recent local comps before pulling the trigger.</p>
+        </div>
+
+        <div class="tip-card">
+          <div class="tc-label">Your Edge</div>
+          <p>Your full buildout and construction background is a serious advantage in fix &amp; flips. You can identify structural issues others miss, scope repairs accurately, and self-perform work — giving you 20–35% cost savings over investors who hire everything out.</p>
+        </div>
+      </div>
+      <div class="locked-overlay">
+        <div class="locked-overlay-inner">
+          <div class="locked-icon">🔒</div>
+          <div class="locked-label">Market Intel</div>
+          <div class="locked-msg">Unlock market-specific intel with Deal Screener Pro</div>
+          <button class="locked-upgrade-btn" onclick="closeModal('modal-upgrade')">Upgrade — Coming Soon</button>
+        </div>
+      </div>
     </div>
 
-    <div class="tip-card">
-      <div class="tc-label">Your Edge</div>
-      <p>Your full buildout and construction background is a serious advantage in fix &amp; flips. You can identify structural issues others miss, scope repairs accurately, and self-perform work — giving you 20–35% cost savings over investors who hire everything out.</p>
-    </div>
-
+    <div class="locked-section">
+    <div class="locked-content">
     <div class="guide-section">
       <h3>Charlotte &amp; SC Fix &amp; Flip Benchmarks</h3>
       <div class="guide-item">
@@ -434,6 +495,16 @@
         <div class="gi-note">In these markets, well-selected STRs regularly hit 10–15% CoC in 2026 — well above long-term rental returns.</div>
       </div>
     </div>
+    </div><!-- end locked-content -->
+    <div class="locked-overlay">
+      <div class="locked-overlay-inner">
+        <div class="locked-icon">🔒</div>
+        <div class="locked-label">Market Benchmarks</div>
+        <div class="locked-msg">Unlock market-specific benchmarks, repair cost ranges, and STR revenue data with Deal Screener Pro</div>
+        <button class="locked-upgrade-btn">Upgrade — Coming Soon</button>
+      </div>
+    </div>
+    </div><!-- end locked-section -->
 
     <div class="guide-section">
       <h3>Private Money Brokering Basics</h3>
@@ -495,6 +566,17 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('modal-install')">Got it</button>
       <button class="btn-confirm accent" id="btn-install-prompt" style="display:none" onclick="triggerInstall()">Install Now</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-upgrade">
+  <div class="modal">
+    <h3 id="upgrade-modal-title">Unlock this Market</h3>
+    <p id="upgrade-modal-body">This market preset is available with Deal Screener Pro. Upgrade to unlock all markets and premium features.</p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modal-upgrade')">Not Now</button>
+      <button class="btn-confirm accent" onclick="closeModal('modal-upgrade')">Upgrade — Coming Soon</button>
     </div>
   </div>
 </div>

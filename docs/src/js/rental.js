@@ -1,7 +1,8 @@
 // ─── STR / Rental analyzer ────────────────────────────────────────────────────
 
-import { fmt, pct, cClass, buildMetrics, buildRows } from './format.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseComma } from './format.js';
 import { RENTAL_PRESETS } from './markets.js';
+import { maybeShowFundingButton } from './clearpath.js';
 
 let lastRentalResult = null;
 
@@ -24,17 +25,18 @@ export function setRentalPreset(type, el) {
 
 export function analyzeRental() {
   const addr    = document.getElementById('v-addr').value.trim();
-  const price   = +document.getElementById('v-price').value || 0;
+  const price   = parseComma(document.getElementById('v-price').value);
   const down    = (+document.getElementById('v-down').value || 20) / 100;
-  const rent    = +document.getElementById('v-rent').value || 0;
+  const rent    = parseComma(document.getElementById('v-rent').value);
   const occ     = (+document.getElementById('v-occ').value || 65) / 100;
   const mgmt    = (+document.getElementById('v-mgmt').value || 15) / 100;
-  const pm      = (+document.getElementById('v-pm').value || 0) / 100;
-  const tax     = +document.getElementById('v-tax').value || 0;
-  const maint   = +document.getElementById('v-maint').value || 0;
-  const furnish = +document.getElementById('v-furnish').value || 0;
+  const selfManage = document.getElementById('self-manage-toggle')?.checked;
+  const pm      = selfManage ? 0 : (+document.getElementById('v-pm').value || 0) / 100;
+  const tax     = parseComma(document.getElementById('v-tax').value);
+  const maint   = parseComma(document.getElementById('v-maint').value);
+  const furnish = parseComma(document.getElementById('v-furnish').value);
   const tgtCoc  = +document.getElementById('v-target').value || 6;
-  if (!price || !rent) { alert('Enter Purchase Price and Gross Annual Rent.'); return; }
+  if (!price || !rent) { return; } // validation handled by wrapper in main.js
 
   const effRent    = rent * occ;
   const platformFee = effRent * mgmt;
@@ -55,13 +57,16 @@ export function analyzeRental() {
   let verdict, vsub, cls;
   if (coc >= tgtCoc && capRate >= 6) {
     verdict = 'Strong STR Play'; cls = 'hot';
-    vsub = 'Clears your ' + tgtCoc + '% target. Verify occupancy data with AirDNA before closing.';
+    vsub = 'Cash-on-cash return of ' + (Math.round(coc * 10) / 10) + '% clears your ' + tgtCoc + '% target. ' +
+      'Cap Rate (' + (Math.round(capRate * 10) / 10) + '%) measures return as if you paid cash. Verify occupancy with AirDNA before closing.';
   } else if (coc >= tgtCoc * 0.75 && capRate >= 4.5) {
     verdict = 'Dig Deeper'; cls = 'warm';
-    vsub = 'Returns are close. Verify local STR occupancy — a few more booked nights/month changes the math.';
+    vsub = 'Cash-on-cash of ' + (Math.round(coc * 10) / 10) + '% is close to your ' + tgtCoc + '% target. ' +
+      'A few more booked nights/month changes the math. Verify occupancy in AirDNA.';
   } else {
     verdict = 'Thin Margins'; cls = 'pass';
-    vsub = 'Cash flow is too tight. Negotiate price down or find a property with higher revenue potential.';
+    vsub = 'Cash-on-cash of ' + (Math.round(coc * 10) / 10) + '% misses your ' + tgtCoc + '% target. ' +
+      'Negotiate price down or find a property with higher revenue potential.';
   }
 
   document.getElementById('rental-verdict').className = 'verdict ' + cls;
@@ -103,10 +108,13 @@ export function analyzeRental() {
   const r = document.getElementById('rental-results');
   r.style.display = 'block';
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  maybeShowFundingButton(lastRentalResult);
 }
 
 export function resetRental() {
   document.getElementById('rental-results').style.display = 'none';
   document.getElementById('rental-notes').value = '';
+  document.getElementById('rental-funding-btn').innerHTML = '';
   lastRentalResult = null;
 }

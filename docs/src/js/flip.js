@@ -12,7 +12,7 @@ export function getLastFlipResult() { return lastFlipResult; }
 export function setFlipPreset(type, el) {
   document.querySelectorAll('#page-flip .preset').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
-  const p = FLIP_PRESETS[type] || FLIP_PRESETS.regional;
+  const p = FLIP_PRESETS[type] || FLIP_PRESETS['charlotte-nc'];
   document.getElementById('f-hold').value   = p.hold;
   document.getElementById('f-carry').value  = p.carry.toLocaleString();
   document.getElementById('f-target').value = p.target.toLocaleString();
@@ -45,7 +45,7 @@ export function analyzeFlip() {
   const maxOffer = arv * (self ? 0.75 : 0.70) - rep;
   const ltv      = (ask / arv) * 100;
 
-  const beginner = localStorage.getItem('beginner_mode') === '1';
+  const beginner = localStorage.getItem('guideMode') === 'beginner';
   let verdict, vsub, cls;
   if (profit >= target && roi >= 20) {
     verdict = 'Hot Deal'; cls = 'hot';

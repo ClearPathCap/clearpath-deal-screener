@@ -29,7 +29,7 @@ export function analyzeRental() {
   const down    = (+document.getElementById('v-down').value || 20) / 100;
   const rent    = parseComma(document.getElementById('v-rent').value);
   const occ     = (+document.getElementById('v-occ').value || 65) / 100;
-  const mgmt    = (+document.getElementById('v-mgmt').value || 15) / 100;
+  const mgmt    = (+document.getElementById('v-mgmt').value || 3) / 100;
   const selfManage = document.getElementById('self-manage-toggle')?.checked;
   const pm      = selfManage ? 0 : (+document.getElementById('v-pm').value || 0) / 100;
   const tax     = parseComma(document.getElementById('v-tax').value);

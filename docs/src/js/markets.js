@@ -1,27 +1,51 @@
 // ─── Market preset data + geolocation regional lookup ────────────────────────
 
-// ─── Market presets ───────────────────────────────────────────────────────────
+// ─── Fix & Flip presets (all 13 markets) ─────────────────────────────────────
 
 export const FLIP_PRESETS = {
-  charlotte:     { hold: 5, carry: 900,  target: 40000 },
-  'lake-murray': { hold: 6, carry: 850,  target: 38000 },
-  regional:      { hold: 7, carry: 1100, target: 45000 },
+  'charlotte-nc':    { hold: 5, carry: 900,  target: 40000 },
+  'atlanta-ga':      { hold: 5, carry: 950,  target: 42000 },
+  'dallas-tx':       { hold: 5, carry: 1000, target: 45000 },
+  'phoenix-az':      { hold: 5, carry: 1100, target: 45000 },
+  'tampa-fl':        { hold: 5, carry: 1050, target: 42000 },
+  'nashville-tn':    { hold: 5, carry: 1000, target: 45000 },
+  'indianapolis-in': { hold: 5, carry: 750,  target: 35000 },
+  'columbus-oh':     { hold: 5, carry: 800,  target: 35000 },
+  'kansas-city-mo':  { hold: 5, carry: 800,  target: 35000 },
+  'memphis-tn':      { hold: 5, carry: 700,  target: 32000 },
+  'jacksonville-fl': { hold: 5, carry: 900,  target: 38000 },
+  'san-antonio-tx':  { hold: 5, carry: 850,  target: 38000 },
+  'birmingham-al':   { hold: 5, carry: 700,  target: 32000 },
 };
+
+// ─── STR / Rental presets (all 10 markets) ───────────────────────────────────
 
 export const RENTAL_PRESETS = {
-  'ocean-lakes': { down: 20, occ: 62, mgmt: 15, pm: 0, tax: 6200, maint: 3000, furnish: 18000, target: 6 },
-  gatlinburg:    { down: 20, occ: 70, mgmt: 15, pm: 0, tax: 4700, maint: 3500, furnish: 22000, target: 6 },
-  'pigeon-forge':{ down: 20, occ: 65, mgmt: 15, pm: 0, tax: 4300, maint: 3000, furnish: 20000, target: 6 },
-  'lake-murray': { down: 20, occ: 55, mgmt: 15, pm: 0, tax: 3800, maint: 3000, furnish: 16000, target: 6 },
+  'ocean-lakes-sc':  { down: 20, occ: 62, mgmt: 3, pm: 0, tax: 6200,  maint: 3000, furnish: 18000, target: 6 },
+  'gatlinburg-tn':   { down: 20, occ: 70, mgmt: 3, pm: 0, tax: 4700,  maint: 3500, furnish: 22000, target: 6 },
+  'pigeon-forge-tn': { down: 20, occ: 65, mgmt: 3, pm: 0, tax: 4300,  maint: 3000, furnish: 20000, target: 6 },
+  'lake-murray-sc':  { down: 20, occ: 55, mgmt: 3, pm: 0, tax: 3800,  maint: 3000, furnish: 16000, target: 6 },
+  'destin-fl':       { down: 20, occ: 68, mgmt: 3, pm: 0, tax: 7500,  maint: 3500, furnish: 22000, target: 6 },
+  'blue-ridge-ga':   { down: 20, occ: 65, mgmt: 3, pm: 0, tax: 4000,  maint: 3000, furnish: 20000, target: 6 },
+  'outer-banks-nc':  { down: 20, occ: 65, mgmt: 3, pm: 0, tax: 7000,  maint: 4000, furnish: 25000, target: 6 },
+  'hilton-head-sc':  { down: 20, occ: 60, mgmt: 3, pm: 0, tax: 6500,  maint: 3500, furnish: 22000, target: 6 },
+  'gulf-shores-al':  { down: 20, occ: 62, mgmt: 3, pm: 0, tax: 5500,  maint: 3000, furnish: 18000, target: 6 },
+  'branson-mo':      { down: 20, occ: 60, mgmt: 3, pm: 0, tax: 3500,  maint: 2500, furnish: 15000, target: 6 },
 };
 
-// ─── Rent range data for STR preset display (Section 6d) ─────────────────────
+// ─── STR rent ranges for hint display ────────────────────────────────────────
 
 export const RENTAL_RENT_RANGES = {
-  'ocean-lakes': { low: 40000, high: 85000 },
-  gatlinburg:    { low: 48000, high: 140000 },
-  'pigeon-forge':{ low: 42000, high: 110000 },
-  'lake-murray': { low: 35000, high: 80000 },
+  'ocean-lakes-sc':  { low: 40000,  high: 85000 },
+  'gatlinburg-tn':   { low: 48000,  high: 140000 },
+  'pigeon-forge-tn': { low: 42000,  high: 110000 },
+  'lake-murray-sc':  { low: 35000,  high: 80000 },
+  'destin-fl':       { low: 55000,  high: 150000 },
+  'blue-ridge-ga':   { low: 45000,  high: 120000 },
+  'outer-banks-nc':  { low: 50000,  high: 145000 },
+  'hilton-head-sc':  { low: 45000,  high: 110000 },
+  'gulf-shores-al':  { low: 40000,  high: 100000 },
+  'branson-mo':      { low: 30000,  high: 80000 },
 };
 
 // ─── Regional market conditions (no external API — lat/lng bounding boxes) ───
@@ -32,7 +56,6 @@ const REGIONS = [
     arvRule: 0.65,
     holdAdj: 1.15,
     states: ['ME','NH','VT','MA','RI','CT','NY','NJ'],
-    // Approximate bounding box: lat 40.5–47.5, lng -80–-66.9
     lat: [40.5, 47.5], lng: [-80.0, -66.9],
   },
   {
@@ -91,17 +114,11 @@ export function detectRegion(lat, lng) {
 }
 
 // ─── Geolocation — prompt on first launch, store result ───────────────────────
-// Stored in localStorage:
-//   geo_prompted = '1'   (set after permission decision, prevents re-prompt)
-//   geo_region   = name  (detected region name)
-//   geo_lat / geo_lng    (raw coords, for future use)
 
 export function initGeolocation() {
   if (!('geolocation' in navigator)) return;
   if (localStorage.getItem('geo_prompted')) return;
 
-  // Charlotte NC is in the Southeast region — will auto-select correctly:
-  // 35.2271°N, 80.8431°W
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       const { latitude: lat, longitude: lng } = pos.coords;
@@ -110,11 +127,8 @@ export function initGeolocation() {
       localStorage.setItem('geo_lng', lng);
       const region = detectRegion(lat, lng);
       localStorage.setItem('geo_region', region.name);
-      // Nothing changes visually — market presets remain manual selection.
-      // Region data is available for future use (e.g., adjusting ARV defaults).
     },
     () => {
-      // Denied or unavailable — just flag that we've asked, no error shown
       localStorage.setItem('geo_prompted', '1');
     },
     { timeout: 8000, maximumAge: 86400000 }

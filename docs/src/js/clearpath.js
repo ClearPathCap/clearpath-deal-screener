@@ -1,13 +1,40 @@
 // ─── Clear Path Capital integration ──────────────────────────────────────────
 
+import { getActiveTier } from './tiers.js';
+import { getDeals } from './storage.js';
+
 const CPC_URL = 'https://clearpathcapfunding.com/';
 const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn' };
 
-function buildFlipSummary(r) {
+// ─── Tier-aware button config ─────────────────────────────────────────────────
+
+function getTierConfig() {
+  const tier = getActiveTier();
+  if (tier === 'pro') return {
+    label: 'Get Funding — Dedicated Broker',
+    tag:   '[Pro — Dedicated Broker Requested]',
+    toast: 'Deal summary copied — your dedicated Clear Path Capital private money lender will follow up directly.',
+  };
+  if (tier === 'investor') return {
+    label: 'Get Funding — Priority Review',
+    tag:   '[Investor — Priority Review]',
+    toast: 'Deal summary copied — your submission will receive priority review from Clear Path Capital.',
+  };
+  return {
+    label: 'Get Funding — Clear Path Capital',
+    tag:   '[Starter Submission]',
+    toast: 'Deal summary copied — paste into the Notes field on the Clear Path Capital form',
+  };
+}
+
+// ─── Summary builders ─────────────────────────────────────────────────────────
+
+function buildFlipSummary(r, tag) {
   const lines = [
     'DEAL SCREENER SUMMARY — Fix & Flip',
     r.addr ? 'Address: ' + r.addr : null,
     'Verdict: ' + r.verdict,
+    tag,
     '---',
     'Purchase Price: $' + Math.round(r.ask).toLocaleString(),
     'After Repair Value (ARV): $' + Math.round(r.arv).toLocaleString(),
@@ -23,11 +50,12 @@ function buildFlipSummary(r) {
   return lines.filter(Boolean).join('\n');
 }
 
-function buildRentalSummary(r) {
+function buildRentalSummary(r, tag) {
   const lines = [
     'DEAL SCREENER SUMMARY — STR / Rental',
     r.addr ? 'Address: ' + r.addr : null,
     'Verdict: ' + r.verdict,
+    tag,
     '---',
     'Purchase Price: $' + Math.round(r.price).toLocaleString(),
     'Gross Annual Rent: $' + Math.round(r.rent).toLocaleString(),
@@ -41,6 +69,8 @@ function buildRentalSummary(r) {
   return lines.filter(Boolean).join('\n');
 }
 
+// ─── Analyzer tab funding button ──────────────────────────────────────────────
+
 export function maybeShowFundingButton(result) {
   const id = BTN_IDS[result.type];
   if (!id) return;
@@ -52,21 +82,45 @@ export function maybeShowFundingButton(result) {
     return;
   }
 
+  const cfg = getTierConfig();
   const summary = result.type === 'flip'
-    ? buildFlipSummary(result)
-    : buildRentalSummary(result);
+    ? buildFlipSummary(result, cfg.tag)
+    : buildRentalSummary(result, cfg.tag);
 
   container.innerHTML = `
     <button class="btn-get-funding" id="${id}-trigger">
       <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
-      Get Funding — Clear Path Capital
+      ${cfg.label}
     </button>`;
 
   document.getElementById(id + '-trigger').addEventListener('click', () => {
     navigator.clipboard.writeText(summary).catch(() => {});
     window.open(CPC_URL, '_blank', 'noopener');
-    if (window.showToast) {
-      window.showToast('Deal summary copied — paste into the Notes field on the Clear Path Capital form');
-    }
+    if (window.showToast) window.showToast(cfg.toast);
   });
+}
+
+// ─── Pipeline deal funding button ─────────────────────────────────────────────
+
+export function getPipelineFundingButtonHTML(deal) {
+  if (deal.cls !== 'hot') return '';
+  const cfg = getTierConfig();
+  return `<button class="btn-get-funding pipeline-funding-btn" onclick="event.stopPropagation();handlePipelineFundingClick(${deal.id})">
+    <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
+    ${cfg.label}
+  </button>`;
+}
+
+// Exposed as global in main.js — handles click from pipeline card
+export function handlePipelineFundingClick(id) {
+  const deals = getDeals();
+  const deal = deals.find(d => d.id === id);
+  if (!deal) return;
+  const cfg = getTierConfig();
+  const summary = deal.type === 'flip'
+    ? buildFlipSummary(deal.data, cfg.tag)
+    : buildRentalSummary(deal.data, cfg.tag);
+  navigator.clipboard.writeText(summary).catch(() => {});
+  window.open(CPC_URL, '_blank', 'noopener');
+  if (window.showToast) window.showToast(cfg.toast);
 }

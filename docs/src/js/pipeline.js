@@ -4,6 +4,7 @@ import { fmt, pct, escapeHtml } from './format.js';
 import { getDeals, saveDeals } from './storage.js';
 import { getLastFlipResult } from './flip.js';
 import { getLastRentalResult } from './rental.js';
+import { getPipelineFundingButtonHTML } from './clearpath.js';
 
 // Local modal helpers — avoids circular dep with main.js
 const openModal  = id => document.getElementById(id).classList.add('active');
@@ -138,6 +139,7 @@ function buildDealCard(d) {
       <div class="deal-detail">
         ${detailRows}
         ${notesBlock}
+        ${getPipelineFundingButtonHTML(d)}
         <div class="detail-actions">
           <button class="btn-action" onclick="event.stopPropagation();shareDeal(${d.id})">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a3 3 0 1 0-2.83-4M6 12a3 3 0 1 0 0 0M18 20a3 3 0 1 0-2.83-4M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>

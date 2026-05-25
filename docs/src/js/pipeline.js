@@ -130,6 +130,9 @@ function buildDealCard(d) {
           </div>
           <div class="deal-badge ${d.cls}">${d.verdict}</div>
         </div>
+        <button class="card-delete-btn" onclick="event.stopPropagation();requestDelete(${d.id},event)" title="Delete deal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        </button>
         <div class="deal-stats">
           ${d.stats.map(s => `<div class="deal-stat"><div class="dsl">${s.l}</div><div class="dsv">${s.v}</div></div>`).join('')}
         </div>
@@ -190,7 +193,7 @@ function buildRentalDetail(d) {
     { l: 'Down payment',           v: d.down    ? d.down + '%'          : '—' },
     { l: 'Gross annual rent',      v: d.rent    != null ? fmt(d.rent)   : '—' },
     { l: 'Occupancy',              v: d.occ     != null ? d.occ + '%'   : '—' },
-    { l: 'STR mgmt fee',           v: d.mgmt    != null ? d.mgmt + '%'  : '—' },
+    { l: 'Platform fee (Airbnb/VRBO)', v: d.mgmt  != null ? d.mgmt + '%'  : '—' },
     { l: 'Property manager',       v: d.pm      != null ? d.pm + '%'    : '—' },
     { l: 'Taxes + insurance',      v: d.tax     != null ? fmt(d.tax)    : '—' },
     { l: 'Maintenance',            v: d.maint   != null ? fmt(d.maint)  : '—' },

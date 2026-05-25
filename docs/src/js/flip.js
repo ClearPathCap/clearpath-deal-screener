@@ -80,9 +80,9 @@ export function analyzeFlip() {
   document.getElementById('flip-breakdown').innerHTML = buildRows([
     { l: 'Purchase price',                                    v: fmt(ask) },
     { l: 'Repair costs' + (self ? ' (self-perform)' : ''),   v: fmt(rep) },
-    { l: 'Buy closing (' + Math.round(cc1 * 100) + '%)',     v: fmt(buyCost) },
+    { l: 'Purchase costs (' + Math.round(cc1 * 100) + '%)',  v: fmt(buyCost) },
     { l: 'Carrying costs (' + hold + ' mo)',                  v: fmt(holdCost) },
-    { l: 'Sell closing (' + Math.round(cc2 * 100) + '%)',    v: fmt(sellCost) },
+    { l: 'Sale costs (' + Math.round(cc2 * 100) + '%)',       v: fmt(sellCost) },
     { l: 'Total all-in',                                      v: fmt(totalIn + sellCost) },
     { l: 'Net profit', v: fmt(profit), tot: true, color: profit >= 0 ? 'var(--accent)' : 'var(--danger)' },
   ]);

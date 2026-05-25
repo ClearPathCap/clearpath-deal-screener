@@ -9,14 +9,13 @@ let lastRentalResult = null;
 export function getLastRentalResult() { return lastRentalResult; }
 
 export function setRentalPreset(type, el) {
-  document.querySelectorAll('#page-rental .preset').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
+  document.querySelectorAll('#page-rental .market-slot').forEach(p => p.classList.remove('slot-active'));
+  if (el) el.classList.add('slot-active');
   const p = RENTAL_PRESETS[type];
-  if (!p) return; // 'custom' — user fills in manually
+  if (!p) return; // market has no STR preset — keep current values
   document.getElementById('v-down').value    = p.down;
   document.getElementById('v-occ').value     = p.occ;
   document.getElementById('v-mgmt').value    = p.mgmt;
-  document.getElementById('v-pm').value      = p.pm;
   document.getElementById('v-tax').value     = p.tax.toLocaleString();
   document.getElementById('v-maint').value   = p.maint.toLocaleString();
   document.getElementById('v-furnish').value = p.furnish.toLocaleString();
@@ -31,28 +30,31 @@ export function analyzeRental() {
   const occ     = (+document.getElementById('v-occ').value || 65) / 100;
   const mgmt    = (+document.getElementById('v-mgmt').value || 3) / 100;
   const selfManage = document.getElementById('self-manage-toggle')?.checked;
-  const pm      = selfManage ? 0 : (+document.getElementById('v-pm').value || 0) / 100;
+  const pm      = selfManage ? 0 : (+document.getElementById('v-pm').value || 8) / 100;
   const tax     = parseComma(document.getElementById('v-tax').value);
   const maint   = parseComma(document.getElementById('v-maint').value);
   const furnish = parseComma(document.getElementById('v-furnish').value);
   const tgtCoc  = +document.getElementById('v-target').value || 6;
+  // Item 14: editable interest rate field — default 6.75%
+  const interestRate = (+document.getElementById('v-rate')?.value || 6.75) / 100;
   if (!price || !rent) { return; } // validation handled by wrapper in main.js
 
-  const effRent    = rent * occ;
+  const effRent     = rent * occ;
   const platformFee = effRent * mgmt;
-  const pmFee      = effRent * pm;
-  const totalExp   = platformFee + pmFee + tax + maint;
-  const noi        = effRent - totalExp;
-  const capRate    = (noi / price) * 100;
-  const downAmt    = price * down + furnish;
-  const loan       = price - (price * down);
-  const rate       = 0.0675 / 12;
-  const n          = 360;
-  const mo         = loan > 0 ? loan * rate * Math.pow(1 + rate, n) / (Math.pow(1 + rate, n) - 1) : 0;
-  const debt       = mo * 12;
-  const cashflow   = noi - debt;
-  const coc        = (cashflow / downAmt) * 100;
-  const grm        = Math.round((price / rent) * 10) / 10;
+  const pmFee       = effRent * pm;
+  const totalExp    = platformFee + pmFee + tax + maint;
+  const noi         = effRent - totalExp;
+  const capRate     = (noi / price) * 100;
+  const downAmt     = price * down + furnish;
+  const loan        = price - (price * down);
+  const monthlyRate = interestRate / 12;
+  const n           = 360;
+  const mo          = loan > 0 ? loan * monthlyRate * Math.pow(1 + monthlyRate, n) / (Math.pow(1 + monthlyRate, n) - 1) : 0;
+  const debt        = mo * 12;
+  const cashflow    = noi - debt;
+  const coc         = (cashflow / downAmt) * 100;
+  const grm         = Math.round((price / rent) * 10) / 10;
+  const rateDisplay = (interestRate * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
 
   let verdict, vsub, cls;
   if (coc >= tgtCoc && capRate >= 6) {
@@ -82,25 +84,25 @@ export function analyzeRental() {
   ]);
 
   document.getElementById('rental-breakdown').innerHTML = buildRows([
-    { l: 'Gross annual rent',                                          v: fmt(rent) },
-    { l: 'Effective rent (' + Math.round(occ * 100) + '% occ.)',     v: fmt(effRent) },
-    { l: 'Platform fees (Airbnb/VRBO)',                                v: '–' + fmt(platformFee) },
+    { l: 'Gross annual rent',                                               v: fmt(rent) },
+    { l: 'Effective rent (' + Math.round(occ * 100) + '% occ.)',          v: fmt(effRent) },
+    { l: 'Platform fees (Airbnb/VRBO)',                                     v: '–' + fmt(platformFee) },
     { l: 'Property manager' + (pm > 0 ? ' (' + Math.round(pm * 100) + '%)' : ' (self)'), v: pm > 0 ? '–' + fmt(pmFee) : '$0' },
-    { l: 'Taxes + insurance',                                         v: '–' + fmt(tax) },
-    { l: 'Maintenance',                                               v: '–' + fmt(maint) },
-    { l: 'Net operating income',                                      v: fmt(noi) },
-    { l: 'Annual debt service (6.75%)',                               v: '–' + fmt(debt) },
+    { l: 'Taxes + insurance',                                              v: '–' + fmt(tax) },
+    { l: 'Maintenance',                                                    v: '–' + fmt(maint) },
+    { l: 'Net operating income',                                           v: fmt(noi) },
+    { l: 'Annual debt service (' + rateDisplay + ')',                      v: '–' + fmt(debt) },
     { l: 'Net cash flow', v: fmt(cashflow), tot: true, color: cashflow >= 0 ? 'var(--accent)' : 'var(--danger)' },
   ]);
 
   lastRentalResult = {
     type: 'rental', addr, price,
-    down:   +document.getElementById('v-down').value,
+    down:         +document.getElementById('v-down').value,
     rent,
-    occ:    +document.getElementById('v-occ').value,
-    mgmt:   +document.getElementById('v-mgmt').value,
-    pm:     selfManage ? 0 : +document.getElementById('v-pm').value,
-    tax, maint, furnish, tgtCoc,
+    occ:          +document.getElementById('v-occ').value,
+    mgmt:         +document.getElementById('v-mgmt').value,
+    pm:           selfManage ? 0 : +document.getElementById('v-pm').value,
+    tax, maint, furnish, tgtCoc, interestRate,
     cashflow, coc, capRate, noi, debt, downAmt, grm,
     verdict, cls,
     hot: cls === 'hot',

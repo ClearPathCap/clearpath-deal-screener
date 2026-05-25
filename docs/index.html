@@ -35,7 +35,7 @@
   <div class="header">
     <div class="header-left">
       <div class="header-brand">
-        <img src="icons/clearpath-logo.png" alt="Clear Path Capital" class="cpc-logo">
+        <img src="icons/clearpath-mark.png" alt="Clear Path Capital" class="cpc-logo"><!-- item 1: correct logo -->
         <div class="app-subtitle">Deal Screener</div>
       </div>
       <div class="header-meta">
@@ -43,8 +43,9 @@
       </div>
     </div>
     <div class="header-actions">
+      <!-- item 18: iOS-style share icon -->
       <button class="icon-btn" title="Share app" onclick="openShareApp()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a3 3 0 1 0-2.83-4M6 12a3 3 0 1 0 0 0M18 20a3 3 0 1 0-2.83-4M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
       </button>
       <button class="icon-btn" title="Install as app" onclick="openInstall()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
@@ -61,9 +62,9 @@
     </div>
   </div>
 
-  <div class="slabel">Market Preset</div>
-  <!-- Populated dynamically by renderFlipPresets() in main.js -->
-  <div class="presets" id="flip-presets"></div>
+  <!-- item 6: MARKET REGIONS label + 6-slot container -->
+  <div class="slabel">Market Regions</div>
+  <div class="market-slots" id="flip-slots"></div>
 
   <div class="slabel">Renovation Scope</div>
   <div class="toggle-row">
@@ -95,7 +96,7 @@
     </div>
   </div>
 
-  <!-- REPAIR ESTIMATOR -->
+  <!-- REPAIR ESTIMATOR — item 8: guide mode expanded descriptions -->
   <div class="repair-card">
     <div class="repair-title">Repair Cost Estimator</div>
     <div class="repair-tiers">
@@ -103,16 +104,19 @@
         <div class="tier-name">Light</div>
         <div class="tier-range">$12–22/sf</div>
         <div class="tier-desc">Paint, flooring, fixtures, landscaping</div>
+        <div class="tier-desc-long">Interior paint throughout, LVP or carpet flooring, light fixture replacements, vanity/toilet/mirror swaps, kitchen hardware, door hardware, minor drywall patches, basic landscaping and curb appeal.</div>
       </div>
       <div class="tier active" onclick="setTier('mid',this)">
         <div class="tier-name">Mid</div>
         <div class="tier-range">$28–48/sf</div>
         <div class="tier-desc">Kitchen, baths, HVAC, windows</div>
+        <div class="tier-desc-long">Full kitchen cabinet and countertop replacement, bathroom tile and tub/shower overhaul, HVAC system replacement, window replacement throughout, electrical panel update, plumbing fixture upgrades — plus everything in Light.</div>
       </div>
       <div class="tier" onclick="setTier('full',this)">
         <div class="tier-name">Full Gut</div>
         <div class="tier-range">$60–95/sf</div>
         <div class="tier-desc">Full buildout, structural, systems</div>
+        <div class="tier-desc-long">Complete interior demo, structural repairs and reframing, full electrical rewire, plumbing rough-in, new HVAC from scratch, insulation and new drywall, roof replacement, possible foundation work — plus everything in Mid.</div>
       </div>
     </div>
     <div class="sqft-row">
@@ -139,10 +143,7 @@
     </div>
   </div>
 
-  <div class="carry-total-row" id="carry-total-row" style="display:none">
-    <span class="carry-total-text" id="carry-total-text"></span>
-  </div>
-
+  <!-- item 10: Cost Assumptions section, carry total moved to bottom -->
   <div class="slabel">Your Cost Assumptions</div>
   <div class="field-row">
     <div class="field">
@@ -166,6 +167,11 @@
       <label>Min Profit Target</label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-target" class="has-pfx" value="40,000" placeholder="40,000" data-currency></div>
     </div>
+  </div>
+  <!-- item 10: TOTAL HOLD COST label + carry total — moved here from above -->
+  <div class="calc-label" id="hold-cost-label" style="display:none">Total Hold Cost</div>
+  <div class="carry-total-row" id="carry-total-row" style="display:none">
+    <span class="carry-total-text" id="carry-total-text"></span>
   </div>
 
   <button class="btn-analyze" onclick="analyzeFlip()">Analyze This Deal</button>
@@ -204,7 +210,7 @@
   <div class="header">
     <div class="header-left">
       <div class="header-brand">
-        <img src="icons/clearpath-logo.png" alt="Clear Path Capital" class="cpc-logo">
+        <img src="icons/clearpath-mark.png" alt="Clear Path Capital" class="cpc-logo"><!-- item 1 -->
         <div class="app-subtitle">Deal Screener</div>
       </div>
       <div class="header-meta">
@@ -212,8 +218,9 @@
       </div>
     </div>
     <div class="header-actions">
+      <!-- item 18: iOS-style share icon -->
       <button class="icon-btn" title="Share app" onclick="openShareApp()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a3 3 0 1 0-2.83-4M6 12a3 3 0 1 0 0 0M18 20a3 3 0 1 0-2.83-4M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
       </button>
       <button class="icon-btn" title="Install as app" onclick="openInstall()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
@@ -230,16 +237,16 @@
     </div>
   </div>
 
-  <!-- Sub-category tabs -->
+  <!-- item 7: Phase 2 sub-tabs (not upgrade-locked) -->
   <div class="sub-tabs">
     <button class="sub-tab active">STR</button>
-    <button class="sub-tab locked" onclick="comingSoon('Long-Term Rentals')">Long-Term <span class="lock-icon">🔒</span></button>
-    <button class="sub-tab locked" onclick="comingSoon('BRRR')">BRRR <span class="lock-icon">🔒</span></button>
+    <button class="sub-tab phase2">Long-Term · Phase 2</button>
+    <button class="sub-tab phase2">BRRR · Phase 2</button>
   </div>
 
-  <div class="slabel">Market Preset</div>
-  <!-- Populated dynamically by renderRentalPresets() in main.js -->
-  <div class="presets" id="rental-presets"></div>
+  <!-- item 6: MARKET REGIONS label + shared 6-slot container -->
+  <div class="slabel">Market Regions</div>
+  <div class="market-slots" id="rental-slots"></div>
 
   <div class="slabel">Property Info</div>
   <div class="field full">
@@ -266,7 +273,9 @@
     </div>
     <div class="field">
       <label>Occupancy Rate</label>
-      <div class="input-wrap"><input type="number" id="v-occ" class="has-sfx" value="65" placeholder="65"><span class="sfx">%</span></div>
+      <div class="input-wrap"><input type="number" id="v-occ" class="has-sfx" value="65" placeholder="65" oninput="updateOccHint()"><span class="sfx">%</span></div>
+      <!-- item 12: occupancy guide text — updates dynamically -->
+      <div class="field-hint beginner-only" id="occ-guide-hint"></div>
     </div>
   </div>
 
@@ -276,7 +285,7 @@
       <label>Platform Fee <span>(Airbnb/VRBO)</span></label>
       <div class="input-wrap"><input type="number" id="v-mgmt" class="has-sfx" value="3" placeholder="3"><span class="sfx">%</span></div>
       <div class="field-hint pro-only">Airbnb charges hosts ~3% per booking. Higher guest-side fees (14–20%) may affect your occupancy rate — factor this into your occupancy % above.</div>
-      <div class="field-hint beginner-only">Airbnb charges hosts ~3% per booking. Higher guest-side fees (14–20%) may affect your occupancy rate — factor this into your occupancy % above.<br><br><strong>How platform fees work:</strong> There are two forms — the host fee (~3%, taken from your payout) and the guest fee (~14–20%, added to what guests pay). Your 3% host fee is the direct cost. If guest fees price out budget travelers, it shows up as lower occupancy.</div>
+      <div class="field-hint beginner-only">Airbnb charges hosts ~3% per booking. Higher guest-side fees (14–20%) may affect your occupancy rate — factor this into your occupancy % above.<br><br><strong>How platform fees work:</strong> The host fee (~3%) is taken from your payout. The guest fee (~14–20%) is added on top for guests. Your 3% is the direct cost. If guest fees price out budget travelers, it shows up as lower occupancy.</div>
     </div>
     <div class="field">
       <label>Property Manager</label>
@@ -288,6 +297,7 @@
         </label>
       </div>
       <div id="self-manage-field" style="display:none">
+        <!-- item 13: default to 8% when hired -->
         <div class="input-wrap"><input type="number" id="v-pm" class="has-sfx" value="0" placeholder="8"><span class="sfx">%</span></div>
         <div class="field-hint">Typical range: 8–12%</div>
       </div>
@@ -312,6 +322,17 @@
       <label>Min Cash-on-Cash</label>
       <div class="input-wrap"><input type="number" id="v-target" class="has-sfx" value="6" placeholder="6"><span class="sfx">%</span></div>
     </div>
+  </div>
+
+  <!-- item 14: Interest Rate field -->
+  <div class="field-row">
+    <div class="field">
+      <label>Interest Rate</label>
+      <div class="input-wrap"><input type="number" id="v-rate" class="has-sfx" value="6.75" step="0.125" placeholder="6.75"><span class="sfx">%</span></div>
+      <div class="field-hint pro-only">Your rate significantly impacts cash flow. Conventional loans run 7–8%. Private money lenders can offer more flexible terms.</div>
+      <div class="field-hint beginner-only">Your rate significantly impacts cash flow. Conventional loans run 7–8%. Private money lenders can offer more flexible terms. <a href="https://clearpathcapfunding.com/" target="_blank" rel="noopener" class="hint-link">Check with Clear Path Capital</a></div>
+    </div>
+    <div class="field"><!-- spacer --></div>
   </div>
 
   <button class="btn-analyze" onclick="analyzeRental()">Analyze This Deal</button>
@@ -350,7 +371,7 @@
   <div class="header">
     <div class="header-left">
       <div class="header-brand">
-        <img src="icons/clearpath-logo.png" alt="Clear Path Capital" class="cpc-logo">
+        <img src="icons/clearpath-mark.png" alt="Clear Path Capital" class="cpc-logo"><!-- item 1 -->
         <div class="app-subtitle">Deal Screener</div>
       </div>
       <div class="header-meta">
@@ -359,17 +380,19 @@
       </div>
     </div>
     <div class="header-actions">
+      <!-- item 18: iOS-style share icon -->
       <button class="icon-btn" title="Share app" onclick="openShareApp()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a3 3 0 1 0-2.83-4M6 12a3 3 0 1 0 0 0M18 20a3 3 0 1 0-2.83-4M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
       </button>
     </div>
   </div>
   <div style="padding:0 20px">
+    <!-- item 17: "Strong Deals Only" filter -->
     <div class="filter-row" id="pipeline-filters">
       <button class="filter-pill active" onclick="filterPipeline('all',this)">All</button>
       <button class="filter-pill" onclick="filterPipeline('flip',this)">Fix &amp; Flip</button>
       <button class="filter-pill" onclick="filterPipeline('rental',this)">STR</button>
-      <button class="filter-pill" onclick="filterPipeline('hot',this)">Hot Only</button>
+      <button class="filter-pill" onclick="filterPipeline('hot',this)">Strong Deals Only</button>
     </div>
     <div id="pipeline-list"></div>
   </div>
@@ -382,7 +405,7 @@
   <div class="header">
     <div class="header-left">
       <div class="header-brand">
-        <img src="icons/clearpath-logo.png" alt="Clear Path Capital" class="cpc-logo">
+        <img src="icons/clearpath-mark.png" alt="Clear Path Capital" class="cpc-logo"><!-- item 1 -->
         <div class="app-subtitle">Deal Screener</div>
       </div>
       <div class="header-meta">
@@ -396,7 +419,7 @@
   </div>
   <div style="padding:0 20px">
 
-    <!-- ── LOCKED: Market intel (Starter cannot see) ──────────────────── -->
+    <!-- ── LOCKED: Market intel ──────────────────────────────────────── -->
     <div class="locked-section">
       <div class="locked-content">
         <div class="tip-card warn">
@@ -418,7 +441,7 @@
       </div>
     </div>
 
-    <!-- ── FREE: How to Estimate ARV ────────────────────────────────── -->
+    <!-- ── FREE: How to Estimate ARV ──────────────────────────────── -->
     <div class="guide-section">
       <h3>How to Estimate ARV</h3>
       <div class="guide-item">
@@ -440,7 +463,7 @@
       </div>
     </div>
 
-    <!-- ── FREE: Repair Cost Basics ──────────────────────────────────── -->
+    <!-- ── FREE: Repair Cost Basics ───────────────────────────────── -->
     <div class="guide-section">
       <h3>How to Estimate Repair Costs</h3>
       <div class="guide-item">
@@ -463,13 +486,9 @@
         <div class="gi-val">Add 50–70% to self-perform ranges</div>
         <div class="gi-note">Hiring everything out significantly reduces margin. Self-performing is your biggest profit lever.</div>
       </div>
-      <div class="guide-item">
-        <div class="gi-label">Use the Repair Estimator</div>
-        <div class="gi-note">The Repair Cost Estimator on the Fix &amp; Flip tab auto-calculates range and midpoint based on scope and self/hired status. Enter square footage and hit "Use midpoint estimate" to pre-fill the Repair Costs field.</div>
-      </div>
     </div>
 
-    <!-- ── FREE: Key Formulas & Glossary ──────────────────────────────── -->
+    <!-- ── FREE: Key Formulas & Glossary ──────────────────────────── -->
     <div class="guide-section">
       <h3>Key Formulas &amp; Definitions</h3>
       <div class="guide-item">
@@ -501,98 +520,38 @@
         <div class="gi-val">NOI ÷ Purchase Price</div>
         <div class="gi-note">Net Operating Income divided by purchase price — measures return as if you paid cash. 6%+ is solid for STR.</div>
       </div>
-      <div class="guide-item">
-        <div class="gi-label">NOI — Net Operating Income</div>
-        <div class="gi-val">Effective Rent − Operating Expenses</div>
-        <div class="gi-note">Revenue after all operating expenses (platform fees, taxes, maintenance, management) but before debt service.</div>
-      </div>
-      <div class="guide-item">
-        <div class="gi-label">GRM — Gross Rent Multiplier</div>
-        <div class="gi-val">Purchase Price ÷ Gross Annual Rent</div>
-        <div class="gi-note">Quick valuation check. Lower is better — under 10x is strong, 10–15x is moderate, above 15x may be overpriced.</div>
-      </div>
     </div>
 
-    <!-- ── LOCKED: Market-specific benchmarks ────────────────────────── -->
+    <!-- ── LOCKED: Market benchmarks ──────────────────────────────── -->
     <div class="locked-section">
       <div class="locked-content">
         <div class="guide-section">
           <h3>Charlotte &amp; SC Fix &amp; Flip Benchmarks</h3>
-          <div class="guide-item">
-            <div class="gi-label">Strong flip markets in the region</div>
-            <div class="gi-val">Gastonia · Concord · Kannapolis · Rock Hill · Monroe · Salisbury · Lake Murray SC</div>
-            <div class="gi-note">Within your 1-hour radius. Lower price points than central Charlotte = more deals, higher % returns.</div>
-          </div>
-          <div class="guide-item">
-            <div class="gi-label">Lake Murray, SC outlook</div>
-            <div class="gi-val">Median ~$340k · Lakefront commands 50–80% premium</div>
-            <div class="gi-note">Strong second-home and retiree demand from Columbia, Charlotte, and Atlanta. Lakefront flips that nail the dock + view package consistently move fast.</div>
-          </div>
           <div class="guide-item">
             <div class="gi-label">Average days on market (2026)</div>
             <div class="gi-val">Flips: 30–75 days · Plan 5–6 month hold</div>
             <div class="gi-note">Down from the 90+ day stretches of late 2023. Quality flips priced right are moving again.</div>
           </div>
           <div class="guide-item">
-            <div class="gi-label">Typical sell-side costs</div>
-            <div class="gi-val">Agent commission: 4.5–5.5% · Closing: 1–2%</div>
-            <div class="gi-note">Post-NAR settlement, buyer-agent commissions are negotiable. Use 5% conservatively, but ask your agent.</div>
-          </div>
-        </div>
-
-        <div class="guide-section">
-          <h3>Repair Cost Ranges (Charlotte 2026)</h3>
-          <div class="guide-item">
-            <div class="gi-label">Light cosmetic (self-perform)</div>
-            <div class="gi-val">$12–22/sqft</div>
-            <div class="gi-note">Your labor cost = nearly zero. Paint, LVP flooring, hardware, landscaping, deep clean.</div>
-          </div>
-          <div class="guide-item">
-            <div class="gi-label">Mid-range (self-perform)</div>
-            <div class="gi-val">$28–48/sqft</div>
-            <div class="gi-note">Kitchen refresh, bath updates, HVAC service, windows. Hire plumbing/electrical only. Material costs up ~8% since 2024.</div>
-          </div>
-          <div class="guide-item">
-            <div class="gi-label">Full gut (self-perform GC)</div>
-            <div class="gi-val">$60–95/sqft</div>
-            <div class="gi-note">Full kitchen/bath remodel, new systems, structural. Your GC background is a massive edge here.</div>
-          </div>
-          <div class="guide-item">
             <div class="gi-label">Same scopes hired out</div>
             <div class="gi-val">Light $18–35 · Mid $42–70 · Full $90–130</div>
-            <div class="gi-note">Labor premium in Charlotte has risen further through 2025. Self-performing is your biggest profit lever.</div>
+            <div class="gi-note">Labor premium in Charlotte has risen through 2025. Self-performing is your biggest profit lever.</div>
           </div>
         </div>
-
         <div class="guide-section">
           <h3>STR Market Benchmarks (2026)</h3>
           <div class="guide-item">
             <div class="gi-label">Ocean Lakes SC (Myrtle Beach area)</div>
             <div class="gi-val">Gross: $40k–$85k/yr · Occ: 58–70%</div>
-            <div class="gi-note">Slightly softer than 2022–2023 peak. Seasonal peak May–Sept. Golf cart community, family-focused. Insurance up 30%+ since 2023 — factor in.</div>
+            <div class="gi-note">Seasonal peak May–Sept. Golf cart community, family-focused. Insurance up 30%+ since 2023.</div>
           </div>
           <div class="guide-item">
             <div class="gi-label">Gatlinburg TN</div>
             <div class="gi-val">Gross: $48k–$140k/yr · Occ: 62–75%</div>
-            <div class="gi-note">Year-round demand. Cabin/chalet style commands premium. Hot tub = 20–30% revenue increase. Stable through the STR correction.</div>
-          </div>
-          <div class="guide-item">
-            <div class="gi-label">Pigeon Forge TN</div>
-            <div class="gi-val">Gross: $42k–$110k/yr · Occ: 60–70%</div>
-            <div class="gi-note">Took the hardest hit in the 2024 STR correction (oversupply). Prices off ~10–15% from peak — entry opportunities, but underwrite conservatively on revenue.</div>
-          </div>
-          <div class="guide-item">
-            <div class="gi-label">Lake Murray SC</div>
-            <div class="gi-val">Gross: $35k–$80k/yr · Occ: 50–62%</div>
-            <div class="gi-note">Emerging STR market. Weekender/family lake retreats. Boat dock + lake view = 30–50% revenue lift. Lower nightly rates but cheaper entry and lower competition.</div>
-          </div>
-          <div class="guide-item">
-            <div class="gi-label">Your target CoC return</div>
-            <div class="gi-val">6% minimum · 10%+ = strong deal</div>
-            <div class="gi-note">In these markets, well-selected STRs regularly hit 10–15% CoC in 2026 — well above long-term rental returns.</div>
+            <div class="gi-note">Year-round demand. Hot tub = 20–30% revenue increase. Stable through the STR correction.</div>
           </div>
         </div>
-      </div><!-- end locked-content -->
+      </div>
       <div class="locked-overlay">
         <div class="locked-overlay-inner">
           <div class="locked-icon">🔒</div>
@@ -601,9 +560,9 @@
           <button class="locked-upgrade-btn" onclick="openModal('modal-upgrade')">Upgrade to Unlock</button>
         </div>
       </div>
-    </div><!-- end locked-section -->
+    </div>
 
-    <!-- ── FREE: Private Money Basics ───────────────────────────────── -->
+    <!-- ── FREE: Private Money Basics ─────────────────────────────── -->
     <div class="guide-section">
       <h3>Private Money Lending Basics</h3>
       <div class="guide-item">
@@ -614,10 +573,6 @@
       <div class="guide-item">
         <div class="gi-label">What Clear Path Capital does</div>
         <div class="gi-note">CPC brokers private money — meaning they work on your behalf across dozens of lenders to find the best terms. You don't call lenders; they do. That's the fiduciary difference.</div>
-      </div>
-      <div class="guide-item">
-        <div class="gi-label">Build your track record</div>
-        <div class="gi-note">As you complete flips, document everything — before/afters, timelines, profit. That becomes your credibility when raising private capital or applying for larger loans.</div>
       </div>
       <div class="guide-item">
         <div class="gi-label">Typical private money terms</div>
@@ -682,10 +637,10 @@
   </div>
 </div>
 
-<!-- Upgrade — full Investor vs Pro comparison -->
+<!-- Upgrade — Investor vs Pro comparison (items 3, 5, 6) -->
 <div class="modal-backdrop" id="modal-upgrade">
   <div class="modal modal-upgrade">
-    <h3 id="upgrade-modal-title">Unlock More Markets</h3>
+    <h3 id="upgrade-modal-title">Upgrade Your Plan</h3>
     <p style="margin-bottom:12px">Choose the plan that matches how you invest.</p>
     <div class="tier-compare">
       <div class="tier-card">
@@ -720,25 +675,51 @@
     <div class="modal-actions" style="margin-top:14px">
       <button class="btn-cancel" onclick="closeModal('modal-upgrade')">Not Now</button>
     </div>
-    <div style="text-align:center;margin-top:10px">
-      <button style="background:transparent;border:none;color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;text-decoration:underline" onclick="tryChangeMarkets()">Change my markets</button>
+  </div>
+</div>
+
+<!-- Market change confirmation popup (item 6) -->
+<div class="modal-backdrop" id="modal-market-confirm">
+  <div class="modal">
+    <h3>Change Market Region?</h3>
+    <p id="market-confirm-text">Changing a Market Region locks that slot for 30 days. Continue?</p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modal-market-confirm')">Cancel</button>
+      <button class="btn-confirm accent" onclick="confirmMarketChange()">Continue</button>
     </div>
   </div>
 </div>
 
-<!-- First-launch market selection (required — cannot dismiss) -->
-<div class="modal-backdrop" id="modal-onboarding" data-required="true">
-  <div class="modal modal-onboarding">
-    <div class="onboarding-header">
-      <img src="icons/clearpath-logo.png" alt="Clear Path Capital" class="cpc-logo" style="height:22px">
-      <span class="onboarding-app-name">Deal Screener</span>
+<!-- 3-step market picker — first launch (required) and slot changes (dismissible) (item 5) -->
+<div class="modal-backdrop" id="modal-market-picker">
+  <div class="modal modal-picker">
+    <!-- Step 1: Region -->
+    <div class="picker-step" id="picker-step-1">
+      <div class="picker-header">
+        <div class="picker-title" id="picker-headline">Choose Your Primary Market</div>
+        <div class="picker-sub" id="picker-subhead">Pick the region where you invest most.</div>
+      </div>
+      <div class="picker-list" id="picker-regions"></div>
     </div>
-    <h2 class="onboarding-title">Choose Your 2 Home Markets</h2>
-    <p class="onboarding-sub">Pick the regions where you invest most. You can change these later (once every 30 days).</p>
-    <div class="market-grid" id="onboarding-market-grid"></div>
-    <div class="onboarding-footer">
-      <span class="onboarding-count" id="onboarding-count">0 of 2 selected</span>
-      <button class="btn-confirm accent" id="onboarding-continue" onclick="completeOnboarding()" disabled>Continue</button>
+    <!-- Step 2: State -->
+    <div class="picker-step" id="picker-step-2" style="display:none">
+      <div class="picker-header">
+        <button class="picker-back" onclick="pickerBack()">← Back</button>
+        <div class="picker-title" id="picker-step2-title">Select State</div>
+      </div>
+      <div class="picker-list" id="picker-states"></div>
+    </div>
+    <!-- Step 3: Market -->
+    <div class="picker-step" id="picker-step-3" style="display:none">
+      <div class="picker-header">
+        <button class="picker-back" onclick="pickerBack()">← Back</button>
+        <div class="picker-title" id="picker-step3-title">Select Market</div>
+      </div>
+      <div class="picker-list" id="picker-markets"></div>
+    </div>
+    <!-- Cancel row (hidden during first launch) -->
+    <div class="picker-cancel-row" id="picker-cancel-row" style="display:none">
+      <button class="btn-cancel" style="width:100%;margin-top:8px" onclick="closeModal('modal-market-picker')">Cancel</button>
     </div>
   </div>
 </div>
@@ -763,7 +744,7 @@
 
 <script type="module" src="src/js/main.js"></script>
 <script>
-// comingSoon — called by Phase 2 placeholder sub-tabs
+// comingSoon — no longer needed (Phase 2 tabs are non-tappable)
 function comingSoon(label) {
   if (window.showToast) window.showToast(label + ' — Coming in Phase 2');
 }

@@ -45,7 +45,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .sub-tab .lock-icon{font-size:9px}
 
 /* PAGES */
-.page{display:none;padding:0 20px}
+.page{display:none;padding:56px 20px 0}
 .page.active{display:block}
 
 /* SECTION LABEL */
@@ -275,7 +275,7 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 .modal code{font-family:var(--mono);font-size:11px;background:var(--surface3);padding:2px 5px;border-radius:4px;color:var(--info)}
 
 /* GET FUNDING BUTTON */
-.btn-get-funding{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:52px;background:var(--accent);border:none;border-radius:10px;color:var(--accent-text);font-family:var(--font);font-size:14px;font-weight:800;letter-spacing:.04em;cursor:pointer;margin:14px 0;transition:opacity .15s,transform .1s}
+.btn-get-funding{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:52px;background:var(--accent);border:none;border-radius:10px;color:var(--accent-text);font-family:var(--font);font-size:13px;font-weight:800;letter-spacing:.03em;cursor:pointer;margin:14px 0;transition:opacity .15s,transform .1s;white-space:nowrap}
 .btn-get-funding:active{transform:scale(.98);opacity:.9}
 .funding-icon{width:20px;height:20px;object-fit:contain;flex-shrink:0}
 

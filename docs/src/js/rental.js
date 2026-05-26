@@ -36,7 +36,7 @@ export function analyzeRental() {
   const furnish = parseComma(document.getElementById('v-furnish').value);
   const tgtCoc  = +document.getElementById('v-target').value || 6;
   // Item 14: editable interest rate field — default 6.75%
-  const interestRate = (+document.getElementById('v-rate')?.value || 6.75) / 100;
+  const interestRate = (+document.getElementById('v-interest-rate')?.value || 6.75) / 100;
   if (!price || !rent) { return; } // validation handled by wrapper in main.js
 
   const effRent     = rent * occ;

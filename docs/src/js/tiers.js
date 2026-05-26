@@ -67,66 +67,99 @@ export const STATE_NAMES = {
   TN: 'Tennessee',      TX: 'Texas',
 };
 
-// Flat list of all markets (for lookups, clearpath summaries, etc.)
-export const ALL_MARKETS = Object.values(MARKET_HIERARCHY)
-  .flatMap(states => Object.values(states).flat());
+// Flat list of all markets, each tagged with its state abbreviation
+export const ALL_MARKETS = Object.entries(MARKET_HIERARCHY)
+  .flatMap(([, states]) =>
+    Object.entries(states).flatMap(([state, markets]) =>
+      markets.map(m => ({ ...m, state }))
+    )
+  );
+
+// ─── Storage key mapping ──────────────────────────────────────────────────────
+
+function slotStorageKey(index) {
+  return index === 0 ? 'primaryMarket' : 'market_' + (index + 1);
+}
+
+// ─── Storage migrations ───────────────────────────────────────────────────────
+
+// Run once at app start — must call before anything reads market data
+export function migrateMarketStorage() {
+  // Migrate old marketSlots[] array → primaryMarket key
+  if (!localStorage.getItem('primaryMarket')) {
+    const raw = localStorage.getItem('marketSlots');
+    if (raw) {
+      try {
+        const slots = JSON.parse(raw);
+        if (Array.isArray(slots) && slots[0]) {
+          localStorage.setItem('primaryMarket', slots[0]);
+          // Per spec: do NOT auto-populate market_2 — user adds it themselves
+        }
+      } catch {}
+      localStorage.removeItem('marketSlots');
+    }
+  } else {
+    // primaryMarket already exists — just clean up the old key if present
+    localStorage.removeItem('marketSlots');
+  }
+
+  // Migrate old devTier → tier
+  const devTier = localStorage.getItem('devTier');
+  if (devTier && !localStorage.getItem('tier')) {
+    localStorage.setItem('tier', devTier);
+  }
+  localStorage.removeItem('devTier');
+}
 
 // ─── Active tier ──────────────────────────────────────────────────────────────
 
 export function getActiveTier() {
-  return localStorage.getItem('devTier') || 'starter';
+  return localStorage.getItem('tier') || 'starter';
 }
 
 export function isDevMode() {
-  return !!localStorage.getItem('devTier');
+  return !!localStorage.getItem('tier');
 }
 
-// Called from console or dev modal
+// Writes tier to storage; does NOT reload — caller must update UI
 export function setDevTier(tier) {
   if (!['starter', 'investor', 'pro'].includes(tier)) {
     console.warn('Deal Screener: invalid tier. Use: starter, investor, or pro');
     return;
   }
-  if (tier === 'starter') localStorage.removeItem('devTier');
-  else localStorage.setItem('devTier', tier);
-  window.location.reload();
+  if (tier === 'starter') localStorage.removeItem('tier');
+  else localStorage.setItem('tier', tier);
 }
 
-// ─── Market slots ─────────────────────────────────────────────────────────────
+// ─── Market slot storage ──────────────────────────────────────────────────────
 
-// Returns array of market IDs (empty string = slot not filled)
-export function getMarketSlots() {
-  try {
-    const raw = localStorage.getItem('marketSlots');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {}
-  // Migrate from old selectedMarkets format
-  try {
-    const old = localStorage.getItem('selectedMarkets');
-    if (old) {
-      const parsed = JSON.parse(old);
-      if (Array.isArray(parsed) && parsed.length) {
-        localStorage.setItem('marketSlots', JSON.stringify(parsed));
-        return parsed;
-      }
-    }
-  } catch {}
-  return [];
+export function getMarketForSlot(index) {
+  return localStorage.getItem(slotStorageKey(index)) || '';
 }
 
 export function setMarketSlot(index, id) {
-  const slots = getMarketSlots();
-  while (slots.length <= index) slots.push('');
-  slots[index] = id;
-  localStorage.setItem('marketSlots', JSON.stringify(slots));
+  const key = slotStorageKey(index);
+  if (id) localStorage.setItem(key, id);
+  else localStorage.removeItem(key);
+}
+
+// Convenience accessors
+export function getPrimaryMarket() { return getMarketForSlot(0); }
+export function getMarket2()       { return getMarketForSlot(1); }
+
+// Returns a flat array of all set market IDs (for clearpath summary etc.)
+export function getMarketSlots() {
+  const result = [];
+  for (let i = 0; i < 6; i++) {
+    const m = getMarketForSlot(i);
+    if (m) result.push(m);
+  }
+  return result;
 }
 
 // Called after first-launch primary selection
 export function completePrimarySelection(marketId) {
-  setMarketSlot(0, marketId);
+  localStorage.setItem('primaryMarket', marketId);
   localStorage.setItem('hasSelectedMarkets', '1');
   localStorage.setItem('marketSelectedDate', new Date().toISOString());
 }
@@ -200,13 +233,13 @@ export function getUnlockedSlotCount() {
 export function isMarketUnlocked(id) {
   const tier = getActiveTier();
   if (tier === 'pro') return true;
-  const slots = getMarketSlots();
-  return slots.includes(id);
+  return getMarketSlots().includes(id);
 }
 
 // ─── Convenience lookups ──────────────────────────────────────────────────────
 
+// Returns "Charlotte, NC" format
 export function getMarketLabel(id) {
   const market = ALL_MARKETS.find(m => m.id === id);
-  return market ? market.label : id;
+  return market ? market.label + ', ' + market.state : id;
 }

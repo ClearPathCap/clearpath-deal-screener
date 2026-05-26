@@ -145,7 +145,7 @@ function buildDealCard(d) {
         ${getPipelineFundingButtonHTML(d)}
         <div class="detail-actions">
           <button class="btn-action" onclick="event.stopPropagation();shareDeal(${d.id})">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a3 3 0 1 0-2.83-4M6 12a3 3 0 1 0 0 0M18 20a3 3 0 1 0-2.83-4M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
             Share
           </button>
           <button class="btn-action danger" onclick="requestDelete(${d.id}, event)">

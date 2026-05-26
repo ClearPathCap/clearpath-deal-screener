@@ -15,10 +15,13 @@ import { handlePipelineFundingClick }                               from './clea
 import {
   MARKET_HIERARCHY, STATE_NAMES, ALL_MARKETS,
   getActiveTier, isDevMode, setDevTier,
-  hasSelectedMarkets, getMarketSlots, setMarketSlot,
+  hasSelectedMarkets, getMarketSlots,
+  getMarketForSlot, setMarketSlot,
+  getPrimaryMarket, getMarket2,
   completePrimarySelection, recordSlotChange,
   isSlotLocked, slotLockedUntilDate, slotWillLockUntilDate,
   getUnlockedSlotCount, isMarketUnlocked, getMarketLabel,
+  migrateMarketStorage,
 } from './tiers.js';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -32,22 +35,34 @@ export function showToast(msg) {
 }
 window.showToast = showToast;
 
-// ─── Guide Mode (Beginner / Pro) ──────────────────────────────────────────────
+// ─── Guide Mode (Guide = "on" / "off") ────────────────────────────────────────
+
+function migrateGuideMode() {
+  // Standardise on "on" / "off" — migrate old "beginner" / "pro" values
+  const raw = localStorage.getItem('guideMode');
+  if (raw === 'beginner') localStorage.setItem('guideMode', 'on');
+  else if (raw === 'pro')  localStorage.setItem('guideMode', 'off');
+  // Remove the old beginner_mode key if present
+  localStorage.removeItem('beginner_mode');
+}
 
 function initGuideMode() {
-  const mode = localStorage.getItem('guideMode') || 'pro';
-  if (mode === 'beginner') {
+  const mode = localStorage.getItem('guideMode') || 'off';
+  const isOn = mode === 'on';
+  if (isOn) {
     document.body.classList.add('beginner-mode');
-    document.querySelectorAll('.beginner-toggle-input').forEach(t => t.checked = true);
+  } else {
+    document.body.classList.remove('beginner-mode');
   }
+  document.querySelectorAll('.beginner-toggle-input').forEach(t => { t.checked = isOn; });
 }
 
 function toggleGuideMode(checked) {
   if (checked) {
-    localStorage.setItem('guideMode', 'beginner');
+    localStorage.setItem('guideMode', 'on');
     document.body.classList.add('beginner-mode');
   } else {
-    localStorage.setItem('guideMode', 'pro');
+    localStorage.setItem('guideMode', 'off');
     document.body.classList.remove('beginner-mode');
   }
   document.querySelectorAll('.beginner-toggle-input').forEach(t => { t.checked = checked; });
@@ -144,16 +159,16 @@ function clearNewDeal(type) {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
-    document.getElementById('v-down').value    = 20;
-    document.getElementById('v-occ').value     = 65;
-    document.getElementById('v-mgmt').value    = 3;
-    document.getElementById('v-pm').value      = 0;
-    document.getElementById('v-tax').value     = '5,500';
-    document.getElementById('v-maint').value   = '3,000';
-    document.getElementById('v-furnish').value = '15,000';
-    document.getElementById('v-target').value  = 6;
-    document.getElementById('v-rate').value    = 6.75;
-    document.getElementById('self-manage-toggle').checked = true;
+    document.getElementById('v-down').value          = 20;
+    document.getElementById('v-occ').value            = 65;
+    document.getElementById('v-mgmt').value           = 3;
+    document.getElementById('v-pm').value             = 0;
+    document.getElementById('v-tax').value            = '5,500';
+    document.getElementById('v-maint').value          = '3,000';
+    document.getElementById('v-furnish').value        = '15,000';
+    document.getElementById('v-target').value         = 6;
+    document.getElementById('v-interest-rate').value  = 6.75;
+    document.getElementById('self-manage-toggle').checked = false; // default: hired PM
     updateSelfManage();
     resetRental();
     renderMarketSlots('rental-slots', 'rental');
@@ -166,48 +181,42 @@ function clearNewDeal(type) {
   }
 }
 
-// ─── Market slot rendering — 6-slot layout (items 5, 6) ──────────────────────
+// ─── Market slot rendering — 6-slot layout ────────────────────────────────────
 
 function renderMarketSlots(containerId, tabType) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  const slots     = getMarketSlots();
-  const unlocked  = getUnlockedSlotCount();
-  const tier      = getActiveTier();
+  const unlocked = getUnlockedSlotCount();
 
-  // Build the 6 slot buttons
+  // Build 6 slot buttons using per-slot storage keys
   const html = [];
   for (let i = 0; i < 6; i++) {
-    const marketId = slots[i] || '';
-    const label    = marketId ? getMarketLabel(marketId) : (i === 0 ? 'Pick Market' : 'Region ' + (i + 1));
-    const isActive = i === 0 || marketId; // first slot always has a market after onboarding
+    const marketId = getMarketForSlot(i);
 
     if (i < unlocked) {
-      // Unlocked slot
       if (marketId) {
-        // Market set — active slot, clickable to change
+        const label = getMarketLabel(marketId);   // "Charlotte, NC" format
         html.push(`<button class="market-slot slot-active" onclick="handleSlotClick(${i},'${marketId}')" data-slot="${i}">${label}</button>`);
       } else {
-        // Empty slot — first add, no warning
-        html.push(`<button class="market-slot slot-empty" onclick="handleSlotClick(${i},'')" data-slot="${i}">+ Region ${i + 1}</button>`);
+        const placeholder = i === 0 ? 'Pick Market' : 'Region ' + (i + 1);
+        html.push(`<button class="market-slot slot-empty" onclick="handleSlotClick(${i},'')" data-slot="${i}">${placeholder}</button>`);
       }
     } else {
-      // Locked slot — upgrade required
+      // Locked — upgrade required
       html.push(`<button class="market-slot slot-locked" onclick="handleLockedSlot(${i + 1})">🔒 Region ${i + 1}</button>`);
     }
   }
 
   container.innerHTML = html.join('');
 
-  // Auto-activate first slot's preset on render
-  const primaryId = slots[0];
+  // Auto-activate primary market's preset on render
+  const primaryId = getMarketForSlot(0);
   if (primaryId) {
+    const el = container.querySelector('[data-slot="0"]');
     if (tabType === 'flip') {
-      const el = container.querySelector('[data-slot="0"]');
       setFlipPreset(primaryId, el);
     } else {
-      const el = container.querySelector('[data-slot="0"]');
       setRentalPreset(primaryId, el);
       updateRentRangeHint(primaryId);
     }
@@ -373,16 +382,16 @@ function pickerSelectMarket(marketId) {
   closeModal('modal-market-picker');
 
   if (_pickerIsFirst) {
-    // First launch — complete onboarding
+    // First launch — always slot 0, uses completePrimarySelection to set all flags
     completePrimarySelection(marketId);
     renderMarketSlots('flip-slots', 'flip');
     renderMarketSlots('rental-slots', 'rental');
     return;
   }
 
-  // Adding or changing a slot
+  // Adding or changing any slot
   if (_pickerIsChange) {
-    recordSlotChange(_pickerSlot); // start cooldown
+    recordSlotChange(_pickerSlot); // start cooldown clock
   }
   setMarketSlot(_pickerSlot, marketId);
   renderMarketSlots('flip-slots', 'flip');
@@ -391,7 +400,7 @@ function pickerSelectMarket(marketId) {
   const label = getMarketLabel(marketId);
   showToast(_pickerIsChange
     ? `Market Region updated to ${label}`
-    : `${label} added as Market Region ${_pickerSlot + 1}`
+    : `${label} added as Region ${_pickerSlot + 1}`
   );
 }
 
@@ -593,10 +602,22 @@ Object.assign(window, {
   analyzeRental: analyzeRentalValidated,
   setRentalPreset: setRentalPresetWithHint,
   resetRental,
-  // repair
+  // dev tier switch (console: setTier('investor'))
   setTier(name, el) {
-    if (name === 'starter' || name === 'investor' || name === 'pro') setDevTier(name);
-    else setRepairTier(name, el);
+    if (name === 'starter' || name === 'investor' || name === 'pro') {
+      setDevTier(name);  // writes localStorage.tier; no reload
+      // Update badge text live on all tabs
+      document.querySelectorAll('.tier-badge').forEach(b => {
+        b.textContent = getActiveTier().toUpperCase();
+      });
+      // Re-render market slots (slot count may change)
+      renderMarketSlots('flip-slots',   'flip');
+      renderMarketSlots('rental-slots', 'rental');
+      applyTierToUI();
+      updateDevModeIndicator();
+    } else {
+      setRepairTier(name, el);
+    }
   },
   calcRepair,
   useRepairEstimate,
@@ -639,6 +660,10 @@ Object.assign(window, {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
+// Migrations must run first — before any storage reads
+migrateMarketStorage();   // marketSlots[] → primaryMarket / market_2
+migrateGuideMode();       // "beginner"/"pro" → "on"/"off"
+
 initInstallHint();
 initGeolocation();
 initGuideMode();
@@ -650,6 +675,7 @@ renderMarketSlots('flip-slots',   'flip');
 renderMarketSlots('rental-slots', 'rental');
 initOnboarding();
 updateOccHint();
+updateSelfManage();       // initialise PM field to 8% (default: hired PM)
 
 // Track manual edits to f-rep so auto-fill stops overriding
 const repField = document.getElementById('f-rep');

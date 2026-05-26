@@ -62,17 +62,17 @@ export function analyzeRental() {
     vsub = 'Cash-on-cash return of ' + (Math.round(coc * 10) / 10) + '% clears your ' + tgtCoc + '% target. ' +
       'Cap Rate (' + (Math.round(capRate * 10) / 10) + '%) measures return as if you paid cash. Verify occupancy with AirDNA before closing.';
   } else if (coc >= tgtCoc * 0.75 && capRate >= 4.5) {
-    verdict = 'Dig Deeper'; cls = 'warm';
+    verdict = 'Dig Deeper & Negotiate'; cls = 'warm';
     vsub = 'Cash-on-cash of ' + (Math.round(coc * 10) / 10) + '% is close to your ' + tgtCoc + '% target. ' +
-      'A few more booked nights/month changes the math. Verify occupancy in AirDNA.';
+      'A few more booked nights/month changes the math. Verify occupancy in AirDNA and negotiate on price.';
   } else {
-    verdict = 'Thin Margins'; cls = 'pass';
+    verdict = 'Thin Margins — Walk Away'; cls = 'pass';
     vsub = 'Cash-on-cash of ' + (Math.round(coc * 10) / 10) + '% misses your ' + tgtCoc + '% target. ' +
-      'Negotiate price down or find a property with higher revenue potential.';
+      'Negotiate price down significantly or find a property with stronger revenue potential.';
   }
 
   document.getElementById('rental-verdict').className = 'verdict ' + cls;
-  document.getElementById('rvtag').textContent   = cls === 'hot' ? 'Strong Signal' : cls === 'warm' ? 'Needs Review' : 'Not a Deal';
+  document.getElementById('rvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
   document.getElementById('rvlabel').textContent = verdict;
   document.getElementById('rvsub').textContent   = vsub;
 
@@ -83,17 +83,19 @@ export function analyzeRental() {
     { label: 'Gross Rent Mult',  val: grm + 'x',      cls: grm <= 10 ? 'good' : grm <= 15 ? 'warn' : 'bad' },
   ]);
 
-  document.getElementById('rental-breakdown').innerHTML = buildRows([
+  const breakdownRows = [
     { l: 'Gross annual rent',                                               v: fmt(rent) },
     { l: 'Effective rent (' + Math.round(occ * 100) + '% occ.)',          v: fmt(effRent) },
     { l: 'Platform fees (Airbnb/VRBO)',                                     v: '–' + fmt(platformFee) },
     { l: 'Property manager' + (pm > 0 ? ' (' + Math.round(pm * 100) + '%)' : ' (self)'), v: pm > 0 ? '–' + fmt(pmFee) : '$0' },
     { l: 'Taxes + insurance',                                              v: '–' + fmt(tax) },
     { l: 'Maintenance',                                                    v: '–' + fmt(maint) },
+    ...(furnish > 0 ? [{ l: 'Furnishing / setup (one-time)',               v: '–' + fmt(furnish) }] : []),
     { l: 'Net operating income',                                           v: fmt(noi) },
     { l: 'Annual debt service (' + rateDisplay + ')',                      v: '–' + fmt(debt) },
     { l: 'Net cash flow', v: fmt(cashflow), tot: true, color: cashflow >= 0 ? 'var(--accent)' : 'var(--danger)' },
-  ]);
+  ];
+  document.getElementById('rental-breakdown').innerHTML = buildRows(breakdownRows);
 
   lastRentalResult = {
     type: 'rental', addr, price,

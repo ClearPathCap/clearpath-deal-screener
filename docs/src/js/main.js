@@ -181,7 +181,11 @@ function clearNewDeal(type) {
   }
 }
 
-// ─── Market slot rendering — 6-slot layout ────────────────────────────────────
+// ─── Active slot state (one per tab-type, tracks which slot drives analysis) ──
+
+let _activeSlot = 0;  // slot index of whichever slot is currently driving analysis
+
+// ─── Market slot rendering — 6-slot 3+3 grid ─────────────────────────────────
 
 function renderMarketSlots(containerId, tabType) {
   const container = document.getElementById(containerId);
@@ -197,43 +201,59 @@ function renderMarketSlots(containerId, tabType) {
     if (i < unlocked) {
       if (marketId) {
         const label = getMarketLabel(marketId);   // "Charlotte, NC" format
-        html.push(`<button class="market-slot slot-active" onclick="handleSlotClick(${i},'${marketId}')" data-slot="${i}">${label}</button>`);
+        const isActive = (i === _activeSlot);
+        const slotClass = isActive ? 'slot-active' : 'slot-filled';
+        html.push(`<button class="market-slot ${slotClass}" onclick="handleSlotClick(${i},'${marketId}')" data-slot="${i}">${label}</button>`);
       } else {
         const placeholder = i === 0 ? 'Pick Market' : 'Region ' + (i + 1);
         html.push(`<button class="market-slot slot-empty" onclick="handleSlotClick(${i},'')" data-slot="${i}">${placeholder}</button>`);
       }
     } else {
-      // Locked — upgrade required
+      // Locked — upgrade required (no pointer-events:none; click is handled in JS)
       html.push(`<button class="market-slot slot-locked" onclick="handleLockedSlot(${i + 1})">🔒 Region ${i + 1}</button>`);
     }
   }
 
   container.innerHTML = html.join('');
 
-  // Auto-activate primary market's preset on render
-  const primaryId = getMarketForSlot(0);
-  if (primaryId) {
-    const el = container.querySelector('[data-slot="0"]');
+  // Auto-load the active slot's preset on render
+  const activeId = getMarketForSlot(_activeSlot);
+  if (activeId) {
+    const el = container.querySelector('[data-slot="' + _activeSlot + '"]');
     if (tabType === 'flip') {
-      setFlipPreset(primaryId, el);
+      setFlipPreset(activeId, el);
     } else {
-      setRentalPreset(primaryId, el);
-      updateRentRangeHint(primaryId);
+      setRentalPreset(activeId, el);
+      updateRentRangeHint(activeId);
     }
   }
 }
 
-// ─── Slot click handler ───────────────────────────────────────────────────────
+// ─── Slot click handler — Task 5 logic ───────────────────────────────────────
 
 function handleSlotClick(slotIndex, currentMarketId) {
   const tier = getActiveTier();
 
-  // Empty slot = first add → open picker directly, no warning (item 6)
+  // LOCKED slot (3–6) — open upgrade modal
+  // (Handled via handleLockedSlot, but guard here in case)
+
+  // EMPTY slot — open picker with no confirmation
   if (!currentMarketId) {
     openMarketPicker(slotIndex, false);
     return;
   }
 
+  // POPULATED + NOT ACTIVE → silently switch active market, show toast, no popup
+  if (slotIndex !== _activeSlot) {
+    _activeSlot = slotIndex;
+    const label = getMarketLabel(currentMarketId);
+    renderMarketSlots('flip-slots',   'flip');
+    renderMarketSlots('rental-slots', 'rental');
+    showToast('Switched to ' + label);
+    return;
+  }
+
+  // POPULATED + ALREADY ACTIVE → cooldown/replace flow
   // Pro: no confirmation, open picker directly
   if (tier === 'pro') {
     openMarketPicker(slotIndex, false);
@@ -248,7 +268,7 @@ function handleSlotClick(slotIndex, currentMarketId) {
     return;
   }
 
-  // Show confirmation popup before opening picker (item 6)
+  // Show cooldown confirmation before replacing this slot's market
   const cooldownDays  = tier === 'investor' ? 14 : 30;
   const willLockUntil = slotWillLockUntilDate();
   const msgEl = document.getElementById('market-confirm-text');
@@ -274,81 +294,114 @@ function handleLockedSlot(slotNumber) {
   openModal('modal-upgrade');
 }
 
-// ─── 3-step market picker (item 5) ───────────────────────────────────────────
+// ─── 2-step market picker: State → Market with search ────────────────────────
 
 let _pickerSlot      = 0;
 let _pickerIsChange  = false;    // true when replacing an existing market
 let _pickerIsFirst   = false;    // true when this is first-launch
-let _pickerRegion    = null;
 let _pickerState     = null;
 
 function openMarketPicker(slotIndex, isFirstLaunch, isChange = false) {
   _pickerSlot     = slotIndex;
   _pickerIsFirst  = isFirstLaunch;
   _pickerIsChange = isChange;
-  _pickerRegion   = null;
   _pickerState    = null;
 
-  const backdrop = document.getElementById('modal-market-picker');
+  const backdrop  = document.getElementById('modal-market-picker');
   const cancelRow = document.getElementById('picker-cancel-row');
   const title     = document.getElementById('picker-headline');
+  const search    = document.getElementById('picker-search');
 
   if (isFirstLaunch) {
     backdrop.dataset.required = 'true';
     if (cancelRow) cancelRow.style.display = 'none';
     if (title) title.textContent = 'Choose Your Primary Market';
-    document.getElementById('picker-subhead').textContent = 'Pick the region where you invest most.';
   } else {
     delete backdrop.dataset.required;
     if (cancelRow) cancelRow.style.display = 'flex';
-    if (title) title.textContent = 'Change Market Region';
-    document.getElementById('picker-subhead').textContent = 'Select a region, then your state, then your market.';
+    if (title) title.textContent = 'Choose a State';
   }
 
-  pickerShowStep(1);
+  // Reset search input
+  if (search) search.value = '';
+
+  // Show step 1 (state list), hide step 2 (market list)
+  document.getElementById('picker-step-1').style.display = 'flex';
+  document.getElementById('picker-step-2').style.display = 'none';
+
+  pickerBuildStateList('');
   openModal('modal-market-picker');
 }
 
-function pickerShowStep(step) {
-  [1, 2, 3].forEach(n => {
-    document.getElementById('picker-step-' + n).style.display = n === step ? 'flex' : 'none';
+function pickerSearch(term) {
+  const q = term.trim().toLowerCase();
+
+  if (!q) {
+    // No query — show state list
+    document.getElementById('picker-step-1').style.display = 'flex';
+    document.getElementById('picker-step-2').style.display = 'none';
+    pickerBuildStateList('');
+    return;
+  }
+
+  // Check for direct market matches
+  const directMatches = ALL_MARKETS.filter(m =>
+    m.label.toLowerCase().includes(q) || m.id.includes(q.replace(/\s+/g, '-'))
+  );
+
+  if (directMatches.length > 0) {
+    // Show flat market list (skip state step)
+    const titleEl = document.getElementById('picker-step2-title');
+    if (titleEl) titleEl.textContent = 'Search Results';
+    const list = document.getElementById('picker-markets');
+    list.innerHTML = directMatches
+      .sort((a, b) => a.label.localeCompare(b.label))
+      .map(m => `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')">
+        <div>
+          <div class="picker-item-label">${m.label}</div>
+          <div class="picker-item-sub">${STATE_NAMES[m.state] || m.state}</div>
+        </div>
+        <div class="picker-item-arrow">✓</div>
+      </div>`).join('');
+    document.getElementById('picker-step-1').style.display = 'none';
+    document.getElementById('picker-step-2').style.display = 'flex';
+    return;
+  }
+
+  // No direct market match — filter state list to states with matching markets or name
+  pickerBuildStateList(q);
+  document.getElementById('picker-step-1').style.display = 'flex';
+  document.getElementById('picker-step-2').style.display = 'none';
+}
+
+function pickerBuildStateList(filterQ) {
+  // Build state→markets map from ALL_MARKETS, optionally filtered
+  const stateMap = {};
+  ALL_MARKETS.forEach(m => {
+    const stateName = (STATE_NAMES[m.state] || m.state).toLowerCase();
+    if (!filterQ ||
+        m.label.toLowerCase().includes(filterQ) ||
+        m.id.includes(filterQ.replace(/\s+/g, '-')) ||
+        m.state.toLowerCase().includes(filterQ) ||
+        stateName.includes(filterQ)) {
+      if (!stateMap[m.state]) stateMap[m.state] = [];
+      stateMap[m.state].push(m);
+    }
   });
-  if (step === 1) pickerBuildRegions();
-  if (step === 2) pickerBuildStates();
-  if (step === 3) pickerBuildMarkets();
-}
 
-function pickerBuildRegions() {
-  const list = document.getElementById('picker-regions');
-  const regions = Object.keys(MARKET_HIERARCHY);
-  list.innerHTML = regions.map(region => {
-    const states     = MARKET_HIERARCHY[region];
-    const mktCount   = Object.values(states).flat().length;
-    const hasMarkets = mktCount > 0;
-    return `<div class="picker-item${hasMarkets ? '' : ' disabled'}" onclick="${hasMarkets ? `pickerSelectRegion('${region}')` : ''}">
-      <div>
-        <div class="picker-item-label">${region}</div>
-        <div class="picker-item-sub">${hasMarkets ? mktCount + ' market' + (mktCount !== 1 ? 's' : '') : 'No markets yet'}</div>
-      </div>
-      ${hasMarkets ? '<div class="picker-item-arrow">›</div>' : ''}
-    </div>`;
-  }).join('');
-}
+  const stateKeys = Object.keys(stateMap).sort((a, b) => {
+    const na = STATE_NAMES[a] || a;
+    const nb = STATE_NAMES[b] || b;
+    return na.localeCompare(nb);
+  });
 
-function pickerSelectRegion(region) {
-  _pickerRegion = region;
-  pickerShowStep(2);
-}
-
-function pickerBuildStates() {
-  const states     = MARKET_HIERARCHY[_pickerRegion] || {};
-  const stateKeys  = Object.keys(states).sort();
-  const titleEl    = document.getElementById('picker-step2-title');
-  if (titleEl) titleEl.textContent = _pickerRegion;
   const list = document.getElementById('picker-states');
+  if (!stateKeys.length) {
+    list.innerHTML = '<div class="picker-item disabled"><div class="picker-item-label">No markets found</div></div>';
+    return;
+  }
   list.innerHTML = stateKeys.map(code => {
-    const mkts  = states[code];
-    const count = mkts.length;
+    const count = stateMap[code].length;
     const name  = STATE_NAMES[code] || code;
     return `<div class="picker-item" onclick="pickerSelectState('${code}')">
       <div>
@@ -362,29 +415,30 @@ function pickerBuildStates() {
 
 function pickerSelectState(stateCode) {
   _pickerState = stateCode;
-  pickerShowStep(3);
-}
-
-function pickerBuildMarkets() {
-  const mkts   = (MARKET_HIERARCHY[_pickerRegion] || {})[_pickerState] || [];
-  const titleEl = document.getElementById('picker-step3-title');
-  if (titleEl) titleEl.textContent = STATE_NAMES[_pickerState] || _pickerState;
+  const markets = ALL_MARKETS
+    .filter(m => m.state === stateCode)
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const titleEl = document.getElementById('picker-step2-title');
+  if (titleEl) titleEl.textContent = STATE_NAMES[stateCode] || stateCode;
   const list = document.getElementById('picker-markets');
-  list.innerHTML = mkts.map(m =>
+  list.innerHTML = markets.map(m =>
     `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')">
       <div class="picker-item-label">${m.label}</div>
       <div class="picker-item-arrow">✓</div>
     </div>`
   ).join('');
+  document.getElementById('picker-step-1').style.display = 'none';
+  document.getElementById('picker-step-2').style.display = 'flex';
 }
 
 function pickerSelectMarket(marketId) {
   closeModal('modal-market-picker');
 
   if (_pickerIsFirst) {
-    // First launch — always slot 0, uses completePrimarySelection to set all flags
+    // First launch — always slot 0
     completePrimarySelection(marketId);
-    renderMarketSlots('flip-slots', 'flip');
+    _activeSlot = 0;
+    renderMarketSlots('flip-slots',   'flip');
     renderMarketSlots('rental-slots', 'rental');
     return;
   }
@@ -394,19 +448,26 @@ function pickerSelectMarket(marketId) {
     recordSlotChange(_pickerSlot); // start cooldown clock
   }
   setMarketSlot(_pickerSlot, marketId);
-  renderMarketSlots('flip-slots', 'flip');
+  // Make the newly set slot active
+  _activeSlot = _pickerSlot;
+  renderMarketSlots('flip-slots',   'flip');
   renderMarketSlots('rental-slots', 'rental');
 
   const label = getMarketLabel(marketId);
   showToast(_pickerIsChange
-    ? `Market Region updated to ${label}`
+    ? `Market updated to ${label}`
     : `${label} added as Region ${_pickerSlot + 1}`
   );
 }
 
 function pickerBack() {
-  if (_pickerState) { _pickerState = null; pickerShowStep(2); return; }
-  if (_pickerRegion) { _pickerRegion = null; pickerShowStep(1); }
+  // If on step 2 (market list), go back to step 1 (state list)
+  _pickerState = null;
+  const search = document.getElementById('picker-search');
+  if (search) search.value = '';
+  pickerBuildStateList('');
+  document.getElementById('picker-step-1').style.display = 'flex';
+  document.getElementById('picker-step-2').style.display = 'none';
 }
 
 // ─── Rent range hint ──────────────────────────────────────────────────────────
@@ -552,17 +613,6 @@ function updateDevModeIndicator() {
   } else {
     banner.style.display = 'none';
   }
-  updateScrollPadding();
-}
-
-// ─── Scroll padding — fix content hidden under sticky nav (item 2) ───────────
-
-function updateScrollPadding() {
-  const nav    = document.querySelector('.nav');
-  const banner = document.getElementById('dev-mode-banner');
-  if (!nav) return;
-  const bannerH = (banner && banner.style.display !== 'none') ? banner.offsetHeight : 0;
-  document.documentElement.style.scrollPaddingTop = (nav.offsetHeight + bannerH) + 'px';
 }
 
 // ─── Apply tier to UI ─────────────────────────────────────────────────────────
@@ -579,10 +629,10 @@ function applyTierToUI() {
   });
 }
 
-// ─── First-launch onboarding ──────────────────────────────────────────────────
+// ─── First-launch onboarding — gate on primaryMarket (Task 3) ────────────────
 
 function initOnboarding() {
-  if (hasSelectedMarkets()) return;
+  if (localStorage.getItem('primaryMarket')) return;
   openMarketPicker(0, true /* isFirstLaunch */);
 }
 
@@ -645,8 +695,8 @@ Object.assign(window, {
   // market slots
   handleSlotClick,
   handleLockedSlot,
-  // market picker
-  pickerSelectRegion,
+  // market picker (2-step)
+  pickerSearch,
   pickerSelectState,
   pickerSelectMarket,
   pickerBack,

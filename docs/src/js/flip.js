@@ -45,28 +45,25 @@ export function analyzeFlip() {
   const maxOffer = arv * (self ? 0.75 : 0.70) - rep;
   const ltv      = (ask / arv) * 100;
 
-  const beginner = localStorage.getItem('guideMode') === 'beginner';
   let verdict, vsub, cls;
   if (profit >= target && roi >= 20) {
-    verdict = 'Hot Deal'; cls = 'hot';
+    verdict = 'Strong Flip Play'; cls = 'hot';
     vsub = 'Hits your profit target and ROI. ' + (self
       ? 'Self-performing gives you maximum margin here.'
-      : 'Consider self-performing to push profit even higher.');
-    if (beginner) vsub += ' This deal meets your return target — worth pursuing. Verify your ARV with comps.';
+      : 'Consider self-performing to push profit even higher.')
+      + ' Verify your ARV with comps before committing.';
   } else if (profit >= target * 0.75 && roi >= 12) {
-    verdict = 'Negotiate Hard'; cls = 'warm';
+    verdict = 'Dig Deeper & Negotiate'; cls = 'warm';
     vsub = 'Close to your target. Counter at ' + fmt(maxOffer) + ' max offer' + (self
       ? ' — your labor advantage could close the gap.'
-      : '.');
-    if (beginner) vsub += ' Numbers are close to your target. Counter at the Max Offer price shown.';
+      : '.') + ' Numbers are workable if you negotiate price or reduce scope.';
   } else {
-    verdict = 'Pass on This One'; cls = 'pass';
-    vsub = "Numbers don't work at asking. Max you can pay: " + fmt(maxOffer) + '. Walk away or counter hard.';
-    if (beginner) vsub += " This deal doesn't hit your minimum profit — the numbers don't work at this price.";
+    verdict = 'Counter at Max Offer — Walk Away'; cls = 'pass';
+    vsub = "Numbers don't work at asking. Max you can pay: " + fmt(maxOffer) + ". Counter hard or walk — don't overpay.";
   }
 
   document.getElementById('flip-verdict').className = 'verdict ' + cls;
-  document.getElementById('fvtag').textContent   = cls === 'hot' ? 'Strong Signal' : cls === 'warm' ? 'Needs Negotiation' : 'Not a Deal';
+  document.getElementById('fvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
   document.getElementById('fvlabel').textContent = verdict;
   document.getElementById('fvsub').textContent   = vsub;
 

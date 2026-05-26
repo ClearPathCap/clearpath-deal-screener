@@ -69,6 +69,21 @@ function buildRentalSummary(r, tag) {
   return lines.filter(Boolean).join('\n');
 }
 
+// ─── Determine if button should show and what copy to use (Task 10) ──────────
+
+function shouldShowFunding(result) {
+  if (result.type === 'flip') {
+    return result.profit != null && result.profit > 0;
+  }
+  // STR rental
+  return result.cashflow != null && result.cashflow > 0;
+}
+
+function getFundingLabel(cfg, cls) {
+  if (cls === 'hot') return cfg.label;                          // "Get Funding — Clear Path Capital"
+  return cfg.label.replace('Get Funding', 'Explore Funding Options');  // warm: different copy
+}
+
 // ─── Analyzer tab funding button ──────────────────────────────────────────────
 
 export function maybeShowFundingButton(result) {
@@ -77,20 +92,22 @@ export function maybeShowFundingButton(result) {
   const container = document.getElementById(id);
   if (!container) return;
 
-  if (result.cls !== 'hot') {
+  // Hide for negative returns or pass-tier deals (Task 10)
+  if (!shouldShowFunding(result)) {
     container.innerHTML = '';
     return;
   }
 
   const cfg = getTierConfig();
+  const btnLabel = getFundingLabel(cfg, result.cls);
   const summary = result.type === 'flip'
     ? buildFlipSummary(result, cfg.tag)
     : buildRentalSummary(result, cfg.tag);
 
   container.innerHTML = `
     <button class="btn-get-funding" id="${id}-trigger">
-      <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
-      ${cfg.label}
+      <img src="icons/clearpath-mark.png" class="funding-icon" alt="" style="background-color:#b8ff57;border-radius:3px">
+      ${btnLabel}
     </button>`;
 
   document.getElementById(id + '-trigger').addEventListener('click', () => {
@@ -103,11 +120,13 @@ export function maybeShowFundingButton(result) {
 // ─── Pipeline deal funding button ─────────────────────────────────────────────
 
 export function getPipelineFundingButtonHTML(deal) {
-  if (deal.cls !== 'hot') return '';
+  // Show for positive-return deals (not just hot) — Task 10
+  if (!shouldShowFunding(deal.data || deal)) return '';
   const cfg = getTierConfig();
+  const btnLabel = getFundingLabel(cfg, deal.cls);
   return `<button class="btn-get-funding pipeline-funding-btn" onclick="event.stopPropagation();handlePipelineFundingClick(${deal.id})">
-    <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
-    ${cfg.label}
+    <img src="icons/clearpath-mark.png" class="funding-icon" alt="" style="background-color:#b8ff57;border-radius:3px">
+    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${btnLabel}</span>
   </button>`;
 }
 

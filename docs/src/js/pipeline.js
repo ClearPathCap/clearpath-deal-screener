@@ -130,13 +130,15 @@ function buildDealCard(d) {
           </div>
           <div class="deal-badge ${d.cls}">${d.verdict}</div>
         </div>
-        <button class="card-delete-btn" onclick="event.stopPropagation();requestDelete(${d.id},event)" title="Delete deal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-        </button>
         <div class="deal-stats">
           ${d.stats.map(s => `<div class="deal-stat"><div class="dsl">${s.l}</div><div class="dsv">${s.v}</div></div>`).join('')}
         </div>
-        <div class="deal-date">Saved ${d.date}</div>
+        <div class="deal-footer">
+          <div class="deal-date">Saved ${d.date}</div>
+          <button class="card-delete-btn" onclick="event.stopPropagation();requestDelete(${d.id},event)" title="Delete deal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          </button>
+        </div>
         <svg class="expand-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="deal-detail">
@@ -164,7 +166,7 @@ function buildFlipDetail(d) {
     { l: 'After Repair Value (ARV)', v: d.arv != null ? fmt(d.arv)  : '—' },
     { l: 'Repair budget',          v: d.rep  != null ? fmt(d.rep) + (d.self ? ' (self-perform)' : '') : '—' },
     { l: 'Hold period',            v: d.hold ? d.hold + ' months' : '—' },
-    { l: 'Buy / sell closing',     v: (d.cc1 || '?') + '% / ' + (d.cc2 || '?') + '%' },
+    { l: 'Purchase costs / Sale costs', v: (d.cc1 || '?') + '% / ' + (d.cc2 || '?') + '%' },
     { l: 'Carrying cost/mo',       v: d.carry != null ? fmt(d.carry) : '—' },
     { l: 'Square footage',         v: d.sqft  ? d.sqft.toLocaleString() + ' sqft' : '—' },
   ];

@@ -1,25 +1,42 @@
 // ─── STR / Rental analyzer ────────────────────────────────────────────────────
 
 import { fmt, pct, cClass, buildMetrics, buildRows, parseComma } from './format.js';
-import { RENTAL_PRESETS } from './markets.js';
+import { STR_MARKETS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
+
+// ─── Regional STR fallback defaults (Task 3) ──────────────────────────────────
+const STR_REGIONAL_DEFAULTS = {
+  'Southeast':    { revLow: 28000, revHigh: 48000, occLow: 0.42, occHigh: 0.60, adrLow: 220, adrHigh: 360 },
+  'South Central':{ revLow: 26000, revHigh: 46000, occLow: 0.40, occHigh: 0.58, adrLow: 200, adrHigh: 340 },
+  'Midwest':      { revLow: 22000, revHigh: 38000, occLow: 0.35, occHigh: 0.52, adrLow: 180, adrHigh: 300 },
+  'Mountain West':{ revLow: 38000, revHigh: 68000, occLow: 0.46, occHigh: 0.64, adrLow: 280, adrHigh: 460 },
+  'Pacific':      { revLow: 42000, revHigh: 78000, occLow: 0.46, occHigh: 0.64, adrLow: 310, adrHigh: 510 },
+  'Northeast':    { revLow: 32000, revHigh: 58000, occLow: 0.38, occHigh: 0.55, adrLow: 260, adrHigh: 420 },
+};
+const STR_NATIONAL_DEFAULT = STR_REGIONAL_DEFAULTS['Southeast'];
+
+function getStrMarket(slug) {
+  if (STR_MARKETS[slug]) return STR_MARKETS[slug];
+  const entry  = ALL_MARKETS.find(m => m.id === slug);
+  const region = entry?.region || 'Southeast';
+  return STR_REGIONAL_DEFAULTS[region] || STR_NATIONAL_DEFAULT;
+}
 
 let lastRentalResult = null;
 
 export function getLastRentalResult() { return lastRentalResult; }
 
-export function setRentalPreset(type, el) {
-  document.querySelectorAll('#page-rental .market-slot').forEach(p => p.classList.remove('slot-active'));
+export function setRentalPreset(slug, el) {
   if (el) el.classList.add('slot-active');
-  const p = RENTAL_PRESETS[type];
-  if (!p) return; // market has no STR preset — keep current values
-  document.getElementById('v-down').value    = p.down;
-  document.getElementById('v-occ').value     = p.occ;
-  document.getElementById('v-mgmt').value    = p.mgmt;
-  document.getElementById('v-tax').value     = p.tax.toLocaleString();
-  document.getElementById('v-maint').value   = p.maint.toLocaleString();
-  document.getElementById('v-furnish').value = p.furnish.toLocaleString();
-  document.getElementById('v-target').value  = p.target;
+  const m = getStrMarket(slug);
+  // Set occupancy from market data (midpoint of low/high range)
+  const occ = Math.round(((m.occLow || 0.55) + (m.occHigh || 0.65)) / 2 * 100);
+  document.getElementById('v-occ').value = occ;
+  // Keep other fields at their current values if already set, or use defaults
+  const down = document.getElementById('v-down');
+  if (!down.value || +down.value === 0) down.value = 20;
+  const mgmt = document.getElementById('v-mgmt');
+  if (!mgmt.value || +mgmt.value === 0) mgmt.value = 3;
 }
 
 export function analyzeRental() {

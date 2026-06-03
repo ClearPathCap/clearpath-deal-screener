@@ -1,23 +1,49 @@
 // ─── Fix & Flip analyzer ──────────────────────────────────────────────────────
 
 import { fmt, pct, cClass, buildMetrics, buildRows, parseComma } from './format.js';
-import { FLIP_PRESETS } from './markets.js';
+import { FLIP_MARKETS, ALL_MARKETS } from './markets.js';
 import { calcRepair } from './repair.js';
 import { maybeShowFundingButton } from './clearpath.js';
+
+// ─── Regional fallback defaults (Task 3) ──────────────────────────────────────
+const FLIP_REGIONAL_DEFAULTS = {
+  'Southeast':    { medianArv: 310000, arvRuleLow: 0.65, arvRuleHigh: 0.69, repairLow: 38, repairHigh: 82,  holdPctLow: 0.0055, holdPctHigh: 0.0082 },
+  'South Central':{ medianArv: 285000, arvRuleLow: 0.65, arvRuleHigh: 0.69, repairLow: 38, repairHigh: 82,  holdPctLow: 0.0060, holdPctHigh: 0.0090 },
+  'Midwest':      { medianArv: 240000, arvRuleLow: 0.67, arvRuleHigh: 0.71, repairLow: 33, repairHigh: 75,  holdPctLow: 0.0055, holdPctHigh: 0.0080 },
+  'Mountain West':{ medianArv: 380000, arvRuleLow: 0.64, arvRuleHigh: 0.68, repairLow: 40, repairHigh: 88,  holdPctLow: 0.0058, holdPctHigh: 0.0088 },
+  'Pacific':      { medianArv: 550000, arvRuleLow: 0.61, arvRuleHigh: 0.65, repairLow: 52, repairHigh: 115, holdPctLow: 0.0058, holdPctHigh: 0.0090 },
+  'Northeast':    { medianArv: 310000, arvRuleLow: 0.64, arvRuleHigh: 0.68, repairLow: 42, repairHigh: 90,  holdPctLow: 0.0060, holdPctHigh: 0.0090 },
+};
+const FLIP_NATIONAL_DEFAULT = FLIP_REGIONAL_DEFAULTS['Southeast'];
+
+function getFlipMarket(slug) {
+  if (FLIP_MARKETS[slug]) return FLIP_MARKETS[slug];
+  const entry  = ALL_MARKETS.find(m => m.id === slug);
+  const region = entry?.region || 'Southeast';
+  return FLIP_REGIONAL_DEFAULTS[region] || FLIP_NATIONAL_DEFAULT;
+}
+
+// Derive monthly carry cost from market data
+function flipCarry(m) {
+  const r50 = v => Math.round(v / 50) * 50;
+  const low  = r50(Math.max(900,  m.medianArv * (m.holdPctLow  || 0.006)));
+  const high = r50(Math.max(1500, m.medianArv * (m.holdPctHigh || 0.009)));
+  return Math.round((low + high) / 2 / 50) * 50;
+}
 
 let lastFlipResult = null;
 
 export function getLastFlipResult() { return lastFlipResult; }
 
-export function setFlipPreset(type, el) {
-  document.querySelectorAll('#page-flip .preset').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
-  const p = FLIP_PRESETS[type] || FLIP_PRESETS['charlotte-nc'];
-  document.getElementById('f-hold').value   = p.hold;
-  document.getElementById('f-carry').value  = p.carry.toLocaleString();
-  document.getElementById('f-target').value = p.target.toLocaleString();
+export function setFlipPreset(slug, el) {
+  if (el) el.classList.add('active');
+  const m      = getFlipMarket(slug);
+  const carry  = flipCarry(m);
+  const target = Math.max(25000, Math.round((m.medianArv || 300000) * 0.09 / 1000) * 1000);
+  document.getElementById('f-hold').value   = 5;
+  document.getElementById('f-carry').value  = carry.toLocaleString();
+  document.getElementById('f-target').value = target.toLocaleString();
   calcRepair();
-  // Trigger carry total update
   const e = document.getElementById('f-carry');
   if (e) e.dispatchEvent(new Event('input'));
 }

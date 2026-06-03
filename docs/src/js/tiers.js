@@ -1,79 +1,7 @@
 // ─── Tier & Market management ─────────────────────────────────────────────────
 
-// ─── Market hierarchy: Region → State → Market ───────────────────────────────
-
-export const MARKET_HIERARCHY = {
-  'Southeast': {
-    'AL': [
-      { id: 'birmingham-al',   label: 'Birmingham' },
-      { id: 'gulf-shores-al',  label: 'Gulf Shores' },
-    ],
-    'FL': [
-      { id: 'tampa-fl',        label: 'Tampa' },
-      { id: 'jacksonville-fl', label: 'Jacksonville' },
-      { id: 'destin-fl',       label: 'Destin' },
-    ],
-    'GA': [
-      { id: 'atlanta-ga',      label: 'Atlanta' },
-      { id: 'blue-ridge-ga',   label: 'Blue Ridge' },
-    ],
-    'NC': [
-      { id: 'charlotte-nc',    label: 'Charlotte' },
-      { id: 'outer-banks-nc',  label: 'Outer Banks' },
-    ],
-    'SC': [
-      { id: 'ocean-lakes-sc',  label: 'Ocean Lakes (Myrtle Beach)' },
-      { id: 'lake-murray-sc',  label: 'Lake Murray' },
-      { id: 'hilton-head-sc',  label: 'Hilton Head' },
-    ],
-    'TN': [
-      { id: 'nashville-tn',    label: 'Nashville' },
-      { id: 'memphis-tn',      label: 'Memphis' },
-      { id: 'gatlinburg-tn',   label: 'Gatlinburg' },
-      { id: 'pigeon-forge-tn', label: 'Pigeon Forge' },
-    ],
-  },
-  'Midwest': {
-    'IN': [
-      { id: 'indianapolis-in', label: 'Indianapolis' },
-    ],
-    'MO': [
-      { id: 'kansas-city-mo',  label: 'Kansas City' },
-      { id: 'branson-mo',      label: 'Branson' },
-    ],
-    'OH': [
-      { id: 'columbus-oh',     label: 'Columbus' },
-    ],
-  },
-  'South Central': {
-    'TX': [
-      { id: 'dallas-tx',       label: 'Dallas' },
-      { id: 'san-antonio-tx',  label: 'San Antonio' },
-    ],
-  },
-  'Mountain West': {
-    'AZ': [
-      { id: 'phoenix-az',      label: 'Phoenix' },
-    ],
-  },
-  'Northeast':     {},
-  'Pacific Coast': {},
-};
-
-export const STATE_NAMES = {
-  AL: 'Alabama',        AZ: 'Arizona',        FL: 'Florida',
-  GA: 'Georgia',        IN: 'Indiana',        MO: 'Missouri',
-  NC: 'North Carolina', OH: 'Ohio',           SC: 'South Carolina',
-  TN: 'Tennessee',      TX: 'Texas',
-};
-
-// Flat list of all markets, each tagged with its state abbreviation
-export const ALL_MARKETS = Object.entries(MARKET_HIERARCHY)
-  .flatMap(([, states]) =>
-    Object.entries(states).flatMap(([state, markets]) =>
-      markets.map(m => ({ ...m, state }))
-    )
-  );
+// ALL_MARKETS now comes from the full markets.js data file
+import { ALL_MARKETS } from './markets.js';
 
 // ─── Storage key mapping ──────────────────────────────────────────────────────
 
@@ -238,8 +166,13 @@ export function isMarketUnlocked(id) {
 
 // ─── Convenience lookups ──────────────────────────────────────────────────────
 
-// Returns "Charlotte, NC" format
+// Returns "Charlotte, NC" format (used in toasts and full-name displays)
 export function getMarketLabel(id) {
   const market = ALL_MARKETS.find(m => m.id === id);
-  return market ? market.label + ', ' + market.state : id;
+  if (!market) return id;
+  // market.name is "Charlotte NC" — convert to "Charlotte, NC"
+  const cleanName = market.name.replace(/\s*⚠.*$/, '').trim(); // strip warning emoji if present
+  const parts = cleanName.split(' ');
+  const stateCode = parts.pop();
+  return parts.join(' ') + ', ' + stateCode;
 }

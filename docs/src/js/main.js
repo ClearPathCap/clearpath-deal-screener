@@ -9,11 +9,10 @@ import { saveDeal as _saveDeal, renderPipeline,
          requestDelete, confirmDelete }                              from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
-import { initGeolocation, RENTAL_RENT_RANGES }                      from './markets.js';
+import { ALL_MARKETS as PICKER_ALL, STR_MARKETS }                   from './markets.js';
 import { initCurrencyInputs, parseComma }                           from './format.js';
 import { handlePipelineFundingClick }                               from './clearpath.js';
 import {
-  MARKET_HIERARCHY, STATE_NAMES, ALL_MARKETS,
   getActiveTier, isDevMode, setDevTier,
   hasSelectedMarkets, getMarketSlots,
   getMarketForSlot, setMarketSlot,
@@ -181,6 +180,20 @@ function clearNewDeal(type) {
   }
 }
 
+// ─── Picker market list (flip+str only, derived from full ALL_MARKETS) ────────
+
+const PICKER_MARKETS = PICKER_ALL.filter(m =>
+  m.types && (m.types.includes('flip') || m.types.includes('str'))
+);
+
+// Helper: strip state code from display name for slot button
+// "Charlotte NC" → "Charlotte" | "West Palm Beach FL" → "West Palm Beach"
+function slotDisplayName(fullName) {
+  const clean = fullName.replace(/\s*⚠.*$/, '').trim(); // strip ⚠️ if present
+  const parts = clean.split(' ');
+  return parts.slice(0, -1).join(' ') || clean; // strip last word (state code)
+}
+
 // ─── Active slot state (one per tab-type, tracks which slot drives analysis) ──
 
 let _activeSlot = 0;  // slot index of whichever slot is currently driving analysis
@@ -200,10 +213,11 @@ function renderMarketSlots(containerId, tabType) {
 
     if (i < unlocked) {
       if (marketId) {
-        const label = getMarketLabel(marketId);   // "Charlotte, NC" format
-        const isActive = (i === _activeSlot);
+        const fullLabel = getMarketLabel(marketId);   // "Charlotte, NC" format
+        const cityOnly  = slotDisplayName(fullLabel.replace(', ', ' ')); // "Charlotte NC" → "Charlotte"
+        const isActive  = (i === _activeSlot);
         const slotClass = isActive ? 'slot-active' : 'slot-filled';
-        html.push(`<button class="market-slot ${slotClass}" onclick="handleSlotClick(${i},'${marketId}')" data-slot="${i}">${label}</button>`);
+        html.push(`<button class="market-slot ${slotClass}" onclick="handleSlotClick(${i},'${marketId}')" data-slot="${i}" title="${fullLabel}">${cityOnly}</button>`);
       } else {
         const placeholder = i === 0 ? 'Pick Market' : 'Region ' + (i + 1);
         html.push(`<button class="market-slot slot-empty" onclick="handleSlotClick(${i},'')" data-slot="${i}">${placeholder}</button>`);
@@ -333,33 +347,43 @@ function openMarketPicker(slotIndex, isFirstLaunch, isChange = false) {
   openModal('modal-market-picker');
 }
 
+// ─── Helper: extract state code from market name ("Charlotte NC" → "NC") ──────
+function marketStateCode(m) {
+  const clean = m.name.replace(/\s*⚠.*$/, '').trim();
+  return clean.split(' ').pop();
+}
+
+// ─── Helper: display name for picker market items ─────────────────────────────
+function pickerMarketDisplay(m) {
+  return m.name.replace(/\s*⚠.*$/, '').trim();
+}
+
 function pickerSearch(term) {
   const q = term.trim().toLowerCase();
 
   if (!q) {
-    // No query — show state list
     document.getElementById('picker-step-1').style.display = 'flex';
     document.getElementById('picker-step-2').style.display = 'none';
     pickerBuildStateList('');
     return;
   }
 
-  // Check for direct market matches
-  const directMatches = ALL_MARKETS.filter(m =>
-    m.label.toLowerCase().includes(q) || m.id.includes(q.replace(/\s+/g, '-'))
-  );
+  // Check for direct market name matches (skip state step)
+  const directMatches = PICKER_MARKETS.filter(m => {
+    const displayName = pickerMarketDisplay(m).toLowerCase();
+    return displayName.includes(q) || m.id.includes(q.replace(/\s+/g, '-'));
+  });
 
   if (directMatches.length > 0) {
-    // Show flat market list (skip state step)
     const titleEl = document.getElementById('picker-step2-title');
     if (titleEl) titleEl.textContent = 'Search Results';
     const list = document.getElementById('picker-markets');
     list.innerHTML = directMatches
-      .sort((a, b) => a.label.localeCompare(b.label))
+      .sort((a, b) => pickerMarketDisplay(a).localeCompare(pickerMarketDisplay(b)))
       .map(m => `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')">
         <div>
-          <div class="picker-item-label">${m.label}</div>
-          <div class="picker-item-sub">${STATE_NAMES[m.state] || m.state}</div>
+          <div class="picker-item-label">${pickerMarketDisplay(m)}</div>
+          <div class="picker-item-sub">${marketStateCode(m)}</div>
         </div>
         <div class="picker-item-arrow">✓</div>
       </div>`).join('');
@@ -368,32 +392,29 @@ function pickerSearch(term) {
     return;
   }
 
-  // No direct market match — filter state list to states with matching markets or name
+  // No direct match — filter state list
   pickerBuildStateList(q);
   document.getElementById('picker-step-1').style.display = 'flex';
   document.getElementById('picker-step-2').style.display = 'none';
 }
 
 function pickerBuildStateList(filterQ) {
-  // Build state→markets map from ALL_MARKETS, optionally filtered
+  // Build state→markets map from PICKER_MARKETS, optionally filtered
   const stateMap = {};
-  ALL_MARKETS.forEach(m => {
-    const stateName = (STATE_NAMES[m.state] || m.state).toLowerCase();
+  PICKER_MARKETS.forEach(m => {
+    const state     = marketStateCode(m);
+    const display   = pickerMarketDisplay(m).toLowerCase();
+    const stateL    = state.toLowerCase();
     if (!filterQ ||
-        m.label.toLowerCase().includes(filterQ) ||
+        display.includes(filterQ) ||
         m.id.includes(filterQ.replace(/\s+/g, '-')) ||
-        m.state.toLowerCase().includes(filterQ) ||
-        stateName.includes(filterQ)) {
-      if (!stateMap[m.state]) stateMap[m.state] = [];
-      stateMap[m.state].push(m);
+        stateL.includes(filterQ)) {
+      if (!stateMap[state]) stateMap[state] = [];
+      stateMap[state].push(m);
     }
   });
 
-  const stateKeys = Object.keys(stateMap).sort((a, b) => {
-    const na = STATE_NAMES[a] || a;
-    const nb = STATE_NAMES[b] || b;
-    return na.localeCompare(nb);
-  });
+  const stateKeys = Object.keys(stateMap).sort();
 
   const list = document.getElementById('picker-states');
   if (!stateKeys.length) {
@@ -402,28 +423,26 @@ function pickerBuildStateList(filterQ) {
   }
   list.innerHTML = stateKeys.map(code => {
     const count = stateMap[code].length;
-    const name  = STATE_NAMES[code] || code;
-    return `<div class="picker-item" onclick="pickerSelectState('${code}')">
+    return `<button class="picker-item picker-state-btn" onclick="pickerSelectState('${code}')">
       <div>
-        <div class="picker-item-label">${name}</div>
-        <div class="picker-item-sub">${count} market${count !== 1 ? 's' : ''}</div>
+        <div class="picker-item-label">${code} (${count})</div>
       </div>
       <div class="picker-item-arrow">›</div>
-    </div>`;
+    </button>`;
   }).join('');
 }
 
 function pickerSelectState(stateCode) {
   _pickerState = stateCode;
-  const markets = ALL_MARKETS
-    .filter(m => m.state === stateCode)
-    .sort((a, b) => a.label.localeCompare(b.label));
+  const markets = PICKER_MARKETS
+    .filter(m => marketStateCode(m) === stateCode)
+    .sort((a, b) => pickerMarketDisplay(a).localeCompare(pickerMarketDisplay(b)));
   const titleEl = document.getElementById('picker-step2-title');
-  if (titleEl) titleEl.textContent = STATE_NAMES[stateCode] || stateCode;
+  if (titleEl) titleEl.textContent = stateCode;
   const list = document.getElementById('picker-markets');
   list.innerHTML = markets.map(m =>
     `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')">
-      <div class="picker-item-label">${m.label}</div>
+      <div class="picker-item-label">${pickerMarketDisplay(m)}</div>
       <div class="picker-item-arrow">✓</div>
     </div>`
   ).join('');
@@ -472,12 +491,12 @@ function pickerBack() {
 
 // ─── Rent range hint ──────────────────────────────────────────────────────────
 
-function updateRentRangeHint(type) {
+function updateRentRangeHint(slug) {
   const hint = document.getElementById('rent-range-hint');
   if (!hint) return;
-  const range = RENTAL_RENT_RANGES[type];
-  if (range) {
-    hint.textContent = 'Estimated range: $' + Math.round(range.low / 1000) + 'k – $' + Math.round(range.high / 1000) + 'k/yr';
+  const m = STR_MARKETS[slug];
+  if (m && m.revLow && m.revHigh) {
+    hint.textContent = 'Estimated range: $' + Math.round(m.revLow / 1000) + 'k – $' + Math.round(m.revHigh / 1000) + 'k/yr';
     hint.style.display = 'block';
   } else {
     hint.style.display = 'none';
@@ -715,7 +734,6 @@ migrateMarketStorage();   // marketSlots[] → primaryMarket / market_2
 migrateGuideMode();       // "beginner"/"pro" → "on"/"off"
 
 initInstallHint();
-initGeolocation();
 initGuideMode();
 initCurrencyInputs();
 updateDevModeIndicator();

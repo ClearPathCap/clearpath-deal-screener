@@ -308,12 +308,13 @@ function handleLockedSlot(slotNumber) {
   openModal('modal-upgrade');
 }
 
-// ─── 2-step market picker: State → Market with search ────────────────────────
+// ─── Market picker ─ input lives in header, only #picker-results is replaced ──
 
 let _pickerSlot      = 0;
-let _pickerIsChange  = false;    // true when replacing an existing market
-let _pickerIsFirst   = false;    // true when this is first-launch
+let _pickerIsChange  = false;
+let _pickerIsFirst   = false;
 let _pickerState     = null;
+let _pickerStateMap  = null;   // lazy-built once
 
 function openMarketPicker(slotIndex, isFirstLaunch, isChange = false) {
   _pickerSlot     = slotIndex;
@@ -323,27 +324,22 @@ function openMarketPicker(slotIndex, isFirstLaunch, isChange = false) {
 
   const backdrop  = document.getElementById('modal-market-picker');
   const cancelRow = document.getElementById('picker-cancel-row');
-  const title     = document.getElementById('picker-headline');
   const search    = document.getElementById('picker-search');
 
   if (isFirstLaunch) {
     backdrop.dataset.required = 'true';
     if (cancelRow) cancelRow.style.display = 'none';
-    if (title) title.textContent = 'Choose Your Primary Market';
+    _pickerSetTitle('Choose Your Primary Market');
   } else {
     delete backdrop.dataset.required;
     if (cancelRow) cancelRow.style.display = 'flex';
-    if (title) title.textContent = 'Choose a State';
+    _pickerSetTitle('Choose a State');
   }
 
-  // Reset search input
   if (search) search.value = '';
 
-  // Show step 1 (state list), hide step 2 (market list)
-  document.getElementById('picker-step-1').style.display = 'flex';
-  document.getElementById('picker-step-2').style.display = 'none';
-
-  pickerBuildStateList('');
+  const map = getPickerStateMap();
+  _pickerRenderStateList(Object.keys(map).sort());
   openModal('modal-market-picker');
 }
 
@@ -358,96 +354,107 @@ function pickerMarketDisplay(m) {
   return m.name.replace(/\s*⚠.*$/, '').trim();
 }
 
-function pickerSearch(term) {
-  const q = term.trim().toLowerCase();
-
-  if (!q) {
-    document.getElementById('picker-step-1').style.display = 'flex';
-    document.getElementById('picker-step-2').style.display = 'none';
-    pickerBuildStateList('');
-    return;
-  }
-
-  // Check for direct market name matches (skip state step)
-  const directMatches = PICKER_MARKETS.filter(m => {
-    const displayName = pickerMarketDisplay(m).toLowerCase();
-    return displayName.includes(q) || m.id.includes(q.replace(/\s+/g, '-'));
+// ─── Lazy-built state map ─────────────────────────────────────────────────────
+function getPickerStateMap() {
+  if (_pickerStateMap) return _pickerStateMap;
+  const map = {};
+  PICKER_MARKETS.forEach(m => {
+    const state = marketStateCode(m);
+    if (!state || state.length !== 2 || !/^[A-Z]{2}$/.test(state)) return;
+    if (!map[state]) map[state] = [];
+    map[state].push(m);
   });
-
-  if (directMatches.length > 0) {
-    const titleEl = document.getElementById('picker-step2-title');
-    if (titleEl) titleEl.textContent = 'Search Results';
-    const list = document.getElementById('picker-markets');
-    list.innerHTML = directMatches
-      .sort((a, b) => pickerMarketDisplay(a).localeCompare(pickerMarketDisplay(b)))
-      .map(m => `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')">
-        <div>
-          <div class="picker-item-label">${pickerMarketDisplay(m)}</div>
-          <div class="picker-item-sub">${marketStateCode(m)}</div>
-        </div>
-        <div class="picker-item-arrow">✓</div>
-      </div>`).join('');
-    document.getElementById('picker-step-1').style.display = 'none';
-    document.getElementById('picker-step-2').style.display = 'flex';
-    return;
-  }
-
-  // No direct match — filter state list
-  pickerBuildStateList(q);
-  document.getElementById('picker-step-1').style.display = 'flex';
-  document.getElementById('picker-step-2').style.display = 'none';
+  Object.values(map).forEach(arr =>
+    arr.sort((a, b) => pickerMarketDisplay(a).localeCompare(pickerMarketDisplay(b)))
+  );
+  _pickerStateMap = map;
+  return map;
 }
 
-function pickerBuildStateList(filterQ) {
-  // Build state→markets map from PICKER_MARKETS, optionally filtered
-  const stateMap = {};
-  PICKER_MARKETS.forEach(m => {
-    const state  = marketStateCode(m);
-    // Guard: skip entries with no valid 2-letter uppercase state code
-    if (!state || state.length !== 2 || !/^[A-Z]{2}$/.test(state)) return;
-    const display = pickerMarketDisplay(m).toLowerCase();
-    const stateL  = state.toLowerCase();
-    if (!filterQ ||
-        display.includes(filterQ) ||
-        m.id.includes(filterQ.replace(/\s+/g, '-')) ||
-        stateL.includes(filterQ)) {
-      if (!stateMap[state]) stateMap[state] = [];
-      stateMap[state].push(m);
-    }
-  });
+function _pickerSetTitle(text) {
+  const nav = document.getElementById('picker-nav');
+  if (nav) nav.innerHTML = `<div class="picker-title" id="picker-headline">${text}</div>`;
+}
+function _pickerSetBack(code) {
+  const nav = document.getElementById('picker-nav');
+  if (nav) nav.innerHTML = `<button class="picker-back" onclick="pickerBack()">&#8592; Back</button><div class="picker-title">${code}</div>`;
+}
 
-  const stateKeys = Object.keys(stateMap).sort();
-
-  const list = document.getElementById('picker-states');
-  if (!stateKeys.length) {
-    list.innerHTML = '<div class="picker-item disabled"><div class="picker-item-label">No markets found</div></div>';
-    return;
-  }
-  list.innerHTML = stateKeys.map(code => {
-    const count = stateMap[code].length;
-    return `<div class="picker-item picker-state-btn" onclick="pickerSelectState('${code}')">
-      <div class="picker-item-label">${code} (${count})</div>
-      <div class="picker-item-arrow">›</div>
-    </div>`;
+function _pickerRenderStateList(codes) {
+  const map  = getPickerStateMap();
+  const list = document.getElementById('picker-results');
+  if (!list) return;
+  if (!codes.length) { list.innerHTML = '<div class="picker-item disabled"><div class="picker-item-label">No results found</div></div>'; return; }
+  list.innerHTML = codes.map(code => {
+    const count = map[code].length;
+    return `<div class="picker-item picker-state-btn" onclick="pickerSelectState('${code}')"><div class="picker-item-label">${code} (${count})</div><div class="picker-item-arrow">&#8250;</div></div>`;
   }).join('');
 }
+function _pickerRenderMarkets(markets) {
+  const list = document.getElementById('picker-results');
+  if (!list) return;
+  list.innerHTML = markets.map(m =>
+    `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')"><div class="picker-item-label">${pickerMarketDisplay(m)}</div><div class="picker-item-arrow">&#10003;</div></div>`
+  ).join('');
+}
+function _pickerRenderSearchResults(markets) {
+  const list = document.getElementById('picker-results');
+  if (!list) return;
+  list.innerHTML = markets
+    .sort((a, b) => pickerMarketDisplay(a).localeCompare(pickerMarketDisplay(b)))
+    .map(m =>
+      `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')"><div><div class="picker-item-label">${pickerMarketDisplay(m)}</div><div class="picker-item-sub">${marketStateCode(m)}</div></div><div class="picker-item-arrow">&#10003;</div></div>`
+    ).join('');
+}
+
+// ─── Search — ONLY #picker-results is replaced; input element never touched ──
+function pickerSearch(query) {
+  const q   = query.trim().toUpperCase();
+  const map = getPickerStateMap();
+
+  if (!q) {
+    _pickerSetTitle(_pickerIsFirst ? 'Choose Your Primary Market' : 'Choose a State');
+    _pickerRenderStateList(Object.keys(map).sort());
+    return;
+  }
+
+  // 1. Exact 2-letter state code
+  if (q.length === 2 && map[q]) {
+    _pickerSetBack(q);
+    _pickerRenderMarkets(map[q]);
+    return;
+  }
+
+  // 2. City name substring (2+ chars only — prevents single-letter flood)
+  if (q.length >= 2) {
+    const cityMatches = PICKER_MARKETS.filter(m => pickerMarketDisplay(m).toUpperCase().includes(q));
+    if (cityMatches.length > 0) {
+      _pickerSetTitle('Search Results');
+      _pickerRenderSearchResults(cityMatches);
+      return;
+    }
+  }
+
+  // 3. State code prefix — narrows state list, no flat market dump
+  const stateMatches = Object.keys(map).filter(s => s.startsWith(q)).sort();
+  if (stateMatches.length > 0) {
+    _pickerSetTitle(_pickerIsFirst ? 'Choose Your Primary Market' : 'Choose a State');
+    _pickerRenderStateList(stateMatches);
+    return;
+  }
+
+  // 4. No match
+  const list = document.getElementById('picker-results');
+  if (list) list.innerHTML = '<div class="picker-item disabled"><div class="picker-item-label">No results found</div></div>';
+}
+
 
 function pickerSelectState(stateCode) {
   _pickerState = stateCode;
-  const markets = PICKER_MARKETS
-    .filter(m => marketStateCode(m) === stateCode)
-    .sort((a, b) => pickerMarketDisplay(a).localeCompare(pickerMarketDisplay(b)));
-  const titleEl = document.getElementById('picker-step2-title');
-  if (titleEl) titleEl.textContent = stateCode;
-  const list = document.getElementById('picker-markets');
-  list.innerHTML = markets.map(m =>
-    `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')">
-      <div class="picker-item-label">${pickerMarketDisplay(m)}</div>
-      <div class="picker-item-arrow">✓</div>
-    </div>`
-  ).join('');
-  document.getElementById('picker-step-1').style.display = 'none';
-  document.getElementById('picker-step-2').style.display = 'flex';
+  _pickerSetBack(stateCode);
+  _pickerRenderMarkets(getPickerStateMap()[stateCode] || []);
+  const search = document.getElementById('picker-search');
+  if (search) search.value = '';
 }
 
 function pickerSelectMarket(marketId) {
@@ -480,13 +487,11 @@ function pickerSelectMarket(marketId) {
 }
 
 function pickerBack() {
-  // If on step 2 (market list), go back to step 1 (state list)
   _pickerState = null;
   const search = document.getElementById('picker-search');
   if (search) search.value = '';
-  pickerBuildStateList('');
-  document.getElementById('picker-step-1').style.display = 'flex';
-  document.getElementById('picker-step-2').style.display = 'none';
+  _pickerSetTitle(_pickerIsFirst ? 'Choose Your Primary Market' : 'Choose a State');
+  _pickerRenderStateList(Object.keys(getPickerStateMap()).sort());
 }
 
 // ─── Rent range hint ──────────────────────────────────────────────────────────

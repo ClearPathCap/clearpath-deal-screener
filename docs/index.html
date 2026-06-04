@@ -689,25 +689,18 @@
   </div>
 </div>
 
-<!-- 2-step market picker: State → Market with search (Task 2) -->
+<!-- Market picker — input never re-rendered; only #picker-results changes -->
 <div class="modal-backdrop" id="modal-market-picker">
   <div class="modal modal-picker">
-    <!-- Step 1: State selection with search -->
-    <div class="picker-step" id="picker-step-1" style="display:flex">
-      <div class="picker-header">
+    <!-- Header: nav (title/back) + search input — this block is NEVER replaced -->
+    <div class="picker-header">
+      <div id="picker-nav">
         <div class="picker-title" id="picker-headline">Choose a State</div>
-        <input type="text" id="picker-search" class="picker-search-input" placeholder="Search markets..." oninput="pickerSearch(this.value)">
       </div>
-      <div class="picker-list" id="picker-states"></div>
+      <input type="text" id="picker-search" class="picker-search-input" placeholder="Search markets..." oninput="pickerSearch(this.value)" autocomplete="off">
     </div>
-    <!-- Step 2: Market selection -->
-    <div class="picker-step" id="picker-step-2" style="display:none">
-      <div class="picker-header">
-        <button class="picker-back" onclick="pickerBack()">← Back</button>
-        <div class="picker-title" id="picker-step2-title">Select Market</div>
-      </div>
-      <div class="picker-list" id="picker-markets"></div>
-    </div>
+    <!-- Results — replaced on every keystroke or state tap -->
+    <div class="picker-list" id="picker-results"></div>
     <!-- Cancel row (hidden during first launch) -->
     <div class="picker-cancel-row" id="picker-cancel-row" style="display:none">
       <button class="btn-cancel" style="width:100%;margin-top:8px" onclick="closeModal('modal-market-picker')">Cancel</button>

@@ -1,16 +1,54 @@
 // ─── Repair cost estimator ────────────────────────────────────────────────────
 
-// Explicit self-perform vs. hired-out ranges (Addendum item 10)
-const TIER_RANGES = {
+// Fallback ranges used before a market is loaded
+const DEFAULT_RANGES = {
   light: { selfLow: 12, selfHigh: 22, hiredLow: 18, hiredHigh: 35 },
   mid:   { selfLow: 28, selfHigh: 48, hiredLow: 42, hiredHigh: 70 },
   full:  { selfLow: 60, selfHigh: 95, hiredLow: 90, hiredHigh: 130 },
 };
 
+// Current market-specific ranges — replaced when active market changes
+let _ranges = DEFAULT_RANGES;
 let currentTierName = 'mid';
 
+// ─── Derive all three scope ranges from a FLIP_MARKETS entry ─────────────────
+function computeRangesForMarket(market) {
+  const lo = market.repairLow;
+  const hi = market.repairHigh;
+  return {
+    light: {
+      hiredLow:  Math.round(lo * 0.35),
+      hiredHigh: Math.round(lo * 0.65),
+      selfLow:   Math.round(lo * 0.22),
+      selfHigh:  Math.round(lo * 0.40),
+    },
+    mid: {
+      hiredLow:  lo,
+      hiredHigh: hi,
+      selfLow:   Math.round(lo * 0.62),
+      selfHigh:  Math.round(hi * 0.62),
+    },
+    full: {
+      hiredLow:  Math.round(hi * 0.90),
+      hiredHigh: Math.round(hi * 1.45),
+      selfLow:   Math.round(hi * 0.55),
+      selfHigh:  Math.round(hi * 0.90),
+    },
+  };
+}
+
+// ─── Called from setFlipPreset when the active market slot changes ────────────
+export function updateRepairRangesForMarket(market) {
+  if (market && market.repairLow && market.repairHigh) {
+    _ranges = computeRangesForMarket(market);
+  } else {
+    _ranges = DEFAULT_RANGES;
+  }
+  calcRepair(); // re-render tier labels + estimated range with new data
+}
+
 export function getCurrentTier() {
-  return { name: currentTierName, ...TIER_RANGES[currentTierName] };
+  return { name: currentTierName, ..._ranges[currentTierName] };
 }
 
 export function setRepairTier(name, el) {
@@ -21,22 +59,20 @@ export function setRepairTier(name, el) {
   updateRepairTierRangeLabels();
 }
 
-// Update the range labels shown on the tier cards to reflect self/hired state
+// ─── Update the $/sf label on each scope card ─────────────────────────────────
 function updateRepairTierRangeLabels() {
-  const self = document.getElementById('self-reno')?.checked;
+  const self    = document.getElementById('self-reno')?.checked;
   const tierEls = document.querySelectorAll('.tier');
-  const names = ['light', 'mid', 'full'];
+  const names   = ['light', 'mid', 'full'];
   tierEls.forEach((el, i) => {
     const t = names[i];
-    if (!t) return;
-    const r = TIER_RANGES[t];
+    const r = _ranges[t];
+    if (!t || !r) return;
     const rangeEl = el.querySelector('.tier-range');
     if (rangeEl) {
-      if (self) {
-        rangeEl.textContent = '$' + r.selfLow + '–' + r.selfHigh + '/sf';
-      } else {
-        rangeEl.textContent = '$' + r.hiredLow + '–' + r.hiredHigh + '/sf';
-      }
+      const low  = self ? r.selfLow  : r.hiredLow;
+      const high = self ? r.selfHigh : r.hiredHigh;
+      rangeEl.textContent = '$' + low + '–' + high + '/sf';
     }
   });
 }
@@ -44,25 +80,28 @@ function updateRepairTierRangeLabels() {
 export function calcRepair() {
   const sqft = +document.getElementById('sqft').value;
   const self = document.getElementById('self-reno')?.checked;
-  const r = TIER_RANGES[currentTierName];
+  const r    = _ranges[currentTierName];
+  if (!r) return;
+
   const low  = self ? r.selfLow  : r.hiredLow;
   const high = self ? r.selfHigh : r.hiredHigh;
 
-  // Always update the tier range labels when self-reno state changes
+  // Always update scope card labels
   updateRepairTierRangeLabels();
 
   if (!sqft) {
     document.getElementById('repair-result').style.display = 'none';
-    document.getElementById('use-est-btn').style.display = 'none';
+    document.getElementById('use-est-btn').style.display   = 'none';
     return;
   }
+
   const rLow  = Math.round(sqft * low  / 1000) * 1000;
   const rHigh = Math.round(sqft * high / 1000) * 1000;
   document.getElementById('repair-est').textContent = '$' + rLow.toLocaleString() + ' – $' + rHigh.toLocaleString();
   document.getElementById('repair-result').style.display = 'flex';
-  document.getElementById('use-est-btn').style.display = 'block';
+  document.getElementById('use-est-btn').style.display   = 'block';
 
-  // Auto-fill repair costs field with midpoint
+  // Auto-fill repair costs field with midpoint (unless user-edited)
   const repField = document.getElementById('f-rep');
   if (repField && !repField.dataset.userEdited) {
     const mid = Math.round((sqft * (low + high) / 2) / 1000) * 1000;
@@ -72,16 +111,13 @@ export function calcRepair() {
   }
 }
 
-// Called when self-reno toggle changes — recalculate if field was auto-filled
+// Called when self-reno toggle changes
 export function onSelfRenoToggle() {
   const repField = document.getElementById('f-rep');
-  // Recalculate if field was populated via auto-fill
   if (repField && repField.dataset.autoFilled === '1') {
-    repField.dataset.userEdited = '';      // clear user-edited guard
-    delete repField.dataset.userEdited;   // ensure it's gone
+    delete repField.dataset.userEdited;
     calcRepair();
   } else {
-    // Still update the range labels and result display even if field not auto-filled
     calcRepair();
   }
 }
@@ -89,11 +125,13 @@ export function onSelfRenoToggle() {
 export function useRepairEstimate() {
   const sqft = +document.getElementById('sqft').value;
   const self = document.getElementById('self-reno')?.checked;
-  const r = TIER_RANGES[currentTierName];
+  const r    = _ranges[currentTierName];
+  if (!r) return;
   const low  = self ? r.selfLow  : r.hiredLow;
   const high = self ? r.selfHigh : r.hiredHigh;
-  const mid = Math.round((sqft * (low + high) / 2) / 1000) * 1000;
+  const mid  = Math.round((sqft * (low + high) / 2) / 1000) * 1000;
   const repField = document.getElementById('f-rep');
+  if (!repField) return;
   repField.value = mid.toLocaleString();
   repField.dataset.autoFilled = '1';
   repField.classList.add('auto-filled');

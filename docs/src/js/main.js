@@ -143,7 +143,9 @@ function clearNewDeal(type) {
     document.getElementById('f-cc1').value    = 2;
     document.getElementById('f-cc2').value    = 5;
     document.getElementById('f-carry').value  = '900';
-    document.getElementById('f-target').value = '40,000';
+    // Task 3: clear user-edited flag so renderMarketSlots resets target to market default
+    const targetEl = document.getElementById('f-target');
+    if (targetEl) { delete targetEl.dataset.userEdited; targetEl.value = '40,000'; }
     document.getElementById('self-reno').checked = true;
     resetFlip();
     renderMarketSlots('flip-slots', 'flip');
@@ -739,6 +741,11 @@ applyTierToUI();
 renderMarketSlots('flip-slots',   'flip');
 renderMarketSlots('rental-slots', 'rental');
 initOnboarding();
+
+// Task 3: track when user manually edits the Min Profit Target
+document.getElementById('f-target')?.addEventListener('input', () => {
+  document.getElementById('f-target').dataset.userEdited = '1';
+});
 updateOccHint();
 updateSelfManage();       // initialise PM field to 8% (default: hired PM)
 

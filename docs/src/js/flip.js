@@ -2,7 +2,7 @@
 
 import { fmt, pct, cClass, buildMetrics, buildRows, parseComma } from './format.js';
 import { FLIP_MARKETS, ALL_MARKETS } from './markets.js';
-import { calcRepair } from './repair.js';
+import { updateRepairRangesForMarket } from './repair.js';
 import { maybeShowFundingButton } from './clearpath.js';
 
 // ─── Regional fallback defaults (Task 3) ──────────────────────────────────────
@@ -39,11 +39,20 @@ export function setFlipPreset(slug, el) {
   if (el) el.classList.add('active');
   const m      = getFlipMarket(slug);
   const carry  = flipCarry(m);
-  const target = Math.max(25000, Math.round((m.medianArv || 300000) * 0.09 / 1000) * 1000);
-  document.getElementById('f-hold').value   = 5;
-  document.getElementById('f-carry').value  = carry.toLocaleString();
-  document.getElementById('f-target').value = target.toLocaleString();
-  calcRepair();
+  const target = Math.max(10000, Math.round((m.medianArv || 300000) * 0.09 / 1000) * 1000);
+
+  document.getElementById('f-hold').value  = 5;
+  document.getElementById('f-carry').value = carry.toLocaleString();
+
+  // Task 3: only auto-update target if user hasn't manually edited it this session
+  const targetEl = document.getElementById('f-target');
+  if (targetEl && !targetEl.dataset.userEdited) {
+    targetEl.value = target.toLocaleString();
+  }
+
+  // Task 2: update repair scope card ranges for this market
+  updateRepairRangesForMarket(m);
+
   const e = document.getElementById('f-carry');
   if (e) e.dispatchEvent(new Event('input'));
 }

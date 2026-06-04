@@ -25,7 +25,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .header{padding:16px 0 12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
 .header-left{flex:1;min-width:0}
 .header-brand{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.cpc-logo{height:26px;width:auto;max-width:140px;object-fit:contain;flex-shrink:0}
+.cpc-logo{height:26px;width:auto;max-width:140px;object-fit:contain;flex-shrink:0;background-color:#0a0a0a}
 .app-subtitle{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-left:1px solid var(--border);padding-left:8px;white-space:nowrap}
 .header-meta{margin-bottom:0}
 .header h1{font-size:22px;font-weight:800;line-height:1.1;margin-bottom:4px}

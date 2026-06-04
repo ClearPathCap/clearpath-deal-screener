@@ -402,9 +402,11 @@ function pickerBuildStateList(filterQ) {
   // Build state→markets map from PICKER_MARKETS, optionally filtered
   const stateMap = {};
   PICKER_MARKETS.forEach(m => {
-    const state     = marketStateCode(m);
-    const display   = pickerMarketDisplay(m).toLowerCase();
-    const stateL    = state.toLowerCase();
+    const state  = marketStateCode(m);
+    // Guard: skip entries with no valid 2-letter uppercase state code
+    if (!state || state.length !== 2 || !/^[A-Z]{2}$/.test(state)) return;
+    const display = pickerMarketDisplay(m).toLowerCase();
+    const stateL  = state.toLowerCase();
     if (!filterQ ||
         display.includes(filterQ) ||
         m.id.includes(filterQ.replace(/\s+/g, '-')) ||
@@ -423,12 +425,10 @@ function pickerBuildStateList(filterQ) {
   }
   list.innerHTML = stateKeys.map(code => {
     const count = stateMap[code].length;
-    return `<button class="picker-item picker-state-btn" onclick="pickerSelectState('${code}')">
-      <div>
-        <div class="picker-item-label">${code} (${count})</div>
-      </div>
+    return `<div class="picker-item picker-state-btn" onclick="pickerSelectState('${code}')">
+      <div class="picker-item-label">${code} (${count})</div>
       <div class="picker-item-arrow">›</div>
-    </button>`;
+    </div>`;
   }).join('');
 }
 
@@ -616,7 +616,7 @@ function initTierBadge() {
           openModal('modal-dev');
         }
         tapCount = 0;
-      }, 400);
+      }, 2000);
     });
   });
 }
@@ -674,16 +674,8 @@ Object.assign(window, {
   // dev tier switch (console: setTier('investor'))
   setTier(name, el) {
     if (name === 'starter' || name === 'investor' || name === 'pro') {
-      setDevTier(name);  // writes localStorage.tier; no reload
-      // Update badge text live on all tabs
-      document.querySelectorAll('.tier-badge').forEach(b => {
-        b.textContent = getActiveTier().toUpperCase();
-      });
-      // Re-render market slots (slot count may change)
-      renderMarketSlots('flip-slots',   'flip');
-      renderMarketSlots('rental-slots', 'rental');
-      applyTierToUI();
-      updateDevModeIndicator();
+      setDevTier(name);  // writes localStorage.tier
+      location.reload(); // reload so all tier-gated UI rebuilds cleanly
     } else {
       setRepairTier(name, el);
     }

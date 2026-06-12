@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "deal-screener",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-p", "5173", "docs"],
+      "port": 5173
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "deal-screener",
+  "version": "1.0.0",
+  "description": "A mobile-first deal underwriting tool for real estate investors. Analyze fix-and-flip and short-term rental deals in seconds, save your pipeline, share with partners, and submit qualifying deals to Clear Path Capital for funding review.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ClearPathCap/clearpath-deal-screener.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ClearPathCap/clearpath-deal-screener/issues"
+  },
+  "homepage": "https://github.com/ClearPathCap/clearpath-deal-screener#readme",
+  "devDependencies": {
+    "jimp": "^1.6.1"
+  }
+}

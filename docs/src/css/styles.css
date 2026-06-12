@@ -2,7 +2,8 @@
   --bg:#0a0a0a;--surface:#141414;--surface2:#1c1c1c;--surface3:#222;
   --border:rgba(255,255,255,0.08);--border-strong:rgba(255,255,255,0.15);
   --text:#f0ede8;--muted:#6b6b6b;--muted2:#444;
-  --accent:#b8ff57;--accent-dim:rgba(184,255,87,0.1);--accent-text:#0a0a0a;
+  --accent:#22c55e;--accent-dim:rgba(34,197,94,0.12);--accent-text:#0a0a0a;
+  --verdict-hot:#b8ff57;--verdict-hot-dim:rgba(184,255,87,0.1);
   --warn:#ffb547;--warn-dim:rgba(255,181,71,0.1);
   --danger:#ff6b6b;--danger-dim:rgba(255,107,107,0.1);
   --info:#57c4ff;--info-dim:rgba(87,196,255,0.1);
@@ -111,14 +112,14 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 .results{margin-top:24px;display:none}
 .verdict{border-radius:12px;padding:18px;margin-bottom:14px;border:1px solid;position:relative;overflow:hidden}
 .verdict::before{content:'';position:absolute;top:-30px;right:-30px;width:100px;height:100px;border-radius:50%;opacity:.07}
-.verdict.hot{background:var(--accent-dim);border-color:var(--accent)}
-.verdict.hot::before{background:var(--accent)}
+.verdict.hot{background:var(--verdict-hot-dim);border-color:var(--verdict-hot)}
+.verdict.hot::before{background:var(--verdict-hot)}
 .verdict.warm{background:var(--warn-dim);border-color:var(--warn)}
 .verdict.warm::before{background:var(--warn)}
 .verdict.pass{background:var(--danger-dim);border-color:var(--danger)}
 .verdict.pass::before{background:var(--danger)}
 .vtag{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:5px}
-.verdict.hot .vtag{color:var(--accent)}
+.verdict.hot .vtag{color:var(--verdict-hot)}
 .verdict.warm .vtag{color:var(--warn)}
 .verdict.pass .vtag{color:var(--danger)}
 .vlabel{font-size:26px;font-weight:800;line-height:1;margin-bottom:6px}
@@ -166,7 +167,7 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 .deal-address{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4}
 .deal-region{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:4px}
 .deal-badge{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0}
-.deal-badge.hot{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)}
+.deal-badge.hot{background:var(--verdict-hot-dim);color:var(--verdict-hot);border:1px solid var(--verdict-hot)}
 .deal-badge.warm{background:var(--warn-dim);color:var(--warn);border:1px solid var(--warn)}
 .deal-badge.pass{background:var(--danger-dim);color:var(--danger);border:1px solid var(--danger)}
 .deal-stats{display:flex;gap:16px;flex-wrap:wrap}
@@ -380,10 +381,15 @@ body.beginner-mode .tier-desc-long{display:block}
 
 /* GET FUNDING BUTTON — font smoothing + icon fix */
 .btn-get-funding{-webkit-font-smoothing:antialiased}
-.funding-icon{background-color:#b8ff57;border-radius:3px}
+.funding-icon{background-color:var(--accent);border-radius:3px}
 /* Pipeline funding button — no-wrap fix */
 .pipeline-funding-btn .funding-btn-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pipeline-funding-btn{font-size:12px}
 
 /* PIPELINE DEAL CARD — expand arrow still top-right, no need for extra padding */
 .deal-card-top{padding-right:28px}
+
+/* POWERED BY CPC FOOTER */
+.cpc-footer{display:flex;align-items:center;justify-content:center;gap:7px;padding:20px 20px 6px;font-size:11px;color:var(--muted);text-decoration:none;letter-spacing:.04em}
+.cpc-footer:hover{color:var(--text)}
+.cpc-footer img{height:18px;width:auto;opacity:.85}

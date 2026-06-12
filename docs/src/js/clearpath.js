@@ -2,9 +2,40 @@
 
 import { getActiveTier } from './tiers.js';
 import { getDeals } from './storage.js';
+import { buildCpcUrl, qualifiesForCpc } from './funding.js';
 
-const CPC_URL = 'https://clearpathcapfunding.com/';
 const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn' };
+
+// ─── Normalize an analyzer result into the CPC deal-param object ──────────────
+// Numbers raw integers (no commas/$). Address passed whole — URLSearchParams encodes.
+function buildDealParams(r) {
+  if (r.type === 'flip') {
+    const cost = (r.ask || 0) + (r.rep || 0);
+    // Max loan inside the CPC box: 90% of total cost, capped at 70% of ARV
+    const loan = Math.round(Math.min(0.90 * cost, r.arv ? 0.70 * r.arv : Infinity));
+    return {
+      pp:      Math.round(r.ask || 0),
+      rehab:   Math.round(r.rep || 0),
+      arv:     Math.round(r.arv || 0),
+      loan,
+      ltc:     cost ? loan / cost : undefined,
+      addr:    r.addr || undefined,
+      purpose: 'flip',
+      exit:    'sale',
+    };
+  }
+  // Rental — STR is the active rental product
+  const downPct = (r.down || 20) / 100;
+  const loan = Math.round((r.price || 0) * (1 - downPct));
+  return {
+    pp:      Math.round(r.price || 0),
+    loan,
+    ltc:     r.price ? loan / r.price : undefined,
+    addr:    r.addr || undefined,
+    purpose: 'str',
+    exit:    'hold',
+  };
+}
 
 // ─── Tier-aware button config ─────────────────────────────────────────────────
 
@@ -98,6 +129,13 @@ export function maybeShowFundingButton(result) {
     return;
   }
 
+  // Hide deals outside the CPC lending box — analyzer stays neutral
+  const deal = buildDealParams(result);
+  if (!qualifiesForCpc(deal)) {
+    container.innerHTML = '';
+    return;
+  }
+
   const cfg = getTierConfig();
   const btnLabel = getFundingLabel(cfg, result.cls);
   const summary = result.type === 'flip'
@@ -106,13 +144,13 @@ export function maybeShowFundingButton(result) {
 
   container.innerHTML = `
     <button class="btn-get-funding" id="${id}-trigger">
-      <img src="icons/clearpath-mark.png" class="funding-icon" alt="" style="background-color:#b8ff57;border-radius:3px">
+      <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
       ${btnLabel}
     </button>`;
 
   document.getElementById(id + '-trigger').addEventListener('click', () => {
-    navigator.clipboard.writeText(summary).catch(() => {});
-    window.open(CPC_URL, '_blank', 'noopener');
+    navigator.clipboard.writeText(summary).catch(() => {});  // clipboard fallback stays
+    window.open(buildCpcUrl(deal), '_blank', 'noopener');
     if (window.showToast) window.showToast(cfg.toast);
   });
 }
@@ -121,11 +159,14 @@ export function maybeShowFundingButton(result) {
 
 export function getPipelineFundingButtonHTML(deal) {
   // Show for positive-return deals (not just hot) — Task 10
-  if (!shouldShowFunding(deal.data || deal)) return '';
+  const result = deal.data || deal;
+  if (!shouldShowFunding(result)) return '';
+  // Same CPC qualification gate as the analyzer (2.5)
+  if (!qualifiesForCpc(buildDealParams(result))) return '';
   const cfg = getTierConfig();
   const btnLabel = getFundingLabel(cfg, deal.cls);
   return `<button class="btn-get-funding pipeline-funding-btn" onclick="event.stopPropagation();handlePipelineFundingClick(${deal.id})">
-    <img src="icons/clearpath-mark.png" class="funding-icon" alt="" style="background-color:#b8ff57;border-radius:3px">
+    <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
     <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${btnLabel}</span>
   </button>`;
 }
@@ -139,7 +180,7 @@ export function handlePipelineFundingClick(id) {
   const summary = deal.type === 'flip'
     ? buildFlipSummary(deal.data, cfg.tag)
     : buildRentalSummary(deal.data, cfg.tag);
-  navigator.clipboard.writeText(summary).catch(() => {});
-  window.open(CPC_URL, '_blank', 'noopener');
+  navigator.clipboard.writeText(summary).catch(() => {});  // clipboard fallback stays
+  window.open(buildCpcUrl(buildDealParams(deal.data)), '_blank', 'noopener');
   if (window.showToast) window.showToast(cfg.toast);
 }

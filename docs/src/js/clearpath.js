@@ -44,17 +44,17 @@ function getTierConfig() {
   if (tier === 'pro') return {
     label: 'Get Funding — Dedicated Broker',
     tag:   '[Pro — Dedicated Broker Requested]',
-    toast: 'Deal summary copied — your dedicated Clear Path Capital private money lender will follow up directly.',
+    toast: 'Form pre-filled on the Clear Path page — review and submit. Your dedicated broker will follow up directly. (Summary also copied as backup.)',
   };
   if (tier === 'investor') return {
     label: 'Get Funding — Priority Review',
     tag:   '[Investor — Priority Review]',
-    toast: 'Deal summary copied — your submission will receive priority review from Clear Path Capital.',
+    toast: 'Form pre-filled on the Clear Path page — review and submit for priority review. (Summary also copied as backup.)',
   };
   return {
     label: 'Get Funding — Clear Path Capital',
     tag:   '[Starter Submission]',
-    toast: 'Deal summary copied — paste into the Notes field on the Clear Path Capital form',
+    toast: 'Form pre-filled on the Clear Path page — review and submit. (Summary also copied as backup.)',
   };
 }
 
@@ -89,7 +89,7 @@ function buildRentalSummary(r, tag) {
     tag,
     '---',
     'Purchase Price: $' + Math.round(r.price).toLocaleString(),
-    'Gross Annual Rent: $' + Math.round(r.rent).toLocaleString(),
+    'Potential Annual Revenue (100% occ.): $' + Math.round(r.rent).toLocaleString(),
     'Cash-on-Cash Return: ' + (Math.round(r.coc * 10) / 10) + '%',
     'Cap Rate: ' + (Math.round(r.capRate * 10) / 10) + '%',
     'Annual Cash Flow: $' + Math.round(r.cashflow).toLocaleString(),
@@ -100,14 +100,24 @@ function buildRentalSummary(r, tag) {
   return lines.filter(Boolean).join('\n');
 }
 
-// ─── Determine if button should show and what copy to use (Task 10) ──────────
-
+// ─── Determine if button should show and what copy to use ────────────────────
+// Item 2: funding only on hot/warm verdicts — walk-away never shows a button
 function shouldShowFunding(result) {
-  if (result.type === 'flip') {
-    return result.profit != null && result.profit > 0;
-  }
-  // STR rental
-  return result.cashflow != null && result.cashflow > 0;
+  return result.cls === 'hot' || result.cls === 'warm';
+}
+
+// Item 6: true when the ONLY reason a deal fails the CPC box is loan < $150K
+function belowMinimumOnly(deal) {
+  const { loan, ltc, arv } = deal;
+  if (!loan || loan >= 150000) return false;       // must be genuinely under the minimum
+  if (ltc !== undefined && ltc > 0.90) return false;
+  if (arv && loan / arv > 0.70) return false;
+  return true;
+}
+
+function underBoxHTML(deal) {
+  const approxK = Math.round(deal.loan / 1000);
+  return `<div class="funding-underbox">This deal's loan (~$${approxK}K) is below the $150K private-money minimum Clear Path brokers. Deals $150K+ get a funding option here.</div>`;
 }
 
 function getFundingLabel(cfg, cls) {
@@ -123,16 +133,16 @@ export function maybeShowFundingButton(result) {
   const container = document.getElementById(id);
   if (!container) return;
 
-  // Hide for negative returns or pass-tier deals (Task 10)
+  // Item 2: only hot/warm verdicts ever show funding — walk-away stays neutral
   if (!shouldShowFunding(result)) {
     container.innerHTML = '';
     return;
   }
 
-  // Hide deals outside the CPC lending box — analyzer stays neutral
   const deal = buildDealParams(result);
   if (!qualifiesForCpc(deal)) {
-    container.innerHTML = '';
+    // Item 6: hot/warm deal that only misses on loan size → muted explainer, no button
+    container.innerHTML = belowMinimumOnly(deal) ? underBoxHTML(deal) : '';
     return;
   }
 

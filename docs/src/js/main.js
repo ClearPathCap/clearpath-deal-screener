@@ -9,7 +9,7 @@ import { saveDeal as _saveDeal, renderPipeline,
          requestDelete, confirmDelete }                              from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
-import { ALL_MARKETS as PICKER_ALL, STR_MARKETS }                   from './markets.js';
+import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS }     from './markets.js';
 import { initCurrencyInputs, parseComma }                           from './format.js';
 import { handlePipelineFundingClick }                               from './clearpath.js';
 import {
@@ -146,7 +146,7 @@ function clearNewDeal(type) {
     // Task 3: clear user-edited flag so renderMarketSlots resets target to market default
     const targetEl = document.getElementById('f-target');
     if (targetEl) { delete targetEl.dataset.userEdited; targetEl.value = '40,000'; }
-    document.getElementById('self-reno').checked = true;
+    document.getElementById('self-reno').checked = false; // item 7: default unchecked (70% rule)
     resetFlip();
     renderMarketSlots('flip-slots', 'flip');
     const btn = document.getElementById('flip-save-btn');
@@ -306,7 +306,7 @@ function confirmMarketChange() {
 // ─── Locked slot click ────────────────────────────────────────────────────────
 
 function handleLockedSlot(slotNumber) {
-  document.getElementById('upgrade-modal-title').textContent = `Unlock Region ${slotNumber}`;
+  configureUpgradeModal('region');
   openModal('modal-upgrade');
 }
 
@@ -468,6 +468,7 @@ function pickerSelectMarket(marketId) {
     _activeSlot = 0;
     renderMarketSlots('flip-slots',   'flip');
     renderMarketSlots('rental-slots', 'rental');
+    renderGuideMarketIntel();   // item 4: keep Guide intel in sync with selected regions
     return;
   }
 
@@ -480,6 +481,7 @@ function pickerSelectMarket(marketId) {
   _activeSlot = _pickerSlot;
   renderMarketSlots('flip-slots',   'flip');
   renderMarketSlots('rental-slots', 'rental');
+  renderGuideMarketIntel();     // item 4: regenerate region intel
 
   const label = getMarketLabel(marketId);
   showToast(_pickerIsChange
@@ -521,7 +523,7 @@ function setRentalPresetWithHint(type, el) {
 function validateRequiredFields(type) {
   const fields = type === 'flip'
     ? [{ id: 'f-ask', label: 'Purchase Price' }, { id: 'f-arv', label: 'ARV' }, { id: 'f-rep', label: 'Repair Costs' }]
-    : [{ id: 'v-price', label: 'Purchase Price' }, { id: 'v-rent', label: 'Gross Annual Rent' }];
+    : [{ id: 'v-price', label: 'Purchase Price' }, { id: 'v-rent', label: 'Potential Annual Revenue' }];
 
   let valid = true;
   fields.forEach(f => {
@@ -585,17 +587,64 @@ document.querySelectorAll('.modal-backdrop').forEach(m => {
   });
 });
 
-// ─── Upgrade modal ────────────────────────────────────────────────────────────
+// ─── Upgrade modal — context-aware + tier-aware (item 3) ─────────────────────
 
-function upgradeToInvestor() {
-  // TODO: wire to Stripe payment link
-  showToast('Investor tier — coming soon');
+// trigger: 'region' | 'save' | 'general'
+function configureUpgradeModal(trigger) {
+  const tier      = getActiveTier();
+  const title     = document.getElementById('upgrade-modal-title');
+  const subhead   = document.getElementById('upgrade-subhead');
+  const compare   = document.getElementById('upgrade-compare');
+  const colInv    = document.getElementById('upgrade-col-investor');
+  const colPro    = document.getElementById('upgrade-col-pro');
+  const proFeat   = document.getElementById('upgrade-pro-features');
+  const topNote   = document.getElementById('upgrade-toptier-note');
+
+  // Context-aware headline by trigger
+  const headlines = {
+    region: 'Analyze deals in 4 markets, not 2',
+    save:   'Never lose a deal you\'ve already found',
+    general:'Upgrade Your Plan',
+  };
+  if (title)   title.textContent = headlines[trigger] || headlines.general;
+  if (subhead) subhead.textContent = 'Paid plans sell data and convenience — funding stays free on every tier.';
+
+  // Reset visibility defaults
+  if (compare) compare.style.display = '';
+  if (colInv)  colInv.style.display = '';
+  if (colPro)  colPro.style.display = '';
+  if (topNote) topNote.style.display = 'none';
+
+  if (tier === 'pro') {
+    // Already top tier — nothing to sell
+    if (compare) compare.style.display = 'none';
+    if (topNote) topNote.style.display = 'block';
+    if (title)   title.textContent = 'You\'re on Pro';
+    if (subhead) subhead.textContent = '';
+    return;
+  }
+
+  if (tier === 'investor') {
+    // Delta framing — show only the Pro column
+    if (colInv) colInv.style.display = 'none';
+    if (title)  title.textContent = 'You have 4 regions. Pro adds 2 more, plus a dedicated broker.';
+    if (proFeat) proFeat.innerHTML = [
+      '2 more markets — 6 regions total',
+      'A dedicated Clear Path broker who already knows your file before you call',
+      'Highest-priority funding across dozens of lenders',
+      'Everything in Investor, with no caps',
+    ].map(t => `<li>${t}</li>`).join('');
+  }
 }
 
-function upgradeToPro() {
-  // TODO: wire to Stripe payment link
-  showToast('Pro tier — coming soon');
+function recordUpgradeInterest(tierName) {
+  try { localStorage.setItem('upgradeInterest', tierName); } catch {}
+  closeModal('modal-upgrade');
+  showToast('Thanks — we\'ll email you when ' + (tierName === 'pro' ? 'Pro' : 'Investor') + ' launches.');
 }
+
+function upgradeToInvestor() { recordUpgradeInterest('investor'); }
+function upgradeToPro()      { recordUpgradeInterest('pro'); }
 
 // ─── Header tier badge — tappable, 5-tap dev trigger (items 3, 7) ────────────
 
@@ -613,7 +662,7 @@ function initTierBadge() {
       clearTimeout(tapTimer);
 
       if (tapCount === 1) {
-        document.getElementById('upgrade-modal-title').textContent = 'Upgrade Your Plan';
+        configureUpgradeModal('general');
         openModal('modal-upgrade');
       }
 
@@ -653,6 +702,71 @@ function applyTierToUI() {
     el.style.filter = unlockAll ? 'none' : '';
     el.style.opacity = unlockAll ? '1' : '';
   });
+}
+
+// ─── Region-keyed Guide intel (item 4) ───────────────────────────────────────
+
+// Open the upgrade modal with a given trigger (used by generated intel blocks)
+function openUpgrade(trigger) {
+  configureUpgradeModal(trigger || 'general');
+  openModal('modal-upgrade');
+}
+
+function _kFmt(v) { return '$' + Math.round(v / 1000) + 'k'; }
+
+// Build the intel HTML for a single market slug, from markets.js fields
+function buildRegionIntel(slug) {
+  const flip  = FLIP_MARKETS[slug];
+  const str   = STR_MARKETS[slug];
+  const label = getMarketLabel(slug);             // "Charlotte, NC"
+  if (!flip && !str) return '';
+
+  const rows = [];
+
+  if (flip) {
+    rows.push(`<div class="guide-item"><div class="gi-label">Median ARV · Days on market</div><div class="gi-val">$${Math.round(flip.medianArv / 1000)}k · ${flip.dom} days</div><div class="gi-note">${flip.rehabNote || ''}</div></div>`);
+    rows.push(`<div class="guide-item"><div class="gi-label">Disciplined offer (ARV rule)</div><div class="gi-val">${Math.round(flip.arvRuleLow * 100)}–${Math.round(flip.arvRuleHigh * 100)}% of ARV − repairs</div></div>`);
+    rows.push(`<div class="guide-item"><div class="gi-label">Mid rehab (hired-out)</div><div class="gi-val">$${flip.repairLow}–${flip.repairHigh}/sf</div></div>`);
+    rows.push(`<div class="guide-item"><div class="gi-label">Typical monthly hold</div><div class="gi-val">$${flip.monthlyHoldLow.toLocaleString()}–$${flip.monthlyHoldHigh.toLocaleString()}</div></div>`);
+  }
+
+  // STR viability line — prefer richer STR_MARKETS data, fall back to flip's STR fields
+  if (str) {
+    rows.push(`<div class="guide-item"><div class="gi-label">STR potential</div><div class="gi-val">${_kFmt(str.revLow)}–${_kFmt(str.revHigh)}/yr · ${Math.round(str.occLow * 100)}–${Math.round(str.occHigh * 100)}% occ.</div><div class="gi-note">${str.benchmarkNote || str.regulatoryNote || ''}</div></div>`);
+  } else if (flip && flip.strViability) {
+    rows.push(`<div class="guide-item"><div class="gi-label">STR potential</div><div class="gi-val">${flip.strViability}${flip.strRevLow ? ' · ' + _kFmt(flip.strRevLow) + '–' + _kFmt(flip.strRevHigh) + '/yr' : ''}</div></div>`);
+  }
+
+  const cityOnly = label.split(',')[0];
+  return `
+    <div class="locked-section">
+      <div class="locked-content">
+        <div class="guide-section">
+          <h3>${label} Market Intel</h3>
+          ${rows.join('')}
+        </div>
+      </div>
+      <div class="locked-overlay">
+        <div class="locked-overlay-inner">
+          <div class="locked-icon">🔒</div>
+          <div class="locked-label">${cityOnly} Intel</div>
+          <div class="locked-msg">Investor unlocks intel for your regions</div>
+          <button class="locked-upgrade-btn" onclick="openUpgrade('region')">Upgrade to Unlock</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderGuideMarketIntel() {
+  const container = document.getElementById('guide-market-intel');
+  if (!container) return;
+  const slugs = getMarketSlots();   // every populated slot
+  if (!slugs.length) {
+    container.innerHTML = '<div class="guide-item"><div class="gi-note">Pick a market region on the Fix &amp; Flip or Rentals tab to see its benchmarks here.</div></div>';
+    return;
+  }
+  container.innerHTML = slugs.map(buildRegionIntel).filter(Boolean).join('');
+  applyTierToUI();  // re-apply lock state to the freshly generated sections
 }
 
 // ─── First-launch onboarding — gate on primaryMarket (Task 3) ────────────────
@@ -722,6 +836,7 @@ Object.assign(window, {
   // upgrade
   upgradeToInvestor,
   upgradeToPro,
+  openUpgrade,
   // pipeline funding (clearpath)
   handlePipelineFundingClick,
 });
@@ -740,6 +855,7 @@ initTierBadge();
 applyTierToUI();
 renderMarketSlots('flip-slots',   'flip');
 renderMarketSlots('rental-slots', 'rental');
+renderGuideMarketIntel();   // item 4: build region intel from selected markets
 initOnboarding();
 
 // Task 3: track when user manually edits the Min Profit Target
@@ -758,7 +874,3 @@ if (repField) {
   });
   repField.addEventListener('focus', () => repField.classList.remove('auto-filled'));
 }
-
-// Scroll padding needs recalculate after layout settles
-window.addEventListener('load', updateScrollPadding);
-window.addEventListener('resize', updateScrollPadding);

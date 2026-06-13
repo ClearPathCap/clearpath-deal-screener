@@ -70,9 +70,10 @@
     <div>
       <div class="toggle-label">Self-Renovating</div>
       <div class="toggle-sub">You're doing the work — saves 20–35% on labor</div>
+      <div class="toggle-sub beginner-only" style="margin-top:4px">Only check this if you'll genuinely perform the renovation yourself — lenders verify.</div>
     </div>
     <label class="toggle">
-      <input type="checkbox" id="self-reno" checked onchange="updateSelfReno()">
+      <input type="checkbox" id="self-reno" onchange="updateSelfReno()">
       <div class="toggle-track"></div>
     </label>
   </div>
@@ -265,9 +266,10 @@
   </div>
   <div class="field-row">
     <div class="field">
-      <label>Gross Annual Rent <span>(STR)</span></label>
+      <label>Potential Annual Revenue <span>(at 100% occupancy)</span></label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-rent" class="has-pfx" placeholder="55,000" data-currency></div>
       <div class="rent-range-hint" id="rent-range-hint" style="display:none"></div>
+      <div class="field-hint beginner-only">Using AirDNA/Rabbu annual revenue? That number already includes occupancy — enter it here and set Occupancy to 100%, or back into the full-potential number.</div>
     </div>
     <div class="field">
       <label>Occupancy Rate</label>
@@ -417,47 +419,6 @@
   </div>
   <div style="padding:0 20px">
 
-    <!-- ── FREE: Private Money Basics — moved to top (Task 16) ───────── -->
-    <div class="guide-section">
-      <h3>Private Money Lending Basics</h3>
-      <div class="guide-item">
-        <div class="gi-label">Key metrics lenders care about</div>
-        <div class="gi-val">LTV · ARV · Borrower experience · Exit strategy</div>
-        <div class="gi-note">Most private lenders want LTV under 70% of ARV. Your deal screener confirms this before you present a deal.</div>
-      </div>
-      <div class="guide-item">
-        <div class="gi-label">What Clear Path Capital does</div>
-        <div class="gi-note">CPC brokers private money — meaning they work on your behalf across dozens of lenders to find the best terms. You don't call lenders; they do. That's the fiduciary difference.</div>
-      </div>
-      <div class="guide-item">
-        <div class="gi-label">Typical private money terms</div>
-        <div class="gi-val">Rate: 8–12% · LTV: up to 70% ARV · Term: 6–18 mo</div>
-        <div class="gi-note">Terms vary widely by borrower experience, market, and deal quality. CPC can often improve on rates you'd get going direct.</div>
-      </div>
-    </div>
-
-    <!-- ── LOCKED: Market intel ──────────────────────────────────────── -->
-    <div class="locked-section">
-      <div class="locked-content">
-        <div class="tip-card warn">
-          <div class="tc-label">Market Update — May 2026</div>
-          <p>Rates have eased into the mid-6s after the 2024–2025 highs. Charlotte continues to outperform but the 12–18% YoY price spikes of 2022–2023 have normalized to ~5–7%. STR markets cooled meaningfully through 2024 as supply caught up with demand — Pigeon Forge especially saw 8–15% revenue declines per listing. Insurance in coastal SC is up 25–40% over 2023. Always verify current numbers in AirDNA, Zillow, and recent local comps before pulling the trigger.</p>
-        </div>
-        <div class="tip-card">
-          <div class="tc-label">Your Edge</div>
-          <p>Your full buildout and construction background is a serious advantage in fix &amp; flips. You can identify structural issues others miss, scope repairs accurately, and self-perform work — giving you 20–35% cost savings over investors who hire everything out.</p>
-        </div>
-      </div>
-      <div class="locked-overlay">
-        <div class="locked-overlay-inner">
-          <div class="locked-icon">🔒</div>
-          <div class="locked-label">Market Intel</div>
-          <div class="locked-msg">Unlock market-specific intel with Investor or Pro</div>
-          <button class="locked-upgrade-btn" onclick="openModal('modal-upgrade')">Upgrade to Unlock</button>
-        </div>
-      </div>
-    </div>
-
     <!-- ── FREE: How to Estimate ARV ──────────────────────────────── -->
     <div class="guide-section">
       <h3>How to Estimate ARV</h3>
@@ -539,43 +500,28 @@
       </div>
     </div>
 
-    <!-- ── LOCKED: Market benchmarks ──────────────────────────────── -->
-    <div class="locked-section">
-      <div class="locked-content">
-        <div class="guide-section">
-          <h3>Charlotte &amp; SC Fix &amp; Flip Benchmarks</h3>
-          <div class="guide-item">
-            <div class="gi-label">Average days on market (2026)</div>
-            <div class="gi-val">Flips: 30–75 days · Plan 5–6 month hold</div>
-            <div class="gi-note">Down from the 90+ day stretches of late 2023. Quality flips priced right are moving again.</div>
-          </div>
-          <div class="guide-item">
-            <div class="gi-label">Same scopes hired out</div>
-            <div class="gi-val">Light $18–35 · Mid $42–70 · Full $90–130</div>
-            <div class="gi-note">Labor premium in Charlotte has risen through 2025. Self-performing is your biggest profit lever.</div>
-          </div>
-        </div>
-        <div class="guide-section">
-          <h3>STR Market Benchmarks (2026)</h3>
-          <div class="guide-item">
-            <div class="gi-label">Ocean Lakes SC (Myrtle Beach area)</div>
-            <div class="gi-val">Gross: $40k–$85k/yr · Occ: 58–70%</div>
-            <div class="gi-note">Seasonal peak May–Sept. Golf cart community, family-focused. Insurance up 30%+ since 2023.</div>
-          </div>
-          <div class="guide-item">
-            <div class="gi-label">Gatlinburg TN</div>
-            <div class="gi-val">Gross: $48k–$140k/yr · Occ: 62–75%</div>
-            <div class="gi-note">Year-round demand. Hot tub = 20–30% revenue increase. Stable through the STR correction.</div>
-          </div>
-        </div>
+    <!-- ── Your Market Intel — region-keyed, generated from markets.js (item 4) ── -->
+    <div class="guide-section">
+      <h3>Your Market Intel</h3>
+    </div>
+    <div id="guide-market-intel"></div>
+
+    <!-- ── FREE: Private Money Basics — funnel content reads better after value ── -->
+    <div class="guide-section">
+      <h3>Private Money Lending Basics</h3>
+      <div class="guide-item">
+        <div class="gi-label">Key metrics lenders care about</div>
+        <div class="gi-val">LTV · ARV · Borrower experience · Exit strategy</div>
+        <div class="gi-note">Most private lenders want LTV under 70% of ARV. Your deal screener confirms this before you present a deal.</div>
       </div>
-      <div class="locked-overlay">
-        <div class="locked-overlay-inner">
-          <div class="locked-icon">🔒</div>
-          <div class="locked-label">Market Benchmarks</div>
-          <div class="locked-msg">Unlock market-specific intel with Investor or Pro</div>
-          <button class="locked-upgrade-btn" onclick="openModal('modal-upgrade')">Upgrade to Unlock</button>
-        </div>
+      <div class="guide-item">
+        <div class="gi-label">What Clear Path Capital does</div>
+        <div class="gi-note">CPC brokers private money — meaning they work on your behalf across dozens of lenders to find the best terms. You don't call lenders; they do. That's the fiduciary difference.</div>
+      </div>
+      <div class="guide-item">
+        <div class="gi-label">Typical private money terms</div>
+        <div class="gi-val">Rate: 8–12% · LTV: up to 70% ARV · Term: 6–18 mo</div>
+        <div class="gi-note">Terms vary widely by borrower experience, market, and deal quality. CPC can often improve on rates you'd get going direct.</div>
       </div>
     </div>
 
@@ -643,41 +589,41 @@
   </div>
 </div>
 
-<!-- Upgrade — Investor vs Pro comparison (items 3, 5, 6) -->
+<!-- Upgrade — context-aware, tier-aware (item 3) -->
 <div class="modal-backdrop" id="modal-upgrade">
   <div class="modal modal-upgrade">
     <h3 id="upgrade-modal-title">Upgrade Your Plan</h3>
-    <p style="margin-bottom:12px">Choose the plan that matches how you invest.</p>
-    <div class="tier-compare">
-      <div class="tier-card">
+    <p id="upgrade-subhead" style="margin-bottom:12px">Paid plans sell data and convenience — funding stays free on every tier.</p>
+    <div class="tier-compare" id="upgrade-compare">
+      <div class="tier-card" id="upgrade-col-investor">
         <div class="tc-name">INVESTOR</div>
-        <div class="tc-price">$X/mo</div>
+        <div class="tc-price">$14<span class="tc-per">/mo</span></div>
+        <div class="tc-annual">or $119/yr — save 30%</div>
         <ul class="tc-features">
-          <li>4 Market Regions (your choice)</li>
-          <li>Market intel in Field Guide per your regions</li>
-          <li>Unlimited pipeline saves</li>
-          <li>Deal export — shareable deal summaries</li>
-          <li>Share your pipeline with Starter users</li>
-          <li>Priority CPC funding review</li>
+          <li>Analyze deals in 4 markets, not 2</li>
+          <li>Your market's repair costs, rents, and flip benchmarks — in your pocket at the showing</li>
+          <li>Never lose a deal — unlimited pipeline saves</li>
+          <li>Export a clean deal summary to send a partner or lender</li>
+          <li>Priority review when you send a deal to Clear Path</li>
         </ul>
-        <button class="btn-upgrade btn-upgrade-investor" onclick="upgradeToInvestor()">Upgrade to Investor</button>
+        <button class="btn-upgrade btn-upgrade-investor" onclick="upgradeToInvestor()">Get notified at launch</button>
       </div>
-      <div class="tier-card tier-card-featured">
+      <div class="tier-card tier-card-featured" id="upgrade-col-pro">
         <div class="tc-badge">BEST VALUE</div>
         <div class="tc-name">PRO</div>
-        <div class="tc-price">$X/mo</div>
-        <ul class="tc-features">
-          <li>6 Market Regions (your choice)</li>
-          <li>Full Field Guide intel for all regions</li>
-          <li>Unlimited everything</li>
-          <li>Deal export + pipeline sharing</li>
-          <li>Dedicated Clear Path Capital private money lender</li>
-          <li>Fiduciary representation — best terms across dozens of lenders</li>
-          <li>Highest priority CPC funding</li>
+        <div class="tc-price">$29<span class="tc-per">/mo</span></div>
+        <div class="tc-annual">or $249/yr — save 30%</div>
+        <ul class="tc-features" id="upgrade-pro-features">
+          <li>All 6 of your markets, fully unlocked</li>
+          <li>Full Field Guide intel for every market you track</li>
+          <li>Unlimited everything — pipeline, exports, sharing</li>
+          <li>A broker who already knows your file before you call</li>
+          <li>Highest-priority funding across dozens of lenders</li>
         </ul>
-        <button class="btn-upgrade btn-upgrade-pro" onclick="upgradeToPro()">Upgrade to Pro</button>
+        <button class="btn-upgrade btn-upgrade-pro" onclick="upgradeToPro()">Get notified at launch</button>
       </div>
     </div>
+    <p id="upgrade-toptier-note" style="display:none;font-size:13px;color:var(--accent);text-align:center;padding:8px 0">You're on Pro — every feature is unlocked.</p>
     <div class="modal-actions" style="margin-top:14px">
       <button class="btn-cancel" onclick="closeModal('modal-upgrade')">Not Now</button>
     </div>

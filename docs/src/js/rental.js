@@ -101,8 +101,8 @@ export function analyzeRental() {
   ]);
 
   const breakdownRows = [
-    { l: 'Gross annual rent',                                               v: fmt(rent) },
-    { l: 'Effective rent (' + Math.round(occ * 100) + '% occ.)',          v: fmt(effRent) },
+    { l: 'Potential revenue (100% occ.)',                                   v: fmt(rent) },
+    { l: 'Effective revenue (' + Math.round(occ * 100) + '% occ.)',        v: fmt(effRent) },
     { l: 'Platform fees (Airbnb/VRBO)',                                     v: '–' + fmt(platformFee) },
     { l: 'Property manager' + (pm > 0 ? ' (' + Math.round(pm * 100) + '%)' : ' (self)'), v: pm > 0 ? '–' + fmt(pmFee) : '$0' },
     { l: 'Taxes + insurance',                                              v: '–' + fmt(tax) },

@@ -92,6 +92,10 @@ export function analyzeFlip() {
     vsub = 'Close to your target. Counter at ' + fmt(maxOffer) + ' max offer' + (self
       ? ' — your labor advantage could close the gap.'
       : '.') + ' Numbers are workable if you negotiate price or reduce scope.';
+  } else if (profit >= 2.5 * target) {
+    // Item 5: large absolute profit floors the verdict at warm even when ROI is below bar
+    verdict = 'Dig Deeper & Negotiate'; cls = 'warm';
+    vsub = 'ROI is below your usual bar, but absolute profit is large — decide if capital efficiency or dollar profit matters more on this one.';
   } else {
     verdict = 'Counter at Max Offer — Walk Away'; cls = 'pass';
     vsub = "Numbers don't work at asking. Max you can pay: " + fmt(maxOffer) + ". Counter hard or walk — don't overpay.";

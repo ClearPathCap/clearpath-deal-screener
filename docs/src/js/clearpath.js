@@ -6,9 +6,19 @@ import { buildCpcUrl, qualifiesForCpc } from './funding.js';
 
 const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn' };
 
+// ─── Parse "City ST" off the end of a freeform address (item 11a) ────────────
+// e.g. "412 Oak St, Charlotte NC" → { city: 'Charlotte', state: 'NC' }
+function parseCityState(addr) {
+  if (!addr) return {};
+  const m = addr.trim().match(/([A-Za-z .'-]+?)[ ,]+([A-Za-z]{2})$/);
+  if (!m) return {};
+  return { city: m[1].trim(), state: m[2].toUpperCase() };
+}
+
 // ─── Normalize an analyzer result into the CPC deal-param object ──────────────
 // Numbers raw integers (no commas/$). Address passed whole — URLSearchParams encodes.
 function buildDealParams(r) {
+  const { city, state } = parseCityState(r.addr);
   if (r.type === 'flip') {
     const cost = (r.ask || 0) + (r.rep || 0);
     // Max loan inside the CPC box: 90% of total cost, capped at 70% of ARV
@@ -20,6 +30,7 @@ function buildDealParams(r) {
       loan,
       ltc:     cost ? loan / cost : undefined,
       addr:    r.addr || undefined,
+      city, state,
       purpose: 'flip',
       exit:    'sale',
     };
@@ -32,6 +43,7 @@ function buildDealParams(r) {
     loan,
     ltc:     r.price ? loan / r.price : undefined,
     addr:    r.addr || undefined,
+    city, state,
     purpose: 'str',
     exit:    'hold',
   };

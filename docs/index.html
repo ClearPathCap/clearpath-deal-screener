@@ -18,7 +18,7 @@
 </head>
 <body>
 
-<!-- Dev mode banner — only shown when devTier is set in localStorage -->
+<!-- Dev mode banner — shown only when cpcDevUnlock is set (dev code), not for comp tiers -->
 <div id="dev-mode-banner" class="dev-mode-banner" style="display:none"></div>
 
 <div class="nav">
@@ -26,6 +26,16 @@
   <button class="nav-btn" data-tab="rental" onclick="showPage('rental',this)">Rentals</button>
   <button class="nav-btn" data-tab="pipeline" onclick="showPage('pipeline',this)">Pipeline</button>
   <button class="nav-btn" data-tab="guide" onclick="showPage('guide',this)">Guide</button>
+</div>
+
+<!-- Global utility row — share + install, kept off the wordmark row (Round 2 #3) -->
+<div class="util-bar">
+  <button class="icon-btn" title="Share app" onclick="openShareApp()" aria-label="Share app">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+  </button>
+  <button class="icon-btn" title="Install as app" onclick="openInstall()" aria-label="Install as app">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+  </button>
 </div>
 
 <!-- ═══════════════════════════════════════
@@ -43,13 +53,6 @@
       </div>
     </div>
     <div class="header-actions">
-      <!-- item 18: iOS-style share icon -->
-      <button class="icon-btn" title="Share app" onclick="openShareApp()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-      </button>
-      <button class="icon-btn" title="Install as app" onclick="openInstall()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
-      </button>
       <div class="tier-badge">STARTER</div>
       <div class="mode-toggle-wrap" title="Guide mode">
         <label class="toggle toggle-sm">
@@ -218,13 +221,6 @@
       </div>
     </div>
     <div class="header-actions">
-      <!-- item 18: iOS-style share icon -->
-      <button class="icon-btn" title="Share app" onclick="openShareApp()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-      </button>
-      <button class="icon-btn" title="Install as app" onclick="openInstall()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
-      </button>
       <div class="tier-badge">STARTER</div>
       <div class="mode-toggle-wrap" title="Guide mode">
         <label class="toggle toggle-sm">
@@ -379,12 +375,6 @@
         <p>Tap any deal to expand · all data stays on this device</p>
       </div>
     </div>
-    <div class="header-actions">
-      <!-- item 18: iOS-style share icon -->
-      <button class="icon-btn" title="Share app" onclick="openShareApp()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-      </button>
-    </div>
   </div>
   <div style="padding:0 20px">
     <!-- item 17: "Strong Deals Only" filter -->
@@ -530,10 +520,9 @@
 </div>
 
 <!-- Powered by Clear Path Capital footer — visible on every tab -->
-<a class="cpc-footer" href="https://clearpathcapfunding.com/?src=dealscreener" target="_blank" rel="noopener">
+<a class="cpc-footer" href="https://clearpathcapfunding.com/?src=dealscreener" target="_blank" rel="noopener" aria-label="Powered by Clear Path Capital">
   <span>Powered by</span>
   <img src="icons/clearpath-wordmark.png" alt="Clear Path Capital">
-  <span>Clear Path Capital</span>
 </a>
 
 <!-- ═══════════════════════════════════════
@@ -593,7 +582,7 @@
 <div class="modal-backdrop" id="modal-upgrade">
   <div class="modal modal-upgrade">
     <h3 id="upgrade-modal-title">Upgrade Your Plan</h3>
-    <p id="upgrade-subhead" style="margin-bottom:12px">Paid plans sell data and convenience — funding stays free on every tier.</p>
+    <p id="upgrade-subhead" style="margin-bottom:12px">Paid plans unlock real market data for the markets you invest in — funding stays free on every tier.</p>
     <div class="tier-compare" id="upgrade-compare">
       <div class="tier-card" id="upgrade-col-investor">
         <div class="tc-name">INVESTOR</div>
@@ -601,10 +590,10 @@
         <div class="tc-annual">or $119/yr — save 30%</div>
         <ul class="tc-features">
           <li>Analyze deals in 4 markets, not 2</li>
-          <li>Your market's repair costs, rents, and flip benchmarks — in your pocket at the showing</li>
+          <li>Your markets' repair costs, rents, and flip benchmarks — in your pocket at the showing</li>
           <li>Never lose a deal — unlimited pipeline saves</li>
           <li>Export a clean deal summary to send a partner or lender</li>
-          <li>Priority review when you send a deal to Clear Path</li>
+          <li>Priority review — your deal gets a first look at Clear Path</li>
         </ul>
         <button class="btn-upgrade btn-upgrade-investor" onclick="upgradeToInvestor()">Get notified at launch</button>
       </div>

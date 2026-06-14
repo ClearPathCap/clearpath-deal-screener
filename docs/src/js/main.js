@@ -608,7 +608,7 @@ function configureUpgradeModal(trigger) {
     general:'Upgrade Your Plan',
   };
   if (title)   title.textContent = headlines[trigger] || headlines.general;
-  if (subhead) subhead.textContent = 'Paid plans sell data and convenience — funding stays free on every tier.';
+  if (subhead) subhead.textContent = 'Paid plans unlock real market data for the markets you invest in — funding stays free on every tier.';
 
   // Reset visibility defaults
   if (compare) compare.style.display = '';
@@ -733,35 +733,50 @@ function openUpgrade(trigger) {
 
 function _kFmt(v) { return '$' + Math.round(v / 1000) + 'k'; }
 
-// Build the intel HTML for a single market slug, from markets.js fields
-function buildRegionIntel(slug) {
-  const flip  = FLIP_MARKETS[slug];
-  const str   = STR_MARKETS[slug];
-  const label = getMarketLabel(slug);             // "Charlotte, NC"
+// Build the intel HTML for a single market slug, from markets.js fields.
+// Depth ladders by tier: Starter sees a locked preview, Investor gets the
+// quantitative benchmarks, Pro additionally gets the analyst notes + sources.
+function buildRegionIntel(slug, tier) {
+  const flip   = FLIP_MARKETS[slug];
+  const str    = STR_MARKETS[slug];
+  const label  = getMarketLabel(slug);            // "Charlotte, NC"
   if (!flip && !str) return '';
+  const isPro  = tier === 'pro';                  // analyst notes + sources are Pro-only
+  const note   = txt => isPro && txt ? `<div class="gi-note">${txt}</div>` : '';
 
   const rows = [];
 
   if (flip) {
-    rows.push(`<div class="guide-item"><div class="gi-label">Median ARV · Days on market</div><div class="gi-val">$${Math.round(flip.medianArv / 1000)}k · ${flip.dom} days</div><div class="gi-note">${flip.rehabNote || ''}</div></div>`);
+    rows.push(`<div class="guide-item"><div class="gi-label">Median ARV · Days on market</div><div class="gi-val">$${Math.round(flip.medianArv / 1000)}k · ${flip.dom} days</div>${note(flip.rehabNote)}</div>`);
     rows.push(`<div class="guide-item"><div class="gi-label">Disciplined offer (ARV rule)</div><div class="gi-val">${Math.round(flip.arvRuleLow * 100)}–${Math.round(flip.arvRuleHigh * 100)}% of ARV − repairs</div></div>`);
     rows.push(`<div class="guide-item"><div class="gi-label">Mid rehab (hired-out)</div><div class="gi-val">$${flip.repairLow}–${flip.repairHigh}/sf</div></div>`);
     rows.push(`<div class="guide-item"><div class="gi-label">Typical monthly hold</div><div class="gi-val">$${flip.monthlyHoldLow.toLocaleString()}–$${flip.monthlyHoldHigh.toLocaleString()}</div></div>`);
   }
 
-  // STR viability line — prefer richer STR_MARKETS data, fall back to flip's STR fields
+  // STR viability — prefer richer STR_MARKETS data, fall back to flip's STR fields
   if (str) {
-    rows.push(`<div class="guide-item"><div class="gi-label">STR potential</div><div class="gi-val">${_kFmt(str.revLow)}–${_kFmt(str.revHigh)}/yr · ${Math.round(str.occLow * 100)}–${Math.round(str.occHigh * 100)}% occ.</div><div class="gi-note">${str.benchmarkNote || str.regulatoryNote || ''}</div></div>`);
+    rows.push(`<div class="guide-item"><div class="gi-label">STR potential</div><div class="gi-val">${_kFmt(str.revLow)}–${_kFmt(str.revHigh)}/yr · ${Math.round(str.occLow * 100)}–${Math.round(str.occHigh * 100)}% occ.</div>${note(str.benchmarkNote || str.regulatoryNote)}</div>`);
   } else if (flip && flip.strViability) {
     rows.push(`<div class="guide-item"><div class="gi-label">STR potential</div><div class="gi-val">${flip.strViability}${flip.strRevLow ? ' · ' + _kFmt(flip.strRevLow) + '–' + _kFmt(flip.strRevHigh) + '/yr' : ''}</div></div>`);
   }
+
+  // Pro-only: source links so they can verify the benchmarks
+  if (isPro) {
+    const src = (flip && flip.sourceUrl) || (str && str.sourceUrl);
+    if (src) rows.push(`<div class="guide-item"><div class="gi-label">Source</div><div class="gi-note"><a class="hint-link" href="${src}" target="_blank" rel="noopener">${new URL(src).hostname.replace('www.', '')}</a></div></div>`);
+  }
+
+  // Pro gets a richer header tag so the added depth is legible
+  const depthTag = isPro
+    ? '<span class="intel-depth pro">Pro · full intel</span>'
+    : (tier === 'investor' ? '<span class="intel-depth">Investor · benchmarks</span>' : '');
 
   const cityOnly = label.split(',')[0];
   return `
     <div class="locked-section">
       <div class="locked-content">
         <div class="guide-section">
-          <h3>${label} Market Intel</h3>
+          <h3>${label} Market Intel ${depthTag}</h3>
           ${rows.join('')}
         </div>
       </div>
@@ -769,23 +784,68 @@ function buildRegionIntel(slug) {
         <div class="locked-overlay-inner">
           <div class="locked-icon">🔒</div>
           <div class="locked-label">${cityOnly} Intel</div>
-          <div class="locked-msg">Investor unlocks intel for your regions</div>
+          <div class="locked-msg">Investor unlocks your market benchmarks · Pro adds analyst notes &amp; sources</div>
           <button class="locked-upgrade-btn" onclick="openUpgrade('region')">Upgrade to Unlock</button>
         </div>
       </div>
     </div>`;
 }
 
+// Funding-priority ladder — sells priority, not access. Visible to every tier
+// so the value is legible; current tier is highlighted. Relative language only.
+function buildFundingLadderHTML(tier) {
+  const rung = (key, name, lines) => {
+    const active = key === tier;
+    return `<div class="ladder-rung${active ? ' active' : ''}">
+      <div class="ladder-tier">${name}${active ? ' <span class="ladder-you">you</span>' : ''}</div>
+      <div class="ladder-text">${lines}</div>
+    </div>`;
+  };
+  return `
+    <div class="guide-section">
+      <h3>How Funding Priority Works</h3>
+      <p class="gi-note" style="margin-bottom:10px">Funding is free on every tier — paid tiers move you toward the front of the queue and add hands-on help. The free funnel stays fast.</p>
+      ${rung('starter', 'Starter — Free', 'Submit your deal, get a standard review, and get funded. No cost, no slow-rolling.')}
+      ${rung('investor', 'Investor', 'Everything in Starter, plus a <strong>first look</strong> — your deal moves toward the front of the queue — and a one-tap deal-summary export to send partners or lenders.')}
+      ${rung('pro', 'Pro', 'Highest priority, plus a Clear Path broker <strong>pre-reviews your file before the call</strong> and packages it hands-on. Cross-device cloud sync coming.')}
+    </div>`;
+}
+
+// Investor-only "Upgrade to Pro" card — makes the Pro delta legible in the Guide.
+function buildInvestorUpgradeCTA() {
+  return `
+    <div class="guide-pro-cta">
+      <div class="gpc-eyebrow">You're on Investor</div>
+      <div class="gpc-title">Pro adds the hands-on layer</div>
+      <ul class="gpc-list">
+        <li>All 6 of your markets (vs 4)</li>
+        <li>Full analyst notes &amp; sources for every market — not just the numbers</li>
+        <li>Highest-priority funding + a broker who pre-reviews your file before the call</li>
+        <li>Cross-device cloud sync (coming)</li>
+      </ul>
+      <button class="btn-redeem gpc-btn" onclick="openUpgrade('general')">See Pro</button>
+    </div>`;
+}
+
 function renderGuideMarketIntel() {
   const container = document.getElementById('guide-market-intel');
   if (!container) return;
+  const tier  = getActiveTier();
   const slugs = getMarketSlots();   // every populated slot
+
+  let html;
   if (!slugs.length) {
-    container.innerHTML = '<div class="guide-item"><div class="gi-note">Pick a market region on the Fix &amp; Flip or Rentals tab to see its benchmarks here.</div></div>';
-    return;
+    html = '<div class="guide-item"><div class="gi-note">Pick a market region on the Fix &amp; Flip or Rentals tab to see its benchmarks here.</div></div>';
+  } else {
+    html = slugs.map(s => buildRegionIntel(s, tier)).filter(Boolean).join('');
   }
-  container.innerHTML = slugs.map(buildRegionIntel).filter(Boolean).join('');
-  applyTierToUI();  // re-apply lock state to the freshly generated sections
+
+  // Investor sees what Pro adds; the funding ladder is shown to everyone.
+  if (tier === 'investor') html += buildInvestorUpgradeCTA();
+  html += buildFundingLadderHTML(tier);
+
+  container.innerHTML = html;
+  applyTierToUI();  // re-apply lock state to the freshly generated locked sections
 }
 
 // ─── First-launch onboarding — gate on primaryMarket (Task 3) ────────────────

@@ -45,8 +45,11 @@ export function getActiveTier() {
   return localStorage.getItem('tier') || 'starter';
 }
 
+// Dev Mode = the owner-only testing state (dev tools + banner). Tied to the dev
+// code's cpcDevUnlock flag ONLY — a comp tier code (which sets `tier`) must NOT
+// turn this on. The DEV MODE banner renders iff this is true, independent of tier.
 export function isDevMode() {
-  return !!localStorage.getItem('tier');
+  return localStorage.getItem('cpcDevUnlock') === '1';
 }
 
 // Writes tier to storage; does NOT reload — caller must update UI

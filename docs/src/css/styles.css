@@ -22,6 +22,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .nav-btn{flex:1;padding:14px 4px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:all .2s}
 .nav-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
 
+/* UTILITY ROW — share/install, kept off the wordmark row (Round 2 #3) */
+.util-bar{display:flex;justify-content:flex-end;align-items:center;gap:6px;padding:8px 20px 0}
+
 /* HEADER */
 .header{padding:16px 0 12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
 .header-left{flex:1;min-width:0}
@@ -46,7 +49,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .sub-tab .lock-icon{font-size:9px}
 
 /* PAGES */
-.page{display:none;padding:72px 20px 0}
+.page{display:none;padding:4px 20px 0}
 .page.active{display:block}
 
 /* SECTION LABEL */
@@ -337,6 +340,24 @@ input.field-error{border-color:var(--danger)!important}
 .locked-msg{font-size:12px;color:var(--text);line-height:1.5;margin-bottom:14px}
 .locked-upgrade-btn{padding:10px 20px;background:var(--accent);border:none;border-radius:8px;color:var(--accent-text);font-family:var(--font);font-size:12px;font-weight:800;cursor:pointer}
 
+/* GUIDE — tier depth tag, funding ladder, investor→pro CTA (Round 2 #4) */
+.intel-depth{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:2px 7px;margin-left:6px;white-space:nowrap;vertical-align:middle}
+.intel-depth.pro{color:var(--accent);border-color:var(--accent)}
+.ladder-rung{padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--surface)}
+.ladder-rung.active{border-color:var(--accent);background:var(--accent-dim)}
+.ladder-tier{font-size:12px;font-weight:800;letter-spacing:.04em;color:var(--text);margin-bottom:3px}
+.ladder-rung.active .ladder-tier{color:var(--accent)}
+.ladder-you{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text);background:var(--accent);border-radius:8px;padding:1px 7px;margin-left:6px;vertical-align:middle}
+.ladder-text{font-size:11px;color:var(--muted);line-height:1.5}
+.ladder-text strong{color:var(--text);font-weight:700}
+.guide-pro-cta{border:1px solid var(--accent);background:var(--accent-dim);border-radius:12px;padding:16px;margin-bottom:20px}
+.gpc-eyebrow{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:4px}
+.gpc-title{font-size:15px;font-weight:800;color:var(--text);margin-bottom:10px}
+.gpc-list{list-style:none;padding:0;margin:0 0 12px}
+.gpc-list li{font-size:12px;color:var(--muted);line-height:1.45;padding:3px 0 3px 16px;position:relative}
+.gpc-list li::before{content:'+';position:absolute;left:0;color:var(--accent);font-weight:800}
+.gpc-btn{width:100%}
+
 /* AUTO-FILLED repair field */
 input.auto-filled{border-color:var(--accent)!important;transition:border-color .3s}
 
@@ -406,6 +427,6 @@ body.beginner-mode .tier-desc-long{display:block}
 .deal-card-top{padding-right:28px}
 
 /* POWERED BY CPC FOOTER */
-.cpc-footer{display:flex;align-items:center;justify-content:center;gap:7px;padding:20px 20px 6px;font-size:11px;color:var(--muted);text-decoration:none;letter-spacing:.04em}
+.cpc-footer{display:flex;align-items:center;justify-content:center;gap:9px;padding:20px 20px 6px;font-size:11px;color:var(--muted);text-decoration:none;letter-spacing:.04em}
 .cpc-footer:hover{color:var(--text)}
-.cpc-footer img{height:18px;width:auto;opacity:.85}
+.cpc-footer img{height:30px;width:auto;border-radius:5px;display:block}

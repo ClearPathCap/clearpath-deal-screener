@@ -624,6 +624,17 @@
       </div>
     </div>
     <p id="upgrade-toptier-note" style="display:none;font-size:13px;color:var(--accent);text-align:center;padding:8px 0">You're on Pro — every feature is unlocked.</p>
+
+    <!-- Redeem code — comps / testing access (trust-based, client-side) -->
+    <div class="redeem-block">
+      <div class="redeem-label">Have a code?</div>
+      <div class="redeem-row">
+        <input type="text" id="redeem-code-input" placeholder="Enter code" autocomplete="off" autocapitalize="characters" spellcheck="false" onkeydown="if(event.key==='Enter')redeemTierCode()">
+        <button class="btn-redeem" onclick="redeemTierCode()">Redeem</button>
+      </div>
+      <div id="redeem-msg" class="redeem-msg"></div>
+    </div>
+
     <div class="modal-actions" style="margin-top:14px">
       <button class="btn-cancel" onclick="closeModal('modal-upgrade')">Not Now</button>
     </div>

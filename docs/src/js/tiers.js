@@ -59,6 +59,44 @@ export function setDevTier(tier) {
   else localStorage.setItem('tier', tier);
 }
 
+// ─── Tier redemption codes + Dev Mode gating ─────────────────────────────────
+// Client-side / trust-based comp + testing codes — NOT real entitlement
+// enforcement. Server-validated entitlements are a Stripe-milestone prerequisite
+// (planned auth/backend) and must land BEFORE charging real money. Owner can
+// rename these and redeploy anytime. Tier values are lowercase to match the
+// existing `tier` key (setDevTier), so codes and tier logic share one source.
+const TIER_CODES = {
+  'CPC-INVESTOR-3F9K2A': 'investor',
+  'CPC-PRO-8M4Q7X':      'pro',
+};
+const DEV_UNLOCK_CODE = 'CPC-DEV-Z7Q2P'; // owner-only: reveals the Dev Mode panel
+
+// Redeem a code. Returns { ok, msg, tier?, dev? }. Caller shows msg + reloads.
+export function redeemCode(raw) {
+  const code = (raw || '').trim().toUpperCase();
+  if (!code) return { ok: false, msg: 'Enter a code first.' };
+  if (code === DEV_UNLOCK_CODE) {
+    localStorage.setItem('cpcDevUnlock', '1');
+    return { ok: true, dev: true, msg: 'Developer tools unlocked.' };
+  }
+  const tier = TIER_CODES[code];
+  if (!tier) return { ok: false, msg: "That code isn't valid." };
+  setDevTier(tier);   // reuse the real `tier` key — one source of truth
+  const label = tier[0].toUpperCase() + tier.slice(1);
+  return { ok: true, tier, msg: `Unlocked ${label}.` };
+}
+
+// Dev Mode is hidden from the public build; revealed only for the owner via the
+// dev code (persisted in cpcDevUnlock) or a ?dev=1 URL param (ephemeral).
+export function devModeVisible() {
+  try {
+    const flag = new URLSearchParams(location.search).get('dev');
+    return localStorage.getItem('cpcDevUnlock') === '1' || flag === '1';
+  } catch {
+    return false;
+  }
+}
+
 // ─── Market slot storage ──────────────────────────────────────────────────────
 
 export function getMarketForSlot(index) {

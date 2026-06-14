@@ -21,6 +21,7 @@ import {
   isSlotLocked, slotLockedUntilDate, slotWillLockUntilDate,
   getUnlockedSlotCount, isMarketUnlocked, getMarketLabel,
   migrateMarketStorage,
+  redeemCode, devModeVisible,
 } from './tiers.js';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -667,7 +668,9 @@ function initTierBadge() {
       }
 
       tapTimer = setTimeout(() => {
-        if (tapCount >= 5) {
+        // Dev Mode is owner-gated: 5 taps only reveal it when unlocked
+        // (cpcDevUnlock or ?dev=1). The public never sees it.
+        if (tapCount >= 5 && devModeVisible()) {
           closeModal('modal-upgrade');
           openModal('modal-dev');
         }
@@ -675,6 +678,22 @@ function initTierBadge() {
       }, 2000);
     });
   });
+}
+
+// ─── Redeem-code handler (called from the Upgrade modal) ─────────────────────
+
+function redeemTierCode() {
+  const input = document.getElementById('redeem-code-input');
+  const msgEl = document.getElementById('redeem-msg');
+  const result = redeemCode(input ? input.value : '');
+  if (msgEl) {
+    msgEl.textContent = result.msg;
+    msgEl.className = 'redeem-msg ' + (result.ok ? 'ok' : 'err');
+  }
+  if (result.ok) {
+    // Let the confirmation register, then reload so all tier-gated UI rebuilds.
+    setTimeout(() => location.reload(), 850);
+  }
 }
 
 // ─── Dev mode indicator ───────────────────────────────────────────────────────
@@ -836,6 +855,7 @@ Object.assign(window, {
   // upgrade
   upgradeToInvestor,
   upgradeToPro,
+  redeemTierCode,
   openUpgrade,
   // pipeline funding (clearpath)
   handlePipelineFundingClick,

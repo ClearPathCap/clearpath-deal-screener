@@ -429,4 +429,4 @@ body.beginner-mode .tier-desc-long{display:block}
 /* POWERED BY CPC FOOTER */
 .cpc-footer{display:flex;align-items:center;justify-content:center;gap:9px;padding:20px 20px 6px;font-size:11px;color:var(--muted);text-decoration:none;letter-spacing:.04em}
 .cpc-footer:hover{color:var(--text)}
-.cpc-footer img{height:30px;width:auto;border-radius:5px;display:block}
+.cpc-footer img{height:32px;width:auto;display:block}

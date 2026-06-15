@@ -185,8 +185,15 @@ function clearNewDeal(type) {
 
 // ─── Picker market list (flip+str only, derived from full ALL_MARKETS) ────────
 
-const PICKER_MARKETS = PICKER_ALL.filter(m =>
+const _pickerEligible = PICKER_ALL.filter(m =>
   m.types && (m.types.includes('flip') || m.types.includes('str'))
+);
+// De-dupe "City ST" twins: when a base slug and its "-str" sibling are both
+// eligible (e.g. charleston-sc + charleston-sc-str render as two identical
+// rows), keep only the base — getStrMarket()/the hint resolve its -str data.
+const _eligibleIds = new Set(_pickerEligible.map(m => m.id));
+const PICKER_MARKETS = _pickerEligible.filter(m =>
+  !(m.id.endsWith('-str') && _eligibleIds.has(m.id.slice(0, -4)))
 );
 
 // Helper: strip state code from display name for slot button
@@ -504,12 +511,14 @@ function pickerBack() {
 function updateRentRangeHint(slug) {
   const hint = document.getElementById('rent-range-hint');
   if (!hint) return;
-  const m = STR_MARKETS[slug];
+  const m = STR_MARKETS[slug] || STR_MARKETS[slug + '-str'];   // city data, incl. -str sibling
   if (m && m.revLow && m.revHigh) {
     hint.textContent = 'Estimated range: $' + Math.round(m.revLow / 1000) + 'k – $' + Math.round(m.revHigh / 1000) + 'k/yr';
     hint.style.display = 'block';
   } else {
-    hint.style.display = 'none';
+    // No city-level STR data — say so rather than silently showing a regional average as city data
+    hint.textContent = 'No city-level STR data yet — presets shown are a regional estimate.';
+    hint.style.display = 'block';
   }
 }
 
@@ -805,7 +814,7 @@ function buildFundingLadderHTML(tier) {
     <div class="guide-section">
       <h3>How Funding Priority Works</h3>
       <p class="gi-note" style="margin-bottom:10px">Funding is free on every tier — paid tiers move you toward the front of the queue and add hands-on help. The free funnel stays fast.</p>
-      ${rung('starter', 'Starter — Free', 'Submit your deal, get a standard review, and get funded. No cost, no slow-rolling.')}
+      ${rung('starter', 'Starter — Free', 'Submit your deal and get a standard review and funding decision — at no cost.')}
       ${rung('investor', 'Investor', 'Everything in Starter, plus a <strong>first look</strong> — your deal moves toward the front of the queue — and a one-tap deal-summary export to send partners or lenders.')}
       ${rung('pro', 'Pro', 'Highest priority, plus a Clear Path broker <strong>pre-reviews your file before the call</strong> and packages it hands-on. Cross-device cloud sync coming.')}
     </div>`;

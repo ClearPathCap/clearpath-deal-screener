@@ -7,12 +7,17 @@ import { buildCpcUrl, qualifiesForCpc } from './funding.js';
 const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn' };
 
 // ─── Parse "City ST" off the end of a freeform address (item 11a) ────────────
-// e.g. "412 Oak St, Charlotte NC" → { city: 'Charlotte', state: 'NC' }
+// e.g. "412 Oak St, Charlotte NC 28202" → { city: 'Charlotte', state: 'NC' }
+// Tolerates a trailing ZIP and only accepts a real US state code (so street
+// suffixes like "St"/"Dr"/"Rd" don't get mistaken for a state).
+const US_STATES = new Set(['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC']);
 function parseCityState(addr) {
   if (!addr) return {};
-  const m = addr.trim().match(/([A-Za-z .'-]+?)[ ,]+([A-Za-z]{2})$/);
+  const m = addr.trim().match(/([A-Za-z .'-]+?)[ ,]+([A-Za-z]{2})(?:[ ,]+\d{5}(?:-\d{4})?)?$/);
   if (!m) return {};
-  return { city: m[1].trim(), state: m[2].toUpperCase() };
+  const state = m[2].toUpperCase();
+  if (!US_STATES.has(state)) return {};   // reject "St"/"Dr"/"Rd"… — only real states
+  return { city: m[1].trim(), state };
 }
 
 // ─── Normalize an analyzer result into the CPC deal-param object ──────────────
@@ -183,8 +188,9 @@ export function getPipelineFundingButtonHTML(deal) {
   // Show for positive-return deals (not just hot) — Task 10
   const result = deal.data || deal;
   if (!shouldShowFunding(result)) return '';
-  // Same CPC qualification gate as the analyzer (2.5)
-  if (!qualifiesForCpc(buildDealParams(result))) return '';
+  // Same CPC qualification gate as the analyzer (2.5); mirror the under-$150K explainer
+  const dp = buildDealParams(result);
+  if (!qualifiesForCpc(dp)) return belowMinimumOnly(dp) ? underBoxHTML(dp) : '';
   const cfg = getTierConfig();
   const btnLabel = getFundingLabel(cfg, deal.cls);
   return `<button class="btn-get-funding pipeline-funding-btn" onclick="event.stopPropagation();handlePipelineFundingClick(${deal.id})">

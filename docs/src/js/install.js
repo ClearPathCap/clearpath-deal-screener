@@ -47,10 +47,13 @@ export function triggerInstall() {
 export function initInstallHint() {
   window.addEventListener('load', () => {
     const seen         = localStorage.getItem('install_hint_seen');
+    // Don't fire over the forced first-launch market picker — it would float a
+    // toast pointing at the install icon while that icon is behind the modal.
+    const onboarding   = !localStorage.getItem('primaryMarket');
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    if (!seen && !isStandalone && /Mobi|Android|iPhone|iPad/.test(navigator.userAgent)) {
+    if (!seen && !onboarding && !isStandalone && /Mobi|Android|iPhone|iPad/.test(navigator.userAgent)) {
       setTimeout(() => {
-        window.showToast && window.showToast('Tap ↓ in header to install as app');
+        window.showToast && window.showToast('Tap ↓ above the tabs to install as app');
         localStorage.setItem('install_hint_seen', '1');
       }, 1800);
     }

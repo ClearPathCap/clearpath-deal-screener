@@ -15,8 +15,14 @@ const STR_REGIONAL_DEFAULTS = {
 };
 const STR_NATIONAL_DEFAULT = STR_REGIONAL_DEFAULTS['Southeast'];
 
+// True when we have city-level STR data (directly or via a "-str" sibling slug)
+export function hasCityStrData(slug) {
+  return !!(STR_MARKETS[slug] || STR_MARKETS[slug + '-str']);
+}
+
 function getStrMarket(slug) {
   if (STR_MARKETS[slug]) return STR_MARKETS[slug];
+  if (STR_MARKETS[slug + '-str']) return STR_MARKETS[slug + '-str']; // city data under a -str sibling
   const entry  = ALL_MARKETS.find(m => m.id === slug);
   const region = entry?.region || 'Southeast';
   return STR_REGIONAL_DEFAULTS[region] || STR_NATIONAL_DEFAULT;

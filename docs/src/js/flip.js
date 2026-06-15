@@ -96,6 +96,9 @@ export function analyzeFlip() {
     // Item 5: large absolute profit floors the verdict at warm even when ROI is below bar
     verdict = 'Dig Deeper & Negotiate'; cls = 'warm';
     vsub = 'ROI is below your usual bar, but absolute profit is large — decide if capital efficiency or dollar profit matters more on this one.';
+  } else if (maxOffer <= 0) {
+    verdict = 'Counter at Max Offer — Walk Away'; cls = 'pass';
+    vsub = "Repairs exceed the " + (self ? '75' : '70') + "% ARV ceiling — there's no purchase price that hits your target on this one. Walk away.";
   } else {
     verdict = 'Counter at Max Offer — Walk Away'; cls = 'pass';
     vsub = "Numbers don't work at asking. Max you can pay: " + fmt(maxOffer) + ". Counter hard or walk — don't overpay.";
@@ -109,7 +112,7 @@ export function analyzeFlip() {
   document.getElementById('flip-metrics').innerHTML = buildMetrics([
     { label: 'Net Profit', val: fmt(profit),   cls: cClass(profit, target, target * 0.75) },
     { label: 'ROI',        val: pct(roi),       cls: cClass(roi, 20, 12) },
-    { label: 'Max Offer',  val: fmt(maxOffer),  cls: 'neutral' },
+    { label: 'Max Offer',  val: fmt(Math.max(0, maxOffer)),  cls: 'neutral' },
     { label: 'LTV',        val: pct(ltv),       cls: cClass(80 - ltv, 15, 5) },
   ]);
 

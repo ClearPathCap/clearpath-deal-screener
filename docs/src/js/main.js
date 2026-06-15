@@ -976,6 +976,13 @@ Object.assign(window, {
       setRepairTier(name, el);
     }
   },
+  // Exit Dev Mode: clear the owner dev flag + cached tier, then reload so the
+  // app re-syncs the real (server) entitlement instead of the dev override.
+  exitDevMode() {
+    localStorage.removeItem('cpcDevUnlock');
+    localStorage.removeItem('tier');
+    location.reload();
+  },
   calcRepair,
   useRepairEstimate,
   updateSelfReno,

@@ -681,12 +681,13 @@
 <div class="modal-backdrop" id="modal-dev">
   <div class="modal">
     <h3>🛠 Dev Mode</h3>
-    <p>Switch tiers for testing. Stored in localStorage as <code>devTier</code>. Reloads the app.</p>
+    <p>Owner-only tier override for testing (cached in localStorage as <code>tier</code>). While Dev Mode is on, the app ignores the server entitlement. Reloads on change.</p>
     <div class="dev-tier-options">
       <button class="dev-tier-btn" onclick="setTier('starter')">STARTER</button>
       <button class="dev-tier-btn" onclick="setTier('investor')">INVESTOR</button>
       <button class="dev-tier-btn dev-tier-btn-pro" onclick="setTier('pro')">PRO</button>
     </div>
+    <button onclick="exitDevMode()" style="margin-top:14px;width:100%;padding:12px;border-radius:10px;border:1px solid rgba(239,68,68,0.5);background:rgba(239,68,68,0.12);color:#fca5a5;font-weight:700;cursor:pointer">Exit Dev Mode — return to real tier</button>
     <div class="modal-actions" style="margin-top:12px">
       <button class="btn-cancel" onclick="closeModal('modal-dev')">Close</button>
     </div>

@@ -615,8 +615,23 @@
     </div>
     <p id="upgrade-toptier-note" style="display:none;font-size:13px;color:var(--accent);text-align:center;padding:8px 0">You're on Pro — every feature is unlocked.</p>
 
-    <!-- Redeem code — comps / testing access (trust-based, client-side) -->
-    <div class="redeem-block">
+    <!-- Account — passwordless magic-link sign-in (tiers verified server-side) -->
+    <div class="redeem-block" id="account-block">
+      <div id="signin-row">
+        <div class="redeem-label">Sign in to redeem a code or manage your plan</div>
+        <div class="redeem-row">
+          <input type="email" id="signin-email" placeholder="you@email.com" autocomplete="email" inputmode="email" spellcheck="false" onkeydown="if(event.key==='Enter')sendSignInLink()">
+          <button class="btn-redeem" onclick="sendSignInLink()">Email me a link</button>
+        </div>
+        <div id="signin-msg" class="redeem-msg"></div>
+      </div>
+      <div id="account-row" style="display:none">
+        <div class="redeem-label">Signed in as <strong id="account-email"></strong> · <a href="#" onclick="signOutAccount();return false;" style="color:var(--accent);text-decoration:underline">Sign out</a></div>
+      </div>
+    </div>
+
+    <!-- Redeem code — server-validated comp / testing access -->
+    <div class="redeem-block" id="redeem-block">
       <div class="redeem-label">Have a code?</div>
       <div class="redeem-row">
         <input type="text" id="redeem-code-input" placeholder="Enter code" autocomplete="off" autocapitalize="characters" spellcheck="false" onkeydown="if(event.key==='Enter')redeemTierCode()">

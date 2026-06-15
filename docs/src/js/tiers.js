@@ -62,19 +62,26 @@ export function setDevTier(tier) {
   else localStorage.setItem('tier', tier);
 }
 
+// Caches the tier the SERVER reported (auth.js) for snappy UI. This is the ONLY
+// sanctioned writer of the `tier` cache now — it is overwritten on every load
+// from the server, so the cache can never persist a self-granted tier.
+export function setCachedTier(tier) {
+  if (!['starter', 'investor', 'pro'].includes(tier)) return;
+  if (tier === 'starter') localStorage.removeItem('tier');
+  else localStorage.setItem('tier', tier);
+}
+
 // ─── Tier redemption codes + Dev Mode gating ─────────────────────────────────
-// Client-side / trust-based comp + testing codes — NOT real entitlement
-// enforcement. Server-validated entitlements are a Stripe-milestone prerequisite
-// (planned auth/backend) and must land BEFORE charging real money. Owner can
-// rename these and redeploy anytime. Tier values are lowercase to match the
-// existing `tier` key (setDevTier), so codes and tier logic share one source.
-const TIER_CODES = {
-  'CPC-INVESTOR-3F9K2A': 'investor',
-  'CPC-PRO-8M4Q7X':      'pro',
-};
+// Tier comp codes (CPC-INVESTOR-…, CPC-PRO-…) are now validated SERVER-SIDE in
+// Supabase (see auth.js → redeemServerCode and the `comp_codes` table), so they
+// can't be self-granted by editing localStorage. The only code still handled
+// here client-side is the owner-only DEV unlock, which just reveals the hidden
+// Dev Mode panel and never grants paid data.
 const DEV_UNLOCK_CODE = 'CPC-DEV-Z7Q2P'; // owner-only: reveals the Dev Mode panel
 
-// Redeem a code. Returns { ok, msg, tier?, dev? }. Caller shows msg + reloads.
+// Handle a redeemed code CLIENT-SIDE. Only the dev code is handled here; every
+// other code returns { deferToServer: true } so the caller runs the server flow.
+// Returns { ok, msg, dev? } or { ok:false, deferToServer:true }.
 export function redeemCode(raw) {
   const code = (raw || '').trim().toUpperCase();
   if (!code) return { ok: false, msg: 'Enter a code first.' };
@@ -82,11 +89,7 @@ export function redeemCode(raw) {
     localStorage.setItem('cpcDevUnlock', '1');
     return { ok: true, dev: true, msg: 'Developer tools unlocked.' };
   }
-  const tier = TIER_CODES[code];
-  if (!tier) return { ok: false, msg: "That code isn't valid." };
-  setDevTier(tier);   // reuse the real `tier` key — one source of truth
-  const label = tier[0].toUpperCase() + tier.slice(1);
-  return { ok: true, tier, msg: `Unlocked ${label}.` };
+  return { ok: false, deferToServer: true };
 }
 
 // Dev Mode is hidden from the public build; revealed only for the owner via the

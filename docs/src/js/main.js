@@ -23,6 +23,11 @@ import {
   migrateMarketStorage,
   redeemCode, devModeVisible,
 } from './tiers.js';
+import {
+  initAuthAndEntitlement, onAuthChange,
+  sendMagicLink, signOutAccount, redeemServerCode,
+  isSignedIn, getUserEmail,
+} from './auth.js';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -719,18 +724,72 @@ function initTierBadge() {
 
 // ─── Redeem-code handler (called from the Upgrade modal) ─────────────────────
 
-function redeemTierCode() {
+function showRedeemMsg(msgEl, result) {
+  if (!msgEl) return;
+  msgEl.textContent = result.msg || '';
+  msgEl.className = 'redeem-msg ' + (result.ok ? 'ok' : 'err');
+}
+
+async function redeemTierCode() {
   const input = document.getElementById('redeem-code-input');
   const msgEl = document.getElementById('redeem-msg');
-  const result = redeemCode(input ? input.value : '');
-  if (msgEl) {
-    msgEl.textContent = result.msg;
-    msgEl.className = 'redeem-msg ' + (result.ok ? 'ok' : 'err');
+  const raw = input ? input.value : '';
+
+  // Owner-only DEV code is handled client-side; everything else goes server-side.
+  const local = redeemCode(raw);
+  if (!local.deferToServer) {
+    showRedeemMsg(msgEl, local);
+    if (local.ok) setTimeout(() => location.reload(), 850);
+    return;
   }
+
+  showRedeemMsg(msgEl, { ok: true, msg: 'Checking…' });
+  const result = await redeemServerCode(raw);
+  showRedeemMsg(msgEl, result);
   if (result.ok) {
     // Let the confirmation register, then reload so all tier-gated UI rebuilds.
     setTimeout(() => location.reload(), 850);
   }
+}
+
+// ─── Account: magic-link sign-in / sign-out ──────────────────────────────────
+
+async function sendSignInLink() {
+  const email = document.getElementById('signin-email')?.value;
+  const msgEl = document.getElementById('signin-msg');
+  showRedeemMsg(msgEl, { ok: true, msg: 'Sending…' });
+  const result = await sendMagicLink(email);
+  showRedeemMsg(msgEl, result);
+}
+
+async function doSignOut() {
+  await signOutAccount();
+  updateAccountUI();
+  location.reload();
+}
+
+function updateAccountUI() {
+  const signedIn = isSignedIn();
+  const signinRow = document.getElementById('signin-row');
+  const accountRow = document.getElementById('account-row');
+  if (signinRow)  signinRow.style.display  = signedIn ? 'none' : '';
+  if (accountRow) accountRow.style.display = signedIn ? '' : 'none';
+  const emailEl = document.getElementById('account-email');
+  if (emailEl) emailEl.textContent = getUserEmail();
+}
+
+// Re-render every tier-dependent surface after the server tier resolves (boot)
+// or after sign-in/out — without re-binding the badge's tap listener.
+function refreshTierUI() {
+  const t = getActiveTier();
+  const label = t === 'pro' ? 'PRO' : t === 'investor' ? 'INVESTOR' : 'STARTER';
+  document.querySelectorAll('.tier-badge').forEach(b => { b.textContent = label; });
+  updateDevModeIndicator();
+  applyTierToUI();
+  renderMarketSlots('flip-slots',   'flip');
+  renderMarketSlots('rental-slots', 'rental');
+  renderGuideMarketIntel();
+  updateAccountUI();
 }
 
 // ─── Dev mode indicator ───────────────────────────────────────────────────────
@@ -954,6 +1013,8 @@ Object.assign(window, {
   upgradeToInvestor,
   upgradeToPro,
   redeemTierCode,
+  sendSignInLink,
+  signOutAccount: doSignOut,
   openUpgrade,
   // pipeline funding (clearpath)
   handlePipelineFundingClick,
@@ -975,6 +1036,12 @@ renderMarketSlots('flip-slots',   'flip');
 renderMarketSlots('rental-slots', 'rental');
 renderGuideMarketIntel();   // item 4: build region intel from selected markets
 initOnboarding();
+
+// Server-side entitlement: read the user's real tier on load (and again on any
+// sign-in/out), then refresh every tier-gated surface. The synchronous render
+// above paints from the cached tier for speed; this corrects it from the server.
+onAuthChange(refreshTierUI);
+initAuthAndEntitlement();
 
 // Task 3: track when user manually edits the Min Profit Target
 document.getElementById('f-target')?.addEventListener('input', () => {

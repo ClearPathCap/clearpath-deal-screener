@@ -110,7 +110,7 @@ export function analyzeFlip() {
   document.getElementById('fvsub').textContent   = vsub;
 
   document.getElementById('flip-metrics').innerHTML = buildMetrics([
-    { label: 'Net Profit', val: fmt(profit),   cls: cClass(profit, target, target * 0.75) },
+    { label: 'Net Profit', val: fmt(profit),   cls: cls === 'hot' ? 'good' : cls === 'warm' ? 'warn' : 'bad' },
     { label: 'ROI',        val: pct(roi),       cls: cClass(roi, 20, 12) },
     { label: 'Max Offer',  val: fmt(Math.max(0, maxOffer)),  cls: 'neutral' },
     { label: 'LTV',        val: pct(ltv),       cls: cClass(80 - ltv, 15, 5) },

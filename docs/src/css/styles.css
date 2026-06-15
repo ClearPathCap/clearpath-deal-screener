@@ -310,7 +310,7 @@ body.beginner-mode span.beginner-only{display:inline}
 
 /* GUIDE MODE TOGGLE */
 .mode-toggle-wrap{display:flex;align-items:center;gap:5px}
-.mode-label-pro,.mode-label-beg{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.mode-label-beg{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .toggle-sm{width:34px;height:20px}
 .toggle-sm .toggle-track::after{width:12px;height:12px}
 .toggle-sm input:checked+.toggle-track::after{left:18px}

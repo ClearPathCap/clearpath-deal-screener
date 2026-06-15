@@ -29,9 +29,11 @@ function computeRangesForMarket(market) {
       selfHigh:  Math.round(hi * 0.62),
     },
     full: {
-      hiredLow:  Math.round(hi * 0.90),
+      // Full-gut starts where Mid tops out so the three scope tiers step up
+      // monotonically (no Mid/Full overlap).
+      hiredLow:  hi,
       hiredHigh: Math.round(hi * 1.45),
-      selfLow:   Math.round(hi * 0.55),
+      selfLow:   Math.round(hi * 0.62),
       selfHigh:  Math.round(hi * 0.90),
     },
   };

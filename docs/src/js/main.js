@@ -92,10 +92,26 @@ function updateCarryTotal() {
 
 function updateOccHint() {
   const hint = document.getElementById('occ-guide-hint');
+  if (hint) {
+    const occ = +document.getElementById('v-occ')?.value || 65;
+    const nights = Math.round(occ / 100 * 365);
+    hint.textContent = `The percentage of nights your property is booked over a year. A ${occ}% rate means roughly ${nights} nights booked. STR markets typically run 55–75% — higher in peak tourist areas, lower in seasonal markets. Your gross rent estimate assumes this rate.`;
+  }
+  updateEffRevHint();   // keep the booked-revenue preview in sync
+}
+
+// Show the effective (booked) revenue so the occupancy discount is never hidden.
+// Guards against the "pasted AirDNA revenue + occupancy < 100%" double-discount.
+function updateEffRevHint() {
+  const hint = document.getElementById('eff-rev-hint');
   if (!hint) return;
-  const occ = +document.getElementById('v-occ')?.value || 65;
-  const nights = Math.round(occ / 100 * 365);
-  hint.textContent = `The percentage of nights your property is booked over a year. A ${occ}% rate means roughly ${nights} nights booked. STR markets typically run 55–75% — higher in peak tourist areas, lower in seasonal markets. Your gross rent estimate assumes this rate.`;
+  const rent = parseComma(document.getElementById('v-rent')?.value || '');
+  const occ  = +document.getElementById('v-occ')?.value || 0;
+  if (!rent || !occ) { hint.style.display = 'none'; return; }
+  hint.textContent = occ >= 100
+    ? 'Using your full-potential figure at 100% occupancy.'
+    : '≈ $' + Math.round(rent * occ / 100).toLocaleString() + ' booked revenue at ' + occ + '% occupancy (your entry × occupancy).';
+  hint.style.display = 'block';
 }
 
 // ─── Self-manage toggle (STR) ─────────────────────────────────────────────────
@@ -108,11 +124,11 @@ function updateSelfManage() {
   if (toggle.checked) {
     field.style.display = 'none';
     pmInput.value = 0;
-    label.textContent = 'Self-Managing — saves 8–12% annually';
+    label.textContent = 'Self-managing — no PM fee';
   } else {
     field.style.display = 'block';
     if (!pmInput.value || +pmInput.value === 0) pmInput.value = 8; // default to 8% (item 13)
-    label.textContent = 'Hired Property Manager';
+    label.textContent = 'Hired property manager — ~8% of revenue';
   }
 }
 
@@ -204,9 +220,17 @@ function slotDisplayName(fullName) {
   return parts.slice(0, -1).join(' ') || clean; // strip last word (state code)
 }
 
-// ─── Active slot state (one per tab-type, tracks which slot drives analysis) ──
+// ─── Active slot state (tracks which slot drives analysis; persisted) ─────────
 
-let _activeSlot = 0;  // slot index of whichever slot is currently driving analysis
+let _activeSlot = (() => {
+  const v = parseInt(localStorage.getItem('activeSlot'), 10);
+  return Number.isInteger(v) && v >= 0 && v < 6 ? v : 0;
+})();
+
+function setActiveSlot(i) {
+  _activeSlot = i;
+  try { localStorage.setItem('activeSlot', String(i)); } catch {}
+}
 
 // ─── Market slot rendering — 6-slot 3+3 grid ─────────────────────────────────
 
@@ -215,6 +239,10 @@ function renderMarketSlots(containerId, tabType) {
   if (!container) return;
 
   const unlocked = getUnlockedSlotCount();
+
+  // Guard a restored/stale active slot: must be unlocked AND populated, else
+  // fall back to the primary (slot 0) so the highlight/presets are never wrong.
+  if (_activeSlot >= unlocked || !getMarketForSlot(_activeSlot)) _activeSlot = 0;
 
   // Build 6 slot buttons using per-slot storage keys
   const html = [];
@@ -269,7 +297,7 @@ function handleSlotClick(slotIndex, currentMarketId) {
 
   // POPULATED + NOT ACTIVE → silently switch active market, show toast, no popup
   if (slotIndex !== _activeSlot) {
-    _activeSlot = slotIndex;
+    setActiveSlot(slotIndex);
     const label = getMarketLabel(currentMarketId);
     renderMarketSlots('flip-slots',   'flip');
     renderMarketSlots('rental-slots', 'rental');
@@ -473,7 +501,7 @@ function pickerSelectMarket(marketId) {
   if (_pickerIsFirst) {
     // First launch — always slot 0
     completePrimarySelection(marketId);
-    _activeSlot = 0;
+    setActiveSlot(0);
     renderMarketSlots('flip-slots',   'flip');
     renderMarketSlots('rental-slots', 'rental');
     renderGuideMarketIntel();   // item 4: keep Guide intel in sync with selected regions
@@ -486,7 +514,7 @@ function pickerSelectMarket(marketId) {
   }
   setMarketSlot(_pickerSlot, marketId);
   // Make the newly set slot active
-  _activeSlot = _pickerSlot;
+  setActiveSlot(_pickerSlot);
   renderMarketSlots('flip-slots',   'flip');
   renderMarketSlots('rental-slots', 'rental');
   renderGuideMarketIntel();     // item 4: regenerate region intel
@@ -911,6 +939,7 @@ Object.assign(window, {
   updateCarryTotal,
   updateSelfManage,
   updateOccHint,
+  updateEffRevHint,
   clearNewDeal,
   // market slots
   handleSlotClick,

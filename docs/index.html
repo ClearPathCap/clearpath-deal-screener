@@ -56,7 +56,7 @@
       <div class="tier-badge">STARTER</div>
       <div class="mode-toggle-wrap" title="Guide mode">
         <label class="toggle toggle-sm">
-          <input type="checkbox" class="beginner-toggle-input" onchange="toggleGuideMode(this.checked)">
+          <input type="checkbox" class="beginner-toggle-input" onchange="toggleGuideMode(this.checked)" aria-label="Toggle Guide mode — plain-English help under each field">
           <div class="toggle-track"></div>
         </label>
         <span class="mode-label-beg">Guide</span>
@@ -224,7 +224,7 @@
       <div class="tier-badge">STARTER</div>
       <div class="mode-toggle-wrap" title="Guide mode">
         <label class="toggle toggle-sm">
-          <input type="checkbox" class="beginner-toggle-input" onchange="toggleGuideMode(this.checked)">
+          <input type="checkbox" class="beginner-toggle-input" onchange="toggleGuideMode(this.checked)" aria-label="Toggle Guide mode — plain-English help under each field">
           <div class="toggle-track"></div>
         </label>
         <span class="mode-label-beg">Guide</span>
@@ -263,8 +263,9 @@
   <div class="field-row">
     <div class="field">
       <label>Potential Annual Revenue <span>(at 100% occupancy)</span></label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-rent" class="has-pfx" placeholder="55,000" data-currency></div>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-rent" class="has-pfx" placeholder="55,000" data-currency oninput="updateEffRevHint()"></div>
       <div class="rent-range-hint" id="rent-range-hint" style="display:none"></div>
+      <div class="rent-range-hint" id="eff-rev-hint" style="display:none"></div>
       <div class="field-hint beginner-only">Using AirDNA/Rabbu annual revenue? That number already includes occupancy — enter it here and set Occupancy to 100%, or back into the full-potential number.</div>
     </div>
     <div class="field">
@@ -286,9 +287,9 @@
     <div class="field">
       <label>Property Manager</label>
       <div class="self-manage-toggle-row">
-        <span class="self-manage-label" id="self-manage-label">Self-Managing — saves 8–12% annually</span>
+        <span class="self-manage-label" id="self-manage-label">Hired property manager — ~8% of revenue</span>
         <label class="toggle toggle-sm">
-          <input type="checkbox" id="self-manage-toggle" onchange="updateSelfManage()">
+          <input type="checkbox" id="self-manage-toggle" onchange="updateSelfManage()" aria-label="Toggle on to self-manage and skip the property-manager fee">
           <div class="toggle-track"></div>
         </label>
       </div>

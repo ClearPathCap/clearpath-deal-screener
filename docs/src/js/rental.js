@@ -75,6 +75,7 @@ export function analyzeRental() {
   const mo          = loan > 0 ? loan * monthlyRate * Math.pow(1 + monthlyRate, n) / (Math.pow(1 + monthlyRate, n) - 1) : 0;
   const debt        = mo * 12;
   const cashflow    = noi - debt;
+  const dscr        = debt > 0 ? noi / debt : 0;   // the metric a rental lender underwrites to
   const coc         = (cashflow / downAmt) * 100;
   const grm         = Math.round((price / rent) * 10) / 10;
   const rateDisplay = (interestRate * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
@@ -94,6 +95,11 @@ export function analyzeRental() {
       'Negotiate price down significantly or find a property with stronger revenue potential.';
   }
 
+  // DSCR bridge: a warm cash-on-cash deal that still clears lender DSCR is fundable.
+  if (cls === 'warm' && dscr >= 1.25) {
+    vsub += ' Lender-fundable: DSCR ' + dscr.toFixed(2) + ' clears typical 1.20–1.25 underwriting even though cash-on-cash trails your target — a finance-and-hold candidate.';
+  }
+
   document.getElementById('rental-verdict').className = 'verdict ' + cls;
   document.getElementById('rvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
   document.getElementById('rvlabel').textContent = verdict;
@@ -103,7 +109,7 @@ export function analyzeRental() {
     { label: 'Cash-on-Cash',     val: pct(coc),       cls: cClass(coc, tgtCoc, tgtCoc * 0.75) },
     { label: 'Cap Rate',         val: pct(capRate),   cls: cClass(capRate, 6, 4.5) },
     { label: 'Annual Cash Flow', val: fmt(cashflow),  cls: cClass(cashflow, 6000, 0) },
-    { label: 'Gross Rent Mult',  val: grm + 'x',      cls: grm <= 10 ? 'good' : grm <= 15 ? 'warn' : 'bad' },
+    { label: 'DSCR',             val: (debt > 0 ? dscr.toFixed(2) : 'n/a'), cls: dscr >= 1.25 ? 'good' : dscr >= 1.0 ? 'warn' : 'bad' },
   ]);
 
   const breakdownRows = [
@@ -117,6 +123,8 @@ export function analyzeRental() {
     { l: 'Net operating income',                                           v: fmt(noi) },
     { l: 'Annual debt service (' + rateDisplay + ')',                      v: '–' + fmt(debt) },
     { l: 'Net cash flow', v: fmt(cashflow), tot: true, color: cashflow >= 0 ? 'var(--accent)' : 'var(--danger)' },
+    { l: 'DSCR (NOI ÷ debt service)',                                      v: (debt > 0 ? dscr.toFixed(2) : 'n/a') },
+    { l: 'Gross rent multiplier (price ÷ rent)',                           v: grm + 'x' },
   ];
   document.getElementById('rental-breakdown').innerHTML = buildRows(breakdownRows);
 
@@ -128,7 +136,7 @@ export function analyzeRental() {
     mgmt:         +document.getElementById('v-mgmt').value,
     pm:           selfManage ? 0 : +document.getElementById('v-pm').value,
     tax, maint, furnish, tgtCoc, interestRate,
-    cashflow, coc, capRate, noi, debt, downAmt, grm,
+    cashflow, coc, capRate, noi, debt, downAmt, grm, dscr,
     verdict, cls,
     hot: cls === 'hot',
   };

@@ -39,7 +39,7 @@ export function saveDeal(type) {
       ? [
           { l: 'Profit', v: fmt(result.profit) },
           { l: 'ROI',    v: pct(result.roi) },
-          { l: 'LTV',    v: pct(result.ltv) },
+          { l: result.ltvLabel || 'LTV', v: pct(result.ltv) },
         ]
       : [
           { l: 'CoC',        v: pct(result.coc) },

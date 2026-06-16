@@ -146,6 +146,28 @@
     </div>
   </div>
 
+  <!-- Financing (estimate) — opt-in loan model for true LTV/LTC + cost of capital -->
+  <div class="slabel">Financing <span style="font-weight:400;opacity:.6">(estimate — optional)</span></div>
+  <div class="field-row">
+    <div class="field">
+      <label>Loan Amount</label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-loan" class="has-pfx" placeholder="optional" data-currency></div>
+      <div class="field-hint beginner-only">Leave blank for an all-cash view. Enter a loan to see true LTV/LTC and financing cost.</div>
+    </div>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label>Interest Rate</label>
+      <div class="input-wrap"><input type="number" id="f-rate" class="has-sfx" value="10" step="0.25" placeholder="10"><span class="sfx">%</span></div>
+      <div class="field-hint beginner-only">Typical hard-money rate — interest-only. Estimate.</div>
+    </div>
+    <div class="field">
+      <label>Points</label>
+      <div class="input-wrap"><input type="number" id="f-points" class="has-sfx" value="3" step="0.5" placeholder="3"><span class="sfx">%</span></div>
+      <div class="field-hint beginner-only">Lender + broker origination points. Estimate — set per deal.</div>
+    </div>
+  </div>
+
   <!-- item 10: Cost Assumptions section, carry total moved to bottom -->
   <div class="slabel">Your Cost Assumptions</div>
   <div class="field-row">
@@ -164,7 +186,7 @@
     <div class="field">
       <label>Monthly Hold Cost</label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-carry" class="has-pfx" value="900" placeholder="900" data-currency oninput="updateCarryTotal()"></div>
-      <div class="field-hint beginner-only">Monthly costs while you own it — taxes, insurance, utilities, loan payments</div>
+      <div class="field-hint beginner-only">Monthly costs while you own it — taxes, insurance, utilities (excludes loan — modeled in Financing above)</div>
     </div>
     <div class="field">
       <label>Min Profit Target</label>

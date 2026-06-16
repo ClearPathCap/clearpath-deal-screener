@@ -71,14 +71,35 @@ export function analyzeFlip() {
   const self   = document.getElementById('self-reno').checked;
   if (!ask || !arv) { return; } // validation handled by wrapper in main.js
 
+  // Financing model (opt-in, estimates only). Blank loan = all-cash view: numbers
+  // are unchanged and the metric is honestly labeled "Price / ARV" (the old code
+  // mislabeled price-to-ARV as LTV). Enter a loan and we model true LTV/LTC,
+  // interest-only carry + points, and leveraged cash-on-cash ROI.
+  const loanRaw = (document.getElementById('f-loan')?.value || '').trim();
+  const rate    = (+document.getElementById('f-rate')?.value   || 10) / 100;
+  const points  = (+document.getElementById('f-points')?.value ||  3) / 100;
+  const loan     = loanRaw === '' ? 0 : (parseComma(loanRaw) || 0);
+  const financed = loan > 0;
+
+  const cost     = ask + rep;
   const buyCost  = ask * cc1;
   const sellCost = arv * cc2;
-  const holdCost = carry * hold;
-  const totalIn  = ask + rep + buyCost + holdCost;
-  const profit   = arv - totalIn - sellCost;
-  const roi      = (profit / totalIn) * 100;
+  const holdCost = carry * hold;                              // non-loan holding only
+  const loanInt  = financed ? loan * (rate / 12) * hold : 0;  // interest-only carry
+  const loanFees = financed ? loan * points : 0;              // origination + broker points
+  const finCost  = loanInt + loanFees;
+
+  const cashIn   = financed ? (cost - loan) + buyCost + holdCost + finCost
+                            : cost + buyCost + holdCost;       // investment basis
+  const totalIn  = cost + buyCost + holdCost + finCost;        // all-in (excl. sale costs)
+  const profit   = arv - sellCost - cost - buyCost - holdCost - finCost;
+  const roi      = cashIn > 0 ? (profit / cashIn) * 100 : 0;   // leveraged when financed
   const maxOffer = arv * (self ? 0.75 : 0.70) - rep;
-  const ltv      = (ask / arv) * 100;
+  const ltvVal   = financed ? (loan / arv) * 100 : (ask / arv) * 100;
+  const ltvLabel = financed ? 'LTV' : 'Price / ARV';
+  const ltc      = financed && cost > 0 ? (loan / cost) * 100 : 0;
+  const ratePct  = (rate * 100).toFixed(2).replace(/\.?0+$/, '');
+  const pointsPct = (points * 100).toFixed(2).replace(/\.?0+$/, '');
 
   let verdict, vsub, cls;
   if (profit >= target && roi >= 20) {
@@ -113,16 +134,21 @@ export function analyzeFlip() {
     { label: 'Net Profit', val: fmt(profit),   cls: cls === 'hot' ? 'good' : cls === 'warm' ? 'warn' : 'bad' },
     { label: 'ROI',        val: pct(roi),       cls: cClass(roi, 20, 12) },
     { label: 'Max Offer',  val: fmt(Math.max(0, maxOffer)),  cls: 'neutral' },
-    { label: 'LTV',        val: pct(ltv),       cls: cClass(80 - ltv, 15, 5) },
+    { label: ltvLabel,     val: pct(ltvVal),    cls: financed ? cClass(75 - ltvVal, 15, 5) : 'neutral' },
   ]);
 
   document.getElementById('flip-breakdown').innerHTML = buildRows([
     { l: 'Purchase price',                                    v: fmt(ask) },
     { l: 'Repair costs' + (self ? ' (self-perform)' : ''),   v: fmt(rep) },
     { l: 'Purchase costs (' + Math.round(cc1 * 100) + '%)',  v: fmt(buyCost) },
-    { l: 'Carrying costs (' + hold + ' mo)',                  v: fmt(holdCost) },
+    { l: 'Carrying costs (' + hold + ' mo, non-loan)',        v: fmt(holdCost) },
+    ...(financed ? [
+      { l: 'Loan interest (' + hold + ' mo @ ' + ratePct + '%)', v: fmt(loanInt) },
+      { l: 'Points (' + pointsPct + '%)',                       v: fmt(loanFees) },
+    ] : []),
     { l: 'Sale costs (' + Math.round(cc2 * 100) + '%)',       v: fmt(sellCost) },
-    { l: 'Total all-in',                                      v: fmt(totalIn + sellCost) },
+    ...(financed ? [{ l: 'LTC (loan ÷ cost)', v: (Math.round(ltc * 10) / 10) + '%' }] : []),
+    { l: financed ? 'Cash invested' : 'Total cash (all-cash)', v: fmt(cashIn) },
     { l: 'Net profit', v: fmt(profit), tot: true, color: profit >= 0 ? 'var(--accent)' : 'var(--danger)' },
   ]);
 
@@ -131,7 +157,8 @@ export function analyzeFlip() {
     cc1: +document.getElementById('f-cc1').value,
     cc2: +document.getElementById('f-cc2').value,
     carry, target, sqft, self,
-    profit, roi, ltv, maxOffer, buyCost, sellCost, holdCost, totalIn,
+    loan, rate, points, financed, finCost, loanInt, loanFees, cashIn, ltc,
+    profit, roi, ltv: ltvVal, ltvLabel, maxOffer, buyCost, sellCost, holdCost, totalIn,
     verdict, cls,
     hot: cls === 'hot',
   };

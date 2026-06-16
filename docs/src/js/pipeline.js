@@ -1,7 +1,8 @@
 // ─── Pipeline: saved deals, render, expand, filter, delete ───────────────────
 
 import { fmt, pct, escapeHtml } from './format.js';
-import { getDeals, saveDeals } from './storage.js';
+import { getDeals, saveDeals, FREE_DEAL_CAP } from './storage.js';
+import { isSignedIn } from './auth.js';
 import { getLastFlipResult } from './flip.js';
 import { getLastRentalResult } from './rental.js';
 import { getPipelineFundingButtonHTML } from './clearpath.js';
@@ -17,6 +18,14 @@ let pendingDeleteId = null;
 // ─── Save ─────────────────────────────────────────────────────────────────────
 
 export function saveDeal(type) {
+  // Pipeline requires a free account (Option A) — anonymous users can analyze a
+  // deal and request funding, but SAVING prompts sign-in / account creation.
+  if (!isSignedIn()) {
+    window.showToast && window.showToast('Create a free account to save deals');
+    window.openUpgrade && window.openUpgrade('save');
+    return;
+  }
+
   const nameId  = type + '-deal-name';
   const notesId = type + '-notes';
   const name    = document.getElementById(nameId).value.trim();
@@ -24,6 +33,15 @@ export function saveDeal(type) {
 
   const result = type === 'flip' ? getLastFlipResult() : getLastRentalResult();
   if (!result) { alert('Analyze the deal first, then save.'); return; }
+
+  // Free Starter keeps a small pipeline; Investor/Pro are unlimited.
+  const tier  = getActiveTier();
+  const deals = getDeals();
+  if (tier !== 'investor' && tier !== 'pro' && deals.length >= FREE_DEAL_CAP) {
+    window.showToast && window.showToast(`Free accounts hold ${FREE_DEAL_CAP} deals — upgrade for an unlimited pipeline`);
+    window.openUpgrade && window.openUpgrade('save');
+    return;
+  }
 
   const notes = document.getElementById(notesId).value.trim();
   const deal  = {
@@ -48,7 +66,6 @@ export function saveDeal(type) {
         ],
   };
 
-  const deals = getDeals();
   deals.unshift(deal);
   saveDeals(deals);
 
@@ -99,12 +116,20 @@ export function toggleDeal(id) {
 // ─── Render ───────────────────────────────────────────────────────────────────
 
 export function renderPipeline() {
+  const list = document.getElementById('pipeline-list');
+
+  // Pipeline is account-scoped (Option A): signed-out users see a sign-in prompt,
+  // not a deal list. Analyzing deals and Get Funding stay login-free elsewhere.
+  if (!isSignedIn()) {
+    list.innerHTML = `<div class="empty-state"><div class="ei">🔒</div><p>Your pipeline lives with your free account.<br>Sign in or create one to save deals and<br>track them across all your devices.</p><button class="btn-redeem" style="margin-top:14px" onclick="openUpgrade('save')">Sign in / Create free account</button></div>`;
+    return;
+  }
+
   let deals = getDeals();
   if (pipelineFilter === 'flip')   deals = deals.filter(d => d.type === 'flip');
   else if (pipelineFilter === 'rental') deals = deals.filter(d => d.type === 'rental');
   else if (pipelineFilter === 'hot')    deals = deals.filter(d => d.cls === 'hot');
 
-  const list = document.getElementById('pipeline-list');
   if (!deals.length) {
     list.innerHTML = `<div class="empty-state"><div class="ei">📋</div><p>No deals saved yet.<br>Analyze a property and hit Save<br>to build your pipeline.</p></div>`;
     return;

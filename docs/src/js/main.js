@@ -29,6 +29,7 @@ import {
   isSignedIn, getUserEmail,
 } from './auth.js';
 import { fetchMarketIntel } from './marketIntel.js';
+import { hydratePipeline, clearPipelineCache } from './storage.js';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -1095,7 +1096,19 @@ initOnboarding();
 // sign-in/out), then refresh every tier-gated surface. The synchronous render
 // above paints from the cached tier for speed; this corrects it from the server.
 onAuthChange(refreshTierUI);
+onAuthChange(syncPipelineOnAuth);
 initAuthAndEntitlement();
+
+// Keep the (account-scoped) pipeline in step with auth: pull it from the server on
+// sign-in / session restore, drop it on sign-out. Re-render if the pipeline tab is
+// open so it reflects the change without a manual nav.
+async function syncPipelineOnAuth() {
+  if (isSignedIn()) await hydratePipeline();
+  else clearPipelineCache();
+  if (document.getElementById('page-pipeline')?.classList.contains('active')) {
+    renderPipeline();
+  }
+}
 
 // Task 3: track when user manually edits the Min Profit Target
 document.getElementById('f-target')?.addEventListener('input', () => {

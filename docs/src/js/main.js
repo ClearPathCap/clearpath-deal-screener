@@ -84,7 +84,8 @@ function updateCarryTotal() {
   const lbl   = document.getElementById('hold-cost-label');
   if (carry && hold) {
     const total = carry * hold;
-    txt.textContent = '$' + carry.toLocaleString() + '/mo × ' + hold + ' mo = $' + total.toLocaleString();
+    // Cost-first, in white (so it doesn't get lost in the gray); the math dimmed in parens.
+    txt.innerHTML = '<span style="color:#fff;font-weight:600">$' + total.toLocaleString() + '</span> ($' + carry.toLocaleString() + '/mo × ' + hold + ' mo)';
     row.style.display = 'block';
     if (lbl) lbl.style.display = 'block';
   } else {

@@ -119,12 +119,13 @@ export function analyzeRental() {
     { l: 'Property manager' + (pm > 0 ? ' (' + Math.round(pm * 100) + '%)' : ' (self)'), v: pm > 0 ? '–' + fmt(pmFee) : '$0' },
     { l: 'Taxes + insurance',                                              v: '–' + fmt(tax) },
     { l: 'Maintenance',                                                    v: '–' + fmt(maint) },
-    ...(furnish > 0 ? [{ l: 'Furnishing / setup (one-time)',               v: '–' + fmt(furnish) }] : []),
     { l: 'Net operating income',                                           v: fmt(noi) },
     { l: 'Annual debt service (' + rateDisplay + ')',                      v: '–' + fmt(debt) },
-    { l: 'Net cash flow', v: fmt(cashflow), tot: true, color: cashflow >= 0 ? 'var(--accent)' : 'var(--danger)' },
+    { l: 'Net cash flow (annual)', v: fmt(cashflow), tot: true, color: cashflow >= 0 ? 'var(--accent)' : 'var(--danger)' },
+    { l: 'Net cash flow (monthly)',                                        v: fmt(cashflow / 12) },
     { l: 'DSCR (NOI ÷ debt service)',                                      v: (debt > 0 ? dscr.toFixed(2) : 'n/a') },
     { l: 'Gross rent multiplier (price ÷ rent)',                           v: grm + 'x' },
+    ...(furnish > 0 ? [{ l: 'Furnishing / setup (one-time cash — not in NOI)', v: '–' + fmt(furnish) }] : []),
   ];
   document.getElementById('rental-breakdown').innerHTML = buildRows(breakdownRows);
 

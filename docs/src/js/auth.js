@@ -59,19 +59,35 @@ export async function syncEntitlement() {
 }
 
 // Email the user a passwordless magic link. Returns { ok, msg }.
-export async function sendMagicLink(email) {
+export async function sendOtpCode(email) {
   const clean = (email || '').trim();
   if (!clean || !clean.includes('@')) return { ok: false, msg: 'Enter a valid email address.' };
   try {
     const { error } = await supabase.auth.signInWithOtp({
       email: clean,
-      options: { emailRedirectTo: window.location.origin + window.location.pathname },
+      options: { shouldCreateUser: true },   // code flow — no redirect link
     });
-    if (error) return { ok: false, msg: error.message || 'Could not send the link — try again.' };
-    return { ok: true, msg: 'Check your email for a sign-in link.' };
+    if (error) return { ok: false, msg: error.message || 'Could not send the code — try again.' };
+    return { ok: true, msg: 'Enter the 6-digit code we just emailed you.' };
   } catch (e) {
     console.warn(e);
-    return { ok: false, msg: 'Could not send the link — try again.' };
+    return { ok: false, msg: 'Could not send the code — try again.' };
+  }
+}
+
+// Verify the 6-digit code. On success the session is established (onAuthStateChange
+// fires and the UI flips to signed-in). Returns { ok, msg }.
+export async function verifyOtpCode(email, code) {
+  const clean = (email || '').trim();
+  const token = (code || '').trim();
+  if (!token) return { ok: false, msg: 'Enter the code from your email.' };
+  try {
+    const { error } = await supabase.auth.verifyOtp({ email: clean, token, type: 'email' });
+    if (error) return { ok: false, msg: error.message || 'That code is invalid or expired.' };
+    return { ok: true, msg: 'Signed in.' };
+  } catch (e) {
+    console.warn(e);
+    return { ok: false, msg: 'That code is invalid or expired.' };
   }
 }
 

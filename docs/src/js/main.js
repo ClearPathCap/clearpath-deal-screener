@@ -25,7 +25,7 @@ import {
 } from './tiers.js';
 import {
   initAuthAndEntitlement, onAuthChange,
-  sendMagicLink, signOutAccount, redeemServerCode,
+  sendOtpCode, verifyOtpCode, signOutAccount, redeemServerCode,
   isSignedIn, getUserEmail,
 } from './auth.js';
 
@@ -766,12 +766,27 @@ async function redeemTierCode() {
 
 // ─── Account: magic-link sign-in / sign-out ──────────────────────────────────
 
-async function sendSignInLink() {
+async function sendSignInCode() {
   const email = document.getElementById('signin-email')?.value;
   const msgEl = document.getElementById('signin-msg');
   showRedeemMsg(msgEl, { ok: true, msg: 'Sending…' });
-  const result = await sendMagicLink(email);
+  const result = await sendOtpCode(email);
   showRedeemMsg(msgEl, result);
+  if (result.ok) {
+    const codeStep = document.getElementById('signin-code-step');
+    if (codeStep) codeStep.style.display = '';
+    document.getElementById('signin-code')?.focus();
+  }
+}
+
+async function verifySignInCode() {
+  const email = document.getElementById('signin-email')?.value;
+  const code  = document.getElementById('signin-code')?.value;
+  const msgEl = document.getElementById('signin-msg');
+  showRedeemMsg(msgEl, { ok: true, msg: 'Verifying…' });
+  const result = await verifyOtpCode(email, code);
+  showRedeemMsg(msgEl, result);
+  // On success, onAuthChange → refreshTierUI → updateAccountUI flips to signed-in.
 }
 
 async function doSignOut() {
@@ -788,6 +803,13 @@ function updateAccountUI() {
   if (accountRow) accountRow.style.display = signedIn ? '' : 'none';
   const emailEl = document.getElementById('account-email');
   if (emailEl) emailEl.textContent = getUserEmail();
+  // Reset the sign-in steps when signed out (back to the email step).
+  if (!signedIn) {
+    const codeStep = document.getElementById('signin-code-step');
+    if (codeStep) codeStep.style.display = 'none';
+    const codeInput = document.getElementById('signin-code');
+    if (codeInput) codeInput.value = '';
+  }
 }
 
 // Re-render every tier-dependent surface after the server tier resolves (boot)
@@ -1033,7 +1055,8 @@ Object.assign(window, {
   upgradeToInvestor,
   upgradeToPro,
   redeemTierCode,
-  sendSignInLink,
+  sendSignInCode,
+  verifySignInCode,
   signOutAccount: doSignOut,
   openUpgrade,
   // pipeline funding (clearpath)

@@ -643,11 +643,11 @@
         <div class="redeem-label">Sign in to redeem a code or manage your plan</div>
         <div class="redeem-row" id="signin-email-step">
           <input type="email" id="signin-email" placeholder="you@email.com" autocomplete="email" inputmode="email" spellcheck="false" onkeydown="if(event.key==='Enter')sendSignInCode()">
-          <button class="btn-redeem" onclick="sendSignInCode()">Email me a code</button>
+          <button class="btn-redeem" style="flex:0 0 150px" onclick="sendSignInCode()">Send code</button>
         </div>
         <div class="redeem-row" id="signin-code-step" style="display:none">
-          <input type="text" id="signin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" spellcheck="false" onkeydown="if(event.key==='Enter')verifySignInCode()">
-          <button class="btn-redeem" onclick="verifySignInCode()">Verify</button>
+          <input type="text" id="signin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="Enter your code" spellcheck="false" onkeydown="if(event.key==='Enter')verifySignInCode()">
+          <button class="btn-redeem" style="flex:0 0 150px" onclick="verifySignInCode()">Verify</button>
         </div>
         <div id="signin-msg" class="redeem-msg"></div>
       </div>

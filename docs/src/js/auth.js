@@ -68,7 +68,7 @@ export async function sendOtpCode(email) {
       options: { shouldCreateUser: true },   // code flow — no redirect link
     });
     if (error) return { ok: false, msg: error.message || 'Could not send the code — try again.' };
-    return { ok: true, msg: 'Enter the 6-digit code we just emailed you.' };
+    return { ok: true, msg: 'Enter the code we just emailed you.' };
   } catch (e) {
     console.warn(e);
     return { ok: false, msg: 'Could not send the code — try again.' };

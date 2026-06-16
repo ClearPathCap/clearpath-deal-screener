@@ -39,18 +39,17 @@ export async function initAuthAndEntitlement() {
   notify();
 }
 
-// Pull the server tier into the local cache (starter when signed out / no row).
+// Pull the server tier into the local cache (starter when signed out). Resolves
+// through the current_tier() function so an EXPIRED comp (e.g. a time-boxed
+// Aspire grant past its end date) correctly reads as starter — the server is the
+// single source of truth, never the client.
 export async function syncEntitlement() {
   if (!_session) { setCachedTier('starter'); return 'starter'; }
   let tier = 'starter';
   try {
-    const { data, error } = await supabase
-      .from('entitlements')
-      .select('tier,status')
-      .eq('user_id', _session.user.id)
-      .maybeSingle();
-    if (!error && data && data.status === 'active' && ['investor', 'pro'].includes(data.tier)) {
-      tier = data.tier;
+    const { data, error } = await supabase.rpc('current_tier');
+    if (!error && typeof data === 'string' && ['investor', 'pro'].includes(data)) {
+      tier = data;
     }
   } catch (e) {
     console.warn('Entitlement fetch failed:', e);

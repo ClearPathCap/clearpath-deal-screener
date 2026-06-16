@@ -38,8 +38,8 @@ export function saveDeal(type) {
   const tier  = getActiveTier();
   const deals = getDeals();
   if (tier !== 'investor' && tier !== 'pro' && deals.length >= FREE_DEAL_CAP) {
-    window.showToast && window.showToast(`Free accounts hold ${FREE_DEAL_CAP} deals — upgrade for an unlimited pipeline`);
-    window.openUpgrade && window.openUpgrade('save');
+    window.showToast && window.showToast(`That's your ${FREE_DEAL_CAP} free deal saves — upgrade for an unlimited pipeline`, 4200);
+    window.openUpgrade && window.openUpgrade('cap');
     return;
   }
 

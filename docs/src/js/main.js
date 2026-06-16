@@ -33,12 +33,12 @@ import { hydratePipeline, clearPipelineCache } from './storage.js';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
-export function showToast(msg) {
+export function showToast(msg, ms = 2200) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), 2200);
+  t._timer = setTimeout(() => t.classList.remove('show'), ms);
 }
 window.showToast = showToast;
 
@@ -646,7 +646,7 @@ document.querySelectorAll('.modal-backdrop').forEach(m => {
 
 // ─── Upgrade modal — context-aware + tier-aware (item 3) ─────────────────────
 
-// trigger: 'region' | 'save' | 'general'
+// trigger: 'region' | 'save' | 'cap' | 'general'
 function configureUpgradeModal(trigger) {
   const tier      = getActiveTier();
   const title     = document.getElementById('upgrade-modal-title');
@@ -661,10 +661,17 @@ function configureUpgradeModal(trigger) {
   const headlines = {
     region: 'Analyze deals in 4 markets, not 2',
     save:   'Never lose a deal you\'ve already found',
+    cap:    'You\'ve saved your 2 free deals',
     general:'Upgrade Your Plan',
   };
   if (title)   title.textContent = headlines[trigger] || headlines.general;
-  if (subhead) subhead.textContent = 'Paid plans unlock real market data for the markets you invest in — funding stays free on every tier.';
+  // Cap hit gets its own subhead so the modal explains WHY it opened; others share
+  // the default value line.
+  const subheads = {
+    cap: 'Free accounts keep 2 deals in your pipeline. Upgrade to Investor for unlimited saves — keep every deal you analyze.',
+  };
+  if (subhead) subhead.textContent = subheads[trigger] ||
+    'Paid plans unlock real market data for the markets you invest in — funding stays free on every tier.';
 
   // Reset visibility defaults
   if (compare) compare.style.display = '';

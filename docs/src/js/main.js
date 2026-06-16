@@ -28,6 +28,7 @@ import {
   sendOtpCode, verifyOtpCode, signOutAccount, redeemServerCode,
   isSignedIn, getUserEmail,
 } from './auth.js';
+import { fetchMarketIntel } from './marketIntel.js';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -863,38 +864,36 @@ function openUpgrade(trigger) {
 
 function _kFmt(v) { return '$' + Math.round(v / 1000) + 'k'; }
 
-// Build the intel HTML for a single market slug, from markets.js fields.
-// Depth ladders by tier: Starter sees a locked preview, Investor gets the
-// quantitative benchmarks, Pro additionally gets the analyst notes + sources.
-function buildRegionIntel(slug, tier) {
+// Build the intel HTML for a single market slug. Free numbers come from the bundle;
+// premium notes/sources come from `intel` (the server's get_market_intel row, or
+// null) — already tier-gated server-side, so editing localStorage can't unlock them.
+function buildRegionIntel(slug, tier, intel) {
   const flip   = FLIP_MARKETS[slug];
   const str    = STR_MARKETS[slug];
   const label  = getMarketLabel(slug);            // "Charlotte, NC"
   if (!flip && !str) return '';
-  const isPro  = tier === 'pro';                  // analyst notes + sources are Pro-only
-  const note   = txt => isPro && txt ? `<div class="gi-note">${txt}</div>` : '';
+  const isPro  = tier === 'pro';                  // for the depth tag only
+  const note   = txt => txt ? `<div class="gi-note">${txt}</div>` : '';  // server already gated by tier
 
   const rows = [];
 
   if (flip) {
-    rows.push(`<div class="guide-item"><div class="gi-label">Median ARV · Days on market</div><div class="gi-val">$${Math.round(flip.medianArv / 1000)}k · ${flip.dom} days</div>${note(flip.rehabNote)}</div>`);
+    rows.push(`<div class="guide-item"><div class="gi-label">Median ARV · Days on market</div><div class="gi-val">$${Math.round(flip.medianArv / 1000)}k · ${flip.dom} days</div>${note(intel && intel.rehab_note)}</div>`);
     rows.push(`<div class="guide-item"><div class="gi-label">Disciplined offer (ARV rule)</div><div class="gi-val">${Math.round(flip.arvRuleLow * 100)}–${Math.round(flip.arvRuleHigh * 100)}% of ARV − repairs</div></div>`);
     rows.push(`<div class="guide-item"><div class="gi-label">Mid rehab (hired-out)</div><div class="gi-val">$${flip.repairLow}–${flip.repairHigh}/sf</div></div>`);
     rows.push(`<div class="guide-item"><div class="gi-label">Typical monthly hold</div><div class="gi-val">$${flip.monthlyHoldLow.toLocaleString()}–$${flip.monthlyHoldHigh.toLocaleString()}</div></div>`);
   }
 
-  // STR viability — prefer richer STR_MARKETS data, fall back to flip's STR fields
+  // STR viability — free numbers from STR_MARKETS; analyst note from the server.
   if (str) {
-    rows.push(`<div class="guide-item"><div class="gi-label">STR potential</div><div class="gi-val">${_kFmt(str.revLow)}–${_kFmt(str.revHigh)}/yr · ${Math.round(str.occLow * 100)}–${Math.round(str.occHigh * 100)}% occ.</div>${note(str.benchmarkNote || str.regulatoryNote)}</div>`);
-  } else if (flip && flip.strViability) {
-    rows.push(`<div class="guide-item"><div class="gi-label">STR potential</div><div class="gi-val">${flip.strViability}${flip.strRevLow ? ' · ' + _kFmt(flip.strRevLow) + '–' + _kFmt(flip.strRevHigh) + '/yr' : ''}</div></div>`);
+    rows.push(`<div class="guide-item"><div class="gi-label">STR potential</div><div class="gi-val">${_kFmt(str.revLow)}–${_kFmt(str.revHigh)}/yr · ${Math.round(str.occLow * 100)}–${Math.round(str.occHigh * 100)}% occ.</div>${note(intel && (intel.benchmark_note || intel.regulatory_note))}</div>`);
+  } else if (intel && intel.str_viability) {
+    rows.push(`<div class="guide-item"><div class="gi-label">STR potential</div><div class="gi-val">${intel.str_viability}${intel.str_rev_low ? ' · ' + _kFmt(intel.str_rev_low) + '–' + _kFmt(intel.str_rev_high) + '/yr' : ''}</div></div>`);
   }
 
-  // Pro-only: source links so they can verify the benchmarks
-  if (isPro) {
-    const src = (flip && flip.sourceUrl) || (str && str.sourceUrl);
-    if (src) rows.push(`<div class="guide-item"><div class="gi-label">Source</div><div class="gi-note"><a class="hint-link" href="${src}" target="_blank" rel="noopener">${new URL(src).hostname.replace('www.', '')}</a></div></div>`);
-  }
+  // Source link — the server returns source_url only for Pro.
+  const src = intel && intel.source_url;
+  if (src) rows.push(`<div class="guide-item"><div class="gi-label">Source</div><div class="gi-note"><a class="hint-link" href="${src}" target="_blank" rel="noopener">${new URL(src).hostname.replace('www.', '')}</a></div></div>`);
 
   // Pro gets a richer header tag so the added depth is legible
   const depthTag = isPro
@@ -957,25 +956,37 @@ function buildInvestorUpgradeCTA() {
     </div>`;
 }
 
-function renderGuideMarketIntel() {
+let _guideRenderToken = 0;
+async function renderGuideMarketIntel() {
   const container = document.getElementById('guide-market-intel');
   if (!container) return;
+  const token = ++_guideRenderToken;
   const tier  = getActiveTier();
   const slugs = getMarketSlots();   // every populated slot
 
-  let html;
-  if (!slugs.length) {
-    html = '<div class="guide-item"><div class="gi-note">Pick a market region on the Fix &amp; Flip or Rentals tab to see its benchmarks here.</div></div>';
-  } else {
-    html = slugs.map(s => buildRegionIntel(s, tier)).filter(Boolean).join('');
+  const paint = (intelMap) => {
+    let html;
+    if (!slugs.length) {
+      html = '<div class="guide-item"><div class="gi-note">Pick a market region on the Fix &amp; Flip or Rentals tab to see its benchmarks here.</div></div>';
+    } else {
+      html = slugs.map(s => buildRegionIntel(s, tier, intelMap && intelMap.get(s))).filter(Boolean).join('');
+    }
+    // Investor sees what Pro adds; the funding ladder is shown to everyone.
+    if (tier === 'investor') html += buildInvestorUpgradeCTA();
+    html += buildFundingLadderHTML(tier);
+    container.innerHTML = html;
+    applyTierToUI();  // re-apply lock state to the freshly generated locked sections
+  };
+
+  paint(null);  // free numbers immediately — no blank flash while the depth loads
+
+  // Premium depth (analyst notes/sources) for investor/pro — fetched + tier-gated
+  // server-side. A render token drops a stale fetch if a newer render started.
+  if (slugs.length && (tier === 'investor' || tier === 'pro')) {
+    const intelMap = await fetchMarketIntel(slugs);
+    if (token !== _guideRenderToken) return;
+    if (intelMap.size) paint(intelMap);
   }
-
-  // Investor sees what Pro adds; the funding ladder is shown to everyone.
-  if (tier === 'investor') html += buildInvestorUpgradeCTA();
-  html += buildFundingLadderHTML(tier);
-
-  container.innerHTML = html;
-  applyTierToUI();  // re-apply lock state to the freshly generated locked sections
 }
 
 // ─── First-launch onboarding — gate on primaryMarket (Task 3) ────────────────

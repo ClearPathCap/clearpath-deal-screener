@@ -370,13 +370,16 @@ function openMarketPicker(slotIndex, isFirstLaunch, isChange = false) {
   const cancelRow = document.getElementById('picker-cancel-row');
   const search    = document.getElementById('picker-search');
 
+  const cancelBtn = document.getElementById('picker-cancel-btn');
   if (isFirstLaunch) {
     backdrop.dataset.required = 'true';
-    if (cancelRow) cancelRow.style.display = 'none';
+    if (cancelRow) cancelRow.style.display = 'flex';   // always escapable — never brick the app
+    if (cancelBtn) cancelBtn.textContent = 'Skip for now — pick a market later';
     _pickerSetTitle('Choose Your Primary Market');
   } else {
     delete backdrop.dataset.required;
     if (cancelRow) cancelRow.style.display = 'flex';
+    if (cancelBtn) cancelBtn.textContent = 'Cancel';
     _pickerSetTitle('Choose a State');
   }
 
@@ -385,6 +388,14 @@ function openMarketPicker(slotIndex, isFirstLaunch, isChange = false) {
   const map = getPickerStateMap();
   _pickerRenderStateList(Object.keys(map).sort());
   openModal('modal-market-picker');
+}
+
+// Dismiss the picker. On first launch, remember the skip so onboarding doesn't
+// re-gate every load — the analyzer just uses regional defaults until a market
+// is chosen from the slots.
+function pickerCancel() {
+  if (_pickerIsFirst) localStorage.setItem('onboardingSkipped', '1');
+  closeModal('modal-market-picker');
 }
 
 // ─── Helper: extract state code from market name ("Charlotte NC" → "NC") ──────
@@ -948,7 +959,7 @@ function renderGuideMarketIntel() {
 // ─── First-launch onboarding — gate on primaryMarket (Task 3) ────────────────
 
 function initOnboarding() {
-  if (localStorage.getItem('primaryMarket')) return;
+  if (localStorage.getItem('primaryMarket') || localStorage.getItem('onboardingSkipped')) return;
   openMarketPicker(0, true /* isFirstLaunch */);
 }
 
@@ -960,6 +971,7 @@ Object.assign(window, {
   // modals
   openModal,
   closeModal,
+  pickerCancel,
   // flip
   analyzeFlip: analyzeFlipValidated,
   setFlipPreset,

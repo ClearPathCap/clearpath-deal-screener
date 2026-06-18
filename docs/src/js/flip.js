@@ -4,6 +4,7 @@ import { fmt, pct, cClass, buildMetrics, buildRows, parseComma } from './format.
 import { FLIP_MARKETS, ALL_MARKETS } from './markets.js';
 import { updateRepairRangesForMarket } from './repair.js';
 import { maybeShowFundingButton } from './clearpath.js';
+import { computeFlipStress, flipVerdict, mosLabel } from './finance.js';
 
 // ─── Regional fallback defaults (Task 3) ──────────────────────────────────────
 const FLIP_REGIONAL_DEFAULTS = {
@@ -101,29 +102,15 @@ export function analyzeFlip() {
   const ratePct  = (rate * 100).toFixed(2).replace(/\.?0+$/, '');
   const pointsPct = (points * 100).toFixed(2).replace(/\.?0+$/, '');
 
-  let verdict, vsub, cls;
-  if (profit >= target && roi >= 20) {
-    verdict = 'Strong Flip Play'; cls = 'hot';
-    vsub = 'Hits your profit target and ROI. ' + (self
-      ? 'Self-performing gives you maximum margin here.'
-      : 'Consider self-performing to push profit even higher.')
-      + ' Verify your ARV with comps before committing.';
-  } else if (profit >= target * 0.75 && roi >= 12) {
-    verdict = 'Dig Deeper & Negotiate'; cls = 'warm';
-    vsub = 'Close to your target. Counter at ' + fmt(maxOffer) + ' max offer' + (self
-      ? ' — your labor advantage could close the gap.'
-      : '.') + ' Numbers are workable if you negotiate price or reduce scope.';
-  } else if (profit >= 2.5 * target) {
-    // Item 5: large absolute profit floors the verdict at warm even when ROI is below bar
-    verdict = 'Dig Deeper & Negotiate'; cls = 'warm';
-    vsub = 'ROI is below your usual bar, but absolute profit is large — decide if capital efficiency or dollar profit matters more on this one.';
-  } else if (maxOffer <= 0) {
-    verdict = 'Counter at Max Offer — Walk Away'; cls = 'pass';
-    vsub = "Repairs exceed the " + (self ? '75' : '70') + "% ARV ceiling — there's no purchase price that hits your target on this one. Walk away.";
-  } else {
-    verdict = 'Counter at Max Offer — Walk Away'; cls = 'pass';
-    vsub = "Numbers don't work at asking. Max you can pay: " + fmt(maxOffer) + ". Counter hard or walk — don't overpay.";
-  }
+  // Verdict & Risk Framework: HOT needs a dollar floor (≥ max($50K, target)), an
+  // ROI bar (≥15%), AND to survive a stress test (ARV −5%, rehab +10%, +1 month).
+  const { stressedProfit, marginOfSafety } = computeFlipStress({
+    ask, arv, rep, cc1, cc2, carry, hold, financed, loan, rate, points, target,
+  });
+  const { cls, verdict, vsub } = flipVerdict({
+    profit, roi, target, maxOffer, marginOfSafety, stressedProfit, self,
+  });
+  const mos = mosLabel(marginOfSafety);
 
   document.getElementById('flip-verdict').className = 'verdict ' + cls;
   document.getElementById('fvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
@@ -132,7 +119,8 @@ export function analyzeFlip() {
 
   document.getElementById('flip-metrics').innerHTML = buildMetrics([
     { label: 'Net Profit', val: fmt(profit),   cls: cls === 'hot' ? 'good' : cls === 'warm' ? 'warn' : 'bad' },
-    { label: '<span class="pro-only">ROI</span><span class="beginner-only">Cash-on-Cash ROI</span>', val: pct(roi), cls: cClass(roi, 20, 12) },
+    { label: '<span class="pro-only">ROI</span><span class="beginner-only">Cash-on-Cash ROI</span>', val: pct(roi), cls: cClass(roi, 15, 10) },
+    { label: 'Margin of Safety', val: mos.label, cls: mos.cls },
     { label: 'Max Offer',  val: fmt(Math.max(0, maxOffer)),  cls: 'neutral' },
     { label: ltvLabel,     val: pct(ltvVal),    cls: financed ? cClass(75 - ltvVal, 15, 5) : 'neutral' },
   ]);
@@ -150,6 +138,7 @@ export function analyzeFlip() {
     ...(financed ? [{ l: 'LTC (loan ÷ cost)', v: (Math.round(ltc * 10) / 10) + '%' }] : []),
     { l: financed ? 'Cash invested' : 'Total cash (all-cash)', v: fmt(cashIn) },
     { l: 'Net profit', v: fmt(profit), tot: true, color: profit >= 0 ? 'var(--accent)' : 'var(--danger)' },
+    { l: 'Stress-test profit (ARV −5%, rehab +10%, +1mo)', v: fmt(stressedProfit), color: stressedProfit >= 0 ? 'var(--accent)' : 'var(--danger)' },
   ]);
 
   lastFlipResult = {
@@ -159,6 +148,7 @@ export function analyzeFlip() {
     carry, target, sqft, self,
     loan, rate, points, financed, finCost, loanInt, loanFees, cashIn, ltc,
     profit, roi, ltv: ltvVal, ltvLabel, maxOffer, buyCost, sellCost, holdCost, totalIn,
+    marginOfSafety, stressedProfit,
     verdict, cls,
     hot: cls === 'hot',
   };

@@ -5,7 +5,7 @@
 // lastLtrResult, maybeShowFundingButton reuse.
 
 import { fmt, pct, cClass, buildMetrics, buildRows } from './format.js';
-import { computeLtr, ltrVerdict } from './finance.js';
+import { computeLtr, ltrVerdict, mosLabel } from './finance.js';
 import { LTR_MARKETS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
 
@@ -89,11 +89,13 @@ export function analyzeLtr() {
   elv('lvlabel').textContent = verdict;
   elv('lvsub').textContent   = vsub;
 
+  const mos = mosLabel(m.marginOfSafety);
   elv('ltr-metrics').innerHTML = buildMetrics([
     { label: 'DSCR',             val: dscrText,           cls: m.dscr === null ? 'good' : m.dscr >= 1.25 ? 'good' : m.dscr >= 1.0 ? 'warn' : 'bad' },
     { label: 'Cash-on-Cash',     val: pct(m.coc),         cls: cClass(m.coc, m.target, m.target * 0.6) },
     { label: 'Cap Rate',         val: pct(m.capRate),     cls: cClass(m.capRate, 6, 4.5) },
     { label: 'Monthly Cash Flow',val: fmt(m.cashFlowMo),  cls: cClass(m.cashFlowMo, 200, 0) },
+    { label: 'Margin of Safety', val: mos.label,          cls: mos.cls },
   ]);
 
   const onePctPass = m.onePctRule >= 1.0;
@@ -115,6 +117,7 @@ export function analyzeLtr() {
     { l: '1% rule (rent ÷ price)',                                              v: m.onePctRule.toFixed(2) + '% ' + (onePctPass ? '· pass' : '· watch') },
     { l: 'Gross rent multiplier',                                              v: (Math.round(m.grm * 10) / 10) + 'x' },
     { l: 'Cash to close (down + points + closing)',                            v: fmt(m.cashToClose) },
+    { l: 'Margin of safety (stress: rent −5%, vacancy +3pts, rate +0.5%)',     v: mos.label },
   ];
   elv('ltr-breakdown').innerHTML = buildRows(rows);
 
@@ -129,7 +132,7 @@ export function analyzeLtr() {
     rentYr: m.rentYr, EGI: m.EGI, NOI: m.NOI, capRate: m.capRate, loan: m.loan,
     debtYr: m.debtYr, capexRes: m.capexRes, cashFlowYr: m.cashFlowYr, cashFlowMo: m.cashFlowMo,
     dscr: m.dscr, downAmt: m.downAmt, cashToClose: m.cashToClose, coc: m.coc,
-    onePctRule: m.onePctRule, grm: m.grm, ltv: m.ltv,
+    onePctRule: m.onePctRule, grm: m.grm, ltv: m.ltv, marginOfSafety: m.marginOfSafety,
     verdict, cls, hot: cls === 'hot',
   };
 

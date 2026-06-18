@@ -4,16 +4,14 @@
 // so the analyzer glue (ltr.js / brrr.js) and the Node acceptance tests both run
 // the identical math. Reference for SPEC_LTR_ANALYZER §2 / SPEC_BRRR_ANALYZER §2.
 
-// CPC box bounds — loan minimum lowered $150K → $50K (A-Aron, 2026-06-18). Used
-// by every qualifiesForCpc* gate and the under-box explainer. Pure constants so
-// the gates stay testable (funding.js re-exports the gates for the app).
+// CPC box: $50K floor (lowered from $150K), and NO upper cap — the $5M cap was
+// removed 2026-06-18 (box/explainer copy → "$50K+"). Pure so the gates stay testable.
 export const CPC_LOAN_MIN = 50000;
-export const CPC_LOAN_MAX = 5000000;
 
-// DSCR / LTR funnel gate (SPEC_LTR §6c, with the $50K override). ltv is a FRACTION
-// (loan ÷ value, ~0.75); dscr a number. Undefined ltv/dscr are not disqualifying.
+// DSCR / LTR funnel gate (SPEC_LTR §6c). ltv is a FRACTION (loan ÷ value, ~0.75);
+// dscr a number. Undefined ltv/dscr are not disqualifying. No upper loan cap.
 export function qualifiesForCpcLtr({ loan, ltv, dscr }) {
-  if (!loan || loan < CPC_LOAN_MIN || loan > CPC_LOAN_MAX) return false;
+  if (!loan || loan < CPC_LOAN_MIN) return false;
   if (ltv !== undefined && ltv > 0.8) return false;
   if (dscr !== undefined && dscr < 1.0) return false;
   return true;
@@ -22,6 +20,80 @@ export function qualifiesForCpcLtr({ loan, ltv, dscr }) {
 // BRRR funnel gate (SPEC_BRRR §6) — qualifies on the refi takeout (loan = refiLoan).
 export function qualifiesForCpcBrrr({ loan, ltv, dscr }) {
   return qualifiesForCpcLtr({ loan, ltv, dscr });
+}
+
+// ─── Verdict & Risk Framework (SPEC_VERDICT_RISK_FRAMEWORK_2026-06-18) ─────────
+// A HOT deal = strong dollars AND low risk. Every verdict clears 3 bars: a dollar
+// floor, a return/safety metric, and a STRESS TEST (conservative haircuts it must
+// survive). Risk floors + haircuts are FIXED nationwide constants (not user-editable);
+// only the existing per-deal target fields stay editable.
+const money = (n) => '$' + Math.round(n).toLocaleString();
+
+// Margin-of-Safety tile: Strong / Tight / Fails (HOT must be Strong or Tight).
+export function mosLabel(mos) {
+  return mos === 'strong'
+    ? { label: 'Strong', cls: 'good' }
+    : mos === 'tight'
+      ? { label: 'Tight', cls: 'warn' }
+      : { label: 'Fails', cls: 'bad' };
+}
+
+// ── Flip stress test: ARV −5%, rehab +10%, hold +1 month → net profit ≥ 0 ──
+// Inputs are flip base numbers (cc1/cc2/rate/points as FRACTIONS). Pure so flip.js
+// and the tests share it.
+export function computeFlipStress({ ask, arv, rep, cc1, cc2, carry, hold, financed, loan, rate, points, target }) {
+  const sArv = arv * 0.95;
+  const sRep = rep * 1.1;
+  const sHold = hold + 1;
+  const buyCost = ask * cc1;
+  const sSellCost = sArv * cc2;
+  const sHoldCost = carry * sHold;
+  const sLoanInt = financed ? loan * (rate / 12) * sHold : 0;
+  const loanFees = financed ? loan * points : 0;
+  const stressedProfit = sArv - sSellCost - (ask + sRep) - buyCost - sHoldCost - sLoanInt - loanFees;
+  const strongBar = target > 0 ? 0.5 * target : 25000;
+  const marginOfSafety =
+    stressedProfit < 0 ? 'fails' : stressedProfit >= strongBar ? 'strong' : 'tight';
+  return { stressedProfit, marginOfSafety };
+}
+
+// Flip verdict (SPEC_VERDICT §63). HOT: profit ≥ max($50K, target) AND ROI ≥ 15%
+// AND maxOffer > 0 AND survives stress. COLD: profit < $25K base, maxOffer ≤ 0, or
+// loses money under stress. WARM: works at base case but misses a HOT bar.
+export function flipVerdict({ profit, roi, target, maxOffer, marginOfSafety, stressedProfit, self }) {
+  const survives = marginOfSafety !== 'fails';
+  const hotDollar = Math.max(50000, target || 0);
+  let cls, verdict, vsub;
+
+  if (profit >= hotDollar && roi >= 15 && maxOffer > 0 && survives) {
+    cls = 'hot';
+    verdict = 'Strong Flip Play';
+    vsub =
+      'Net profit ' + money(profit) + ' clears your target at ' + (Math.round(roi * 10) / 10) +
+      '% ROI, and it survives a stress test (ARV −5%, rehab +10%, +1 month → ' + money(stressedProfit) +
+      '). ' + (self ? 'Self-performing gives you maximum margin.' : 'Self-performing could push margin higher.') +
+      ' Verify ARV with comps before committing.';
+  } else if (profit < 25000 || maxOffer <= 0 || !survives) {
+    cls = 'pass';
+    verdict = 'Counter at Max Offer — Walk Away';
+    if (maxOffer <= 0) {
+      vsub = 'Repairs exceed the ' + (self ? '75' : '70') + '% ARV ceiling — no purchase price hits your target. Walk away.';
+    } else if (!survives) {
+      vsub = 'Net profit goes negative under a modest stress test (ARV −5%, rehab +10%, +1 month → ' + money(stressedProfit) + '). Too little margin of safety — renegotiate hard or walk.';
+    } else {
+      vsub = 'Net profit ' + money(profit) + ' is below the $25K floor where a flip\'s risk is worth it. Max offer ' + money(Math.max(0, maxOffer)) + ' — counter hard or walk.';
+    }
+  } else {
+    cls = 'warm';
+    verdict = 'Dig Deeper & Negotiate';
+    const miss = profit < hotDollar
+      ? 'profit ' + money(profit) + ' is under the ' + money(hotDollar) + ' strong bar'
+      : roi < 15
+        ? 'ROI ' + (Math.round(roi * 10) / 10) + '% is under the 15% bar'
+        : 'the stress-test margin is thin';
+    vsub = 'Workable, but ' + miss + '. Counter at ' + money(Math.max(0, maxOffer)) + ' max offer' + (self ? ' — your labor advantage could close the gap.' : '.');
+  }
+  return { cls, verdict, vsub };
 }
 
 // Standard fully-amortizing monthly mortgage payment. annualRate is a fraction
@@ -117,6 +189,25 @@ export function computeLtr(inp) {
   const grm = rentYr > 0 ? price / rentYr : 0;
   const ltv = price > 0 ? (loan / price) * 100 : 0;
 
+  // ── Stress test: rent −5%, vacancy +3 pts, rate +0.5% → DSCR ≥ 1.0 AND CF ≥ 0 ──
+  const sIb = incomeBlock({
+    rentYr: rentMo * 0.95 * 12,
+    vac: vacF + 0.03,
+    pm: pmF,
+    maint: maintF,
+    tax,
+    ins,
+    hoaYr,
+    capex: capexF,
+    loan,
+    rate: rateF + 0.005,
+    amortYears: amort,
+  });
+  const stressedDscr = sIb.dscr;
+  const stressedCfMo = sIb.cashFlowYr / 12;
+  const survives = (stressedDscr === null || stressedDscr >= 1.0) && stressedCfMo >= 0;
+  const marginOfSafety = !survives ? 'fails' : (stressedDscr === null || stressedDscr >= 1.15) ? 'strong' : 'tight';
+
   return {
     price,
     rentYr,
@@ -140,48 +231,57 @@ export function computeLtr(inp) {
     grm,
     ltv,
     target,
+    stressedDscr,
+    stressedCfMo,
+    marginOfSafety,
   };
 }
 
-// LTR verdict (SPEC_LTR §3). dscr === null (all-cash) → treated as fully covered.
+// LTR verdict (SPEC_LTR §3 + Verdict & Risk Framework §67-70). HOT clears the
+// DSCR gate AND the dollar/CoC bar AND survives the stress test. dscr === null
+// (all-cash) → treated as fully covered.
 export function ltrVerdict(m) {
   const d = m.dscr === null ? Infinity : m.dscr;
   const target = m.target;
-  let cls, verdict, vsub;
+  const annualCF = m.cashFlowYr;
+  const survives = m.marginOfSafety !== "fails";
   const dscrText = m.dscr === null ? "n/a" : m.dscr.toFixed(2);
   const cocText = (Math.round(m.coc * 10) / 10) + "%";
   const cfMo = Math.round(m.cashFlowMo);
+  let cls, verdict, vsub;
 
-  if (d >= 1.25 && m.coc >= target && m.cashFlowMo > 0) {
+  if (d < 1.0 || m.cashFlowMo < 0) {
+    cls = "pass";
+    verdict = "Negative Leverage — Walk or Restructure";
+    vsub =
+      m.dscr !== null && m.dscr < 1.0
+        ? "DSCR of " + dscrText + " is below 1.0 — rent doesn't cover the debt at this price and down payment. Increase the down payment, negotiate price, or walk."
+        : "This loses $" + Math.abs(cfMo) + "/mo after reserves. Restructure the financing or walk.";
+  } else if (d >= 1.25 && (annualCF >= 4800 || m.coc >= target) && m.cashFlowMo > 0 && survives) {
     cls = "hot";
     verdict = "Strong Rental — Lender-Ready";
     vsub =
-      "DSCR of " + dscrText + " clears lender underwriting and cash-on-cash of " +
-      cocText + " beats your " + target + "% target. Confirm market rent with comps/Zillow before closing.";
-  } else if ((d >= 1.1 && m.coc >= 4) || (d >= 1.25 && m.coc < target)) {
+      "DSCR " + dscrText + " clears underwriting and " +
+      (annualCF >= 4800
+        ? money(annualCF) + "/yr cash flow is strong"
+        : "cash-on-cash " + cocText + " beats your " + target + "% target") +
+      ". Survives a stress test (rent −5%, vacancy +3pts, rate +0.5%). Confirm market rent with comps before closing.";
+  } else {
     cls = "warm";
     verdict = "Dig Deeper & Negotiate";
-    if (d >= 1.25 && m.coc < target) {
+    if (d >= 1.25 && !survives) {
+      vsub =
+        "DSCR " + dscrText + " clears underwriting at base case, but a stress test (rent −5%, vacancy +3pts, rate +0.5%) thins the margin of safety. Build in more cushion before treating it as a lock.";
+    } else if (d >= 1.25 && m.coc < target && annualCF < 4800) {
       // WARM (b) — the DSCR finance-and-hold bridge
       vsub =
-        "Cash-on-cash of " + cocText + " is light, but DSCR " + dscrText +
+        "Cash-on-cash " + cocText + " is light and cash flow " + money(annualCF) +
+        "/yr is below the $4,800 strong bar, but DSCR " + dscrText +
         " clears typical 1.20–1.25 underwriting — a finance-and-hold candidate even if it's not a yield play.";
     } else {
       vsub =
-        "DSCR of " + dscrText + " covers the debt and it cash-flows $" + cfMo +
-        "/mo, but cash-on-cash of " + cocText + " trails your " + target +
-        "% target. Negotiate price or raise rent to close the gap.";
-    }
-  } else {
-    cls = "pass";
-    verdict = "Negative Leverage — Walk or Restructure";
-    if (m.dscr !== null && m.dscr < 1.0) {
-      vsub =
-        "DSCR of " + dscrText + " is below 1.0 — rent doesn't cover the debt at this price and down payment. " +
-        "Increase the down payment, negotiate price, or walk.";
-    } else {
-      vsub =
-        "This loses $" + Math.abs(cfMo) + "/mo after reserves. Restructure the financing or walk.";
+        "DSCR " + dscrText + " covers the debt and it cash-flows $" + cfMo +
+        "/mo, but it misses a HOT bar (DSCR < 1.25, light cash flow, or a thin stress margin). Negotiate price or raise rent to tighten it.";
     }
   }
   return { cls, verdict, vsub };
@@ -259,7 +359,37 @@ export function computeBrrr(inp) {
   const postRefiCoC = capitalLeft > 0 ? (ib.cashFlowYr / capitalLeft) * 100 : Infinity;
   const refiLTVactual = arv > 0 ? (refiLoan / arv) * 100 : 0;
 
+  // ── Stress test: ARV −5%, rent −5% → DSCR ≥ 1.0 AND capital-left ≤ 50% invested ──
+  const sArv = arv * 0.95;
+  const sRefiLoan = sArv * refiLtvF;
+  const sCashOut = sRefiLoan - acqPayoff - sRefiLoan * reficostF;
+  const sCapitalLeft = cashInvested - sCashOut;
+  const sCapitalLeftPct = cashInvested > 0 ? (sCapitalLeft / cashInvested) * 100 : 0;
+  const sIb = incomeBlock({
+    rentYr: rentMo * 0.95 * 12,
+    vac: vacF,
+    pm: pmF,
+    maint: maintF,
+    tax,
+    ins,
+    hoaYr,
+    capex: capexF,
+    loan: sRefiLoan,
+    rate: refiRateF,
+    amortYears: refiAmort,
+  });
+  const stressedDscr = sIb.dscr;
+  const stressSurvives = (stressedDscr === null || stressedDscr >= 1.0) && sCapitalLeftPct <= 50;
+  const marginOfSafety = !stressSurvives
+    ? "fails"
+    : (stressedDscr === null || stressedDscr >= 1.15) && sCapitalLeftPct <= 25
+      ? "strong"
+      : "tight";
+
   return {
+    stressedDscr,
+    stressedCapitalLeftPct: sCapitalLeftPct,
+    marginOfSafety,
     price,
     arv,
     rehabTotal,
@@ -305,9 +435,10 @@ export function brrrVerdict(m) {
 
   // Hard fails first feed COLD; otherwise evaluate HOT → WARM.
   const hardFail = d < 1.0 || cf < 0 || m.refiLoan <= m.acqPayoff || m.equityCreated <= 0;
+  const survives = m.marginOfSafety !== "fails"; // stress: ARV −5%, rent −5%
 
   let cls, verdict, vsub;
-  if (!hardFail && d >= 1.25 && rec >= 75 && cf > 0) {
+  if (!hardFail && d >= 1.25 && rec >= 75 && cf > 0 && survives) {
     cls = "hot";
     verdict = "Textbook BRRR — Capital Recycled";
     const left =
@@ -316,7 +447,7 @@ export function brrrVerdict(m) {
         : "Only $" + Math.round(m.capitalLeft).toLocaleString() + " left in the deal.";
     vsub =
       "Recovered " + recText + " of your capital and the refi holds at DSCR " + dscrText +
-      ". " + left + " Confirm ARV with comps and rent with the market before closing.";
+      ". " + left + " Survives a stress test (ARV −5%, rent −5%). Confirm ARV with comps and rent with the market before closing.";
   } else if (
     !hardFail &&
     ((d >= 1.1 && cf >= 0 && rec >= 40) ||
@@ -325,12 +456,14 @@ export function brrrVerdict(m) {
   ) {
     cls = "warm";
     verdict = "Partial BRRR — Capital Trapped or Tight";
+    const why = !survives
+      ? "it thins under a stress test (ARV −5%, rent −5%)"
+      : m.dscr !== null && m.dscr < 1.25
+        ? "cash flow is thin for best-pricing DSCR"
+        : "capital is partly trapped";
     vsub =
       "DSCR " + dscrText + " and " + recText + " recovered — the mechanics work but " +
-      (m.dscr !== null && m.dscr < 1.25
-        ? "cash flow is thin for best-pricing DSCR"
-        : "capital is partly trapped") +
-      ". Push ARV, rent, or the refi LTV to tighten it.";
+      why + ". Push ARV, rent, or the refi LTV to tighten it.";
   } else {
     cls = "pass";
     verdict = "BRRR Breaks — Rework the Numbers";

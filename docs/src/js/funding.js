@@ -2,11 +2,11 @@
 // Implements the Deal Screener side of CPC_INTEGRATION_SPEC.md.
 
 import { getActiveTier } from './tiers.js';
-import { CPC_LOAN_MIN, CPC_LOAN_MAX, qualifiesForCpcLtr, qualifiesForCpcBrrr } from './finance.js';
+import { CPC_LOAN_MIN, qualifiesForCpcLtr, qualifiesForCpcBrrr } from './finance.js';
 
 // DSCR (LTR) + BRRR funnel gates live in finance.js (pure/testable); re-export so
 // the funnel keeps a single import surface (clearpath.js).
-export { qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_LOAN_MIN, CPC_LOAN_MAX };
+export { qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_LOAN_MIN };
 
 const CPC_BASE = 'https://clearpathcapfunding.com/';
 
@@ -25,9 +25,10 @@ export function buildCpcUrl(deal) {
   return CPC_BASE + '?' + p.toString() + '#submit';
 }
 
-// CPC flip/bridge box: loan ≤ 90% LTC AND ≤ 70% ARV AND $50K–$5M (min lowered 6/18).
+// CPC flip/bridge box: loan ≤ 90% LTC AND ≤ 70% ARV AND ≥ $50K (no upper cap; the
+// $5M cap was removed 2026-06-18 — box copy "$50K+").
 export function qualifiesForCpc({ loan, ltc, arv }) {
-  if (!loan || loan < CPC_LOAN_MIN || loan > CPC_LOAN_MAX) return false;
+  if (!loan || loan < CPC_LOAN_MIN) return false;
   if (ltc !== undefined && ltc > 0.90) return false;
   if (arv && loan / arv > 0.70) return false;
   return true;

@@ -11,7 +11,7 @@ import { saveDeal as _saveDeal, renderPipeline,
          requestDelete, confirmDelete }                              from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
-import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS }     from './markets.js';
+import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
 import { initCurrencyInputs, parseComma }                           from './format.js';
 import { handlePipelineFundingClick }                               from './clearpath.js';
 import {
@@ -932,8 +932,9 @@ function _kFmt(v) { return '$' + Math.round(v / 1000) + 'k'; }
 function buildRegionIntel(slug, tier, intel) {
   const flip   = FLIP_MARKETS[slug];
   const str    = STR_MARKETS[slug];
+  const ltr    = LTR_MARKETS[slug];
   const label  = getMarketLabel(slug);            // "Charlotte, NC"
-  if (!flip && !str) return '';
+  if (!flip && !str && !ltr) return '';
   const isPro  = tier === 'pro';                  // for the depth tag only
   const note   = txt => txt ? `<div class="gi-note">${txt}</div>` : '';  // server already gated by tier
 
@@ -953,8 +954,13 @@ function buildRegionIntel(slug, tier, intel) {
     rows.push(`<div class="guide-item"><div class="gi-label">STR potential</div><div class="gi-val">${intel.str_viability}${intel.str_rev_low ? ' · ' + _kFmt(intel.str_rev_low) + '–' + _kFmt(intel.str_rev_high) + '/yr' : ''}</div></div>`);
   }
 
-  // Source link — the server returns source_url only for Pro.
-  const src = intel && intel.source_url;
+  // Long-term rental — free numbers from LTR_MARKETS; analyst note from the server (Pro).
+  if (ltr) {
+    rows.push(`<div class="guide-item"><div class="gi-label">Long-term rent (2BR) · cap rate</div><div class="gi-val">$${Math.round(ltr.rent2br).toLocaleString()}/mo · ${(ltr.capRate * 100).toFixed(1)}% cap · ${Math.round(ltr.vacancyRate * 100)}% vac.</div>${note(intel && intel.ltr_note)}</div>`);
+  }
+
+  // Source link — the server returns source_url / ltr_source_url only for Pro.
+  const src = intel && (intel.source_url || intel.ltr_source_url);
   if (src) rows.push(`<div class="guide-item"><div class="gi-label">Source</div><div class="gi-note"><a class="hint-link" href="${src}" target="_blank" rel="noopener">${new URL(src).hostname.replace('www.', '')}</a></div></div>`);
 
   // Pro gets a richer header tag so the added depth is legible

@@ -19,6 +19,9 @@ const {
   incomeBlock,
   qualifiesForCpcLtr,
   qualifiesForCpcBrrr,
+  computeFlipStress,
+  flipVerdict,
+  mosLabel,
 } = await import("data:text/javascript," + encodeURIComponent(financeSrc));
 
 let pass = 0,
@@ -92,15 +95,30 @@ function truthy(label, v) {
   near("LTR-B loan", m.loan, 195000, 0.5);
   near("LTR-B LTV", m.ltv, 75.0, 0.05);
   truthy("LTR-B DSCR ≥ 1.25", m.dscr >= 1.25);
+  near("LTR-B annual cash flow clears the $4,800 strong floor", m.cashFlowYr, 4936, 5);
   const v = ltrVerdict(m);
-  // §2 reference impl yields CoC ≈ 6.8% (< 8% target) → WARM(b), NOT the "HOT"
-  // the spec PROSE estimated. §2 is authoritative (spec line 74). FLAGGED.
-  eq("LTR-B verdict (per §2 — spec prose said HOT)", v.cls, "warm");
+  // Verdict & Risk Framework §50 DOLLAR RULE: strong absolute cash flow carries a
+  // HOT even if CoC % is modest. B's annual CF $4,936 ≥ $4,800 + DSCR 1.41 +
+  // survives stress → HOT. (B graded WARM only under the OLD CoC-only logic.)
+  eq("LTR-B verdict (dollar rule → HOT)", v.cls, "hot");
+  truthy("LTR-B survives stress", m.marginOfSafety !== "fails");
   eq(
     "LTR-B qualifiesForCpcLtr",
     qualifiesForCpcLtr({ loan: Math.round(m.loan), ltv: m.loan / m.price, dscr: m.dscr }),
     true
   );
+}
+
+// ─── LTR Golden Test B2 — HOT (clean: strong DSCR + CoC + dollars) ────────────
+{
+  const m = computeLtr({
+    price: 230000, rentMo: 2600, down: 25, vac: 5, tax: 2000, ins: 950, hoa: 0,
+    maint: 5, pm: 8, capex: 5, rate: 7.25, amort: 30, points: 1, cc: 2, target: 8, ptype: "SFR",
+  });
+  near("LTR-B2 DSCR", m.dscr, 1.61, 0.02);
+  near("LTR-B2 CoC", m.coc, 11.1, 0.2);
+  eq("LTR-B2 verdict", ltrVerdict(m).cls, "hot");
+  truthy("LTR-B2 survives stress", m.marginOfSafety !== "fails");
 }
 
 // ─── LTR Golden Test C — COLD, negative leverage ──────────────────────────────
@@ -230,9 +248,38 @@ function truthy(label, v) {
   near("incomeBlock DSCR matches BRRR-A DSCR", ib.dscr, 1.14, 0.01);
 }
 
-// ─── Funnel gate edge: sub-$50K out of box; >$5M out of box ───────────────────
+// ─── Flip — Verdict & Risk Framework (dollar floor + ROI bar + stress) ────────
+{
+  // All-cash flip: ask 200k, arv 320k, rehab 40k, cc1 2%, cc2 5%, carry 1000, hold 5.
+  const stress = computeFlipStress({
+    ask: 200000, arv: 320000, rep: 40000, cc1: 0.02, cc2: 0.05, carry: 1000, hold: 5,
+    financed: false, loan: 0, rate: 0.10, points: 0.03, target: 40000,
+  });
+  near("Flip stressedProfit (ARV−5%/rehab+10%/+1mo)", stress.stressedProfit, 34800, 5);
+  eq("Flip margin of safety = strong", stress.marginOfSafety, "strong");
+  // profit 55,000 ≥ max(50k,target) ✓, ROI ~22% ≥ 15 ✓, survives ✓ → HOT
+  eq("Flip HOT", flipVerdict({ profit: 55000, roi: 22.1, target: 40000, maxOffer: 184000, marginOfSafety: stress.marginOfSafety, stressedProfit: stress.stressedProfit }).cls, "hot");
+}
+// Stress-loss → COLD even with strong base profit (SPEC §65 "loses money under stress")
+eq("Flip COLD on stress loss", flipVerdict({ profit: 60000, roi: 25, target: 40000, maxOffer: 100000, marginOfSafety: "fails", stressedProfit: -2000 }).cls, "pass");
+// Below $25K dollar floor → COLD
+eq("Flip COLD below $25K floor", flipVerdict({ profit: 18000, roi: 30, target: 40000, maxOffer: 80000, marginOfSafety: "strong", stressedProfit: 9000 }).cls, "pass");
+// maxOffer ≤ 0 → COLD
+eq("Flip COLD on maxOffer≤0", flipVerdict({ profit: 60000, roi: 25, target: 40000, maxOffer: -5000, marginOfSafety: "strong", stressedProfit: 40000 }).cls, "pass");
+// ROI under 15% but dollars + survives → WARM (not HOT)
+eq("Flip WARM on low ROI", flipVerdict({ profit: 70000, roi: 12, target: 40000, maxOffer: 100000, marginOfSafety: "strong", stressedProfit: 45000 }).cls, "warm");
+// profit under the $50K strong bar (but ≥$25K) → WARM
+eq("Flip WARM below strong bar", flipVerdict({ profit: 35000, roi: 18, target: 40000, maxOffer: 90000, marginOfSafety: "tight", stressedProfit: 12000 }).cls, "warm");
+
+// ─── Margin-of-Safety tile mapping ────────────────────────────────────────────
+eq("mosLabel strong → good", mosLabel("strong").cls, "good");
+eq("mosLabel tight → warn", mosLabel("tight").cls, "warn");
+eq("mosLabel fails → bad", mosLabel("fails").cls, "bad");
+
+// ─── Funnel gate edge: $50K floor enforced; NO upper cap ($5M cap removed) ─────
 eq("gate: $40K loan out of box", qualifiesForCpcLtr({ loan: 40000, ltv: 0.75, dscr: 1.3 }), false);
-eq("gate: $6M loan out of box", qualifiesForCpcLtr({ loan: 6000000, ltv: 0.75, dscr: 1.3 }), false);
+eq("gate: $6M loan IN box (no upper cap)", qualifiesForCpcLtr({ loan: 6000000, ltv: 0.75, dscr: 1.3 }), true);
+eq("gate: $20M loan IN box (no upper cap)", qualifiesForCpcBrrr({ loan: 20000000, ltv: 0.75, dscr: 1.3 }), true);
 eq("gate: LTV 85% out of box", qualifiesForCpcLtr({ loan: 200000, ltv: 0.85, dscr: 1.3 }), false);
 eq("gate: DSCR 0.9 out of box", qualifiesForCpcLtr({ loan: 200000, ltv: 0.75, dscr: 0.9 }), false);
 eq("gate: $50K floor in box", qualifiesForCpcLtr({ loan: 50000, ltv: 0.75, dscr: 1.3 }), true);

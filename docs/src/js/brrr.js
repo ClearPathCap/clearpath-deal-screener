@@ -5,7 +5,7 @@
 // prefills. Mirrors ltr.js/rental.js conventions: b-* IDs, lastBrrrResult.
 
 import { fmt, pct, cClass, buildMetrics, buildRows } from './format.js';
-import { computeBrrr, brrrVerdict } from './finance.js';
+import { computeBrrr, brrrVerdict, mosLabel } from './finance.js';
 import { FLIP_MARKETS, LTR_MARKETS, BRRR_ASSUMPTIONS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
 
@@ -93,11 +93,13 @@ export function analyzeBrrr() {
   elv('bvsub').textContent   = vsub + (seasonWarn ? '  ⚠ Most DSCR cash-out needs 6mo title seasoning.' : '');
 
   const capInvested = m.cashInvested || 1;
+  const mos = mosLabel(m.marginOfSafety);
   elv('brrr-metrics').innerHTML = buildMetrics([
     { label: 'DSCR (post-refi)',    val: dscrText,                cls: m.dscr === null ? 'good' : m.dscr >= 1.25 ? 'good' : m.dscr >= 1.0 ? 'warn' : 'bad' },
     { label: 'Capital Left In Deal',val: fmt(m.capitalLeft),      cls: m.capitalLeft <= 0.25 * capInvested ? 'good' : m.capitalLeft <= 0.5 * capInvested ? 'warn' : 'bad' },
     { label: 'Cash Recovered',      val: pct(m.cashRecoveredPct), cls: cClass(m.cashRecoveredPct, 75, 40) },
     { label: 'Monthly Cash Flow',   val: fmt(m.cashFlowMo),       cls: cClass(m.cashFlowMo, 150, 0) },
+    { label: 'Margin of Safety',    val: mos.label,               cls: mos.cls },
   ]);
 
   const rows = [
@@ -126,6 +128,7 @@ export function analyzeBrrr() {
     { l: 'DSCR (NOI ÷ refi debt)',                  v: dscrText },
     { l: 'Cap rate (NOI ÷ all-in)',                 v: pct(m.capRate) },
     { l: 'Post-refi cash-on-cash',                  v: cocText },
+    { l: 'Margin of safety (stress: ARV −5%, rent −5%)', v: mos.label },
   ];
   elv('brrr-breakdown').innerHTML = buildRows(rows);
 
@@ -145,6 +148,7 @@ export function analyzeBrrr() {
     cashRecoveredPct: m.cashRecoveredPct, equityCreated: m.equityCreated,
     NOI: m.NOI, refiDebtYr: m.refiDebtYr, capexRes: m.capexRes, cashFlowYr: m.cashFlowYr, cashFlowMo: m.cashFlowMo,
     dscr: m.dscr, capRate: m.capRate, postRefiCoC: m.postRefiCoC, ltv: m.refiLTVactual / 100,
+    marginOfSafety: m.marginOfSafety,
     verdict, cls, hot: cls === 'hot',
   };
 

@@ -95,13 +95,13 @@ function truthy(label, v) {
   near("LTR-B loan", m.loan, 195000, 0.5);
   near("LTR-B LTV", m.ltv, 75.0, 0.05);
   truthy("LTR-B DSCR ≥ 1.25", m.dscr >= 1.25);
-  near("LTR-B annual cash flow clears the $4,800 strong floor", m.cashFlowYr, 4936, 5);
+  near("LTR-B annual cash flow below the $6,000 strong floor", m.cashFlowYr, 4936, 5);
   const v = ltrVerdict(m);
-  // Verdict & Risk Framework §50 DOLLAR RULE: strong absolute cash flow carries a
-  // HOT even if CoC % is modest. B's annual CF $4,936 ≥ $4,800 + DSCR 1.41 +
-  // survives stress → HOT. (B graded WARM only under the OLD CoC-only logic.)
-  eq("LTR-B verdict (dollar rule → HOT)", v.cls, "hot");
-  truthy("LTR-B survives stress", m.marginOfSafety !== "fails");
+  // Updated framework (2026-06-18): the LTR strong cash-flow floor is $6,000/yr.
+  // B's $4,936 is BELOW it and CoC 6.8% < target, so neither income path to HOT is
+  // met → WARM, with the finance-and-hold DSCR bridge sub-copy (DSCR 1.41).
+  eq("LTR-B verdict (below $6K floor → WARM)", v.cls, "warm");
+  truthy("LTR-B bridge sub-copy", v.vsub.includes("finance-and-hold"));
   eq(
     "LTR-B qualifiesForCpcLtr",
     qualifiesForCpcLtr({ loan: Math.round(m.loan), ltv: m.loan / m.price, dscr: m.dscr }),

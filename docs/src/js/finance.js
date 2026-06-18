@@ -257,12 +257,12 @@ export function ltrVerdict(m) {
       m.dscr !== null && m.dscr < 1.0
         ? "DSCR of " + dscrText + " is below 1.0 — rent doesn't cover the debt at this price and down payment. Increase the down payment, negotiate price, or walk."
         : "This loses $" + Math.abs(cfMo) + "/mo after reserves. Restructure the financing or walk.";
-  } else if (d >= 1.25 && (annualCF >= 4800 || m.coc >= target) && m.cashFlowMo > 0 && survives) {
+  } else if (d >= 1.25 && (annualCF >= 6000 || m.coc >= target) && m.cashFlowMo > 0 && survives) {
     cls = "hot";
     verdict = "Strong Rental — Lender-Ready";
     vsub =
       "DSCR " + dscrText + " clears underwriting and " +
-      (annualCF >= 4800
+      (annualCF >= 6000
         ? money(annualCF) + "/yr cash flow is strong"
         : "cash-on-cash " + cocText + " beats your " + target + "% target") +
       ". Survives a stress test (rent −5%, vacancy +3pts, rate +0.5%). Confirm market rent with comps before closing.";
@@ -272,11 +272,11 @@ export function ltrVerdict(m) {
     if (d >= 1.25 && !survives) {
       vsub =
         "DSCR " + dscrText + " clears underwriting at base case, but a stress test (rent −5%, vacancy +3pts, rate +0.5%) thins the margin of safety. Build in more cushion before treating it as a lock.";
-    } else if (d >= 1.25 && m.coc < target && annualCF < 4800) {
+    } else if (d >= 1.25 && m.coc < target && annualCF < 6000) {
       // WARM (b) — the DSCR finance-and-hold bridge
       vsub =
         "Cash-on-cash " + cocText + " is light and cash flow " + money(annualCF) +
-        "/yr is below the $4,800 strong bar, but DSCR " + dscrText +
+        "/yr is below the $6,000 strong bar, but DSCR " + dscrText +
         " clears typical 1.20–1.25 underwriting — a finance-and-hold candidate even if it's not a yield play.";
     } else {
       vsub =

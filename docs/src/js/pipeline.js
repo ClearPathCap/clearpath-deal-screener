@@ -5,6 +5,8 @@ import { getDeals, saveDeals, FREE_DEAL_CAP } from './storage.js';
 import { isSignedIn } from './auth.js';
 import { getLastFlipResult } from './flip.js';
 import { getLastRentalResult } from './rental.js';
+import { getLastLtrResult } from './ltr.js';
+import { getLastBrrrResult } from './brrr.js';
 import { getPipelineFundingButtonHTML } from './clearpath.js';
 import { getActiveTier } from './tiers.js';
 
@@ -31,7 +33,10 @@ export function saveDeal(type) {
   const name    = document.getElementById(nameId).value.trim();
   if (!name) { alert('Give this deal a name first.'); return; }
 
-  const result = type === 'flip' ? getLastFlipResult() : getLastRentalResult();
+  const result = type === 'flip' ? getLastFlipResult()
+    : type === 'ltr'  ? getLastLtrResult()
+    : type === 'brrr' ? getLastBrrrResult()
+    : getLastRentalResult();
   if (!result) { alert('Analyze the deal first, then save.'); return; }
 
   // Free Starter keeps a small pipeline; Investor/Pro are unlimited.
@@ -53,17 +58,7 @@ export function saveDeal(type) {
     notes,
     date:    new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
     data:    result,
-    stats:   type === 'flip'
-      ? [
-          { l: 'Profit', v: fmt(result.profit) },
-          { l: 'ROI',    v: pct(result.roi) },
-          { l: result.ltvLabel || 'LTV', v: pct(result.ltv) },
-        ]
-      : [
-          { l: 'CoC',        v: pct(result.coc) },
-          { l: 'Cap',        v: pct(result.capRate) },
-          { l: 'Cash Flow',  v: fmt(result.cashflow) },
-        ],
+    stats:   buildDealStats(type, result),
   };
 
   deals.unshift(deal);
@@ -137,10 +132,80 @@ export function renderPipeline() {
   list.innerHTML = deals.map(d => buildDealCard(d)).join('');
 }
 
+function dealRegionLabel(type) {
+  return type === 'flip' ? 'Fix & Flip'
+    : type === 'ltr'  ? 'Long-Term Rental'
+    : type === 'brrr' ? 'BRRR'
+    : 'Short-Term Rental';
+}
+
+// Card stat row (3 headline metrics) per analyzer type.
+function buildDealStats(type, r) {
+  if (type === 'flip') return [
+    { l: 'Profit', v: fmt(r.profit) },
+    { l: 'ROI',    v: pct(r.roi) },
+    { l: r.ltvLabel || 'LTV', v: pct(r.ltv) },
+  ];
+  if (type === 'ltr') return [
+    { l: 'DSCR',      v: r.dscr != null ? r.dscr.toFixed(2) : 'n/a' },
+    { l: 'CoC',       v: pct(r.coc) },
+    { l: 'Cash Flow', v: fmt(r.cashFlowMo) },
+  ];
+  if (type === 'brrr') return [
+    { l: 'DSCR',      v: r.dscr != null ? r.dscr.toFixed(2) : 'n/a' },
+    { l: 'Cap Left',  v: fmt(r.capitalLeft) },
+    { l: 'Recovered', v: pct(r.cashRecoveredPct) },
+  ];
+  return [
+    { l: 'CoC',       v: pct(r.coc) },
+    { l: 'Cap',       v: pct(r.capRate) },
+    { l: 'Cash Flow', v: fmt(r.cashflow) },
+  ];
+}
+
+function detailSection(title, rows) {
+  return `<div class="detail-section"><div class="detail-title">${title}</div>${
+    rows.filter(Boolean).map(r => `<div class="detail-row"><span class="dl">${r.l}</span><span class="dv">${r.v}</span></div>`).join('')
+  }</div>`;
+}
+
+function buildLtrDetail(d) {
+  return detailSection('Long-Term Rental (DSCR)', [
+    { l: 'Purchase price',    v: d.price != null ? fmt(d.price) : '—' },
+    { l: 'Monthly rent',      v: d.rent != null ? fmt(d.rent) : '—' },
+    { l: 'Down payment',      v: d.down != null ? d.down + '%' : '—' },
+    { l: 'NOI',               v: d.NOI != null ? fmt(d.NOI) : '—' },
+    { l: 'DSCR',              v: d.dscr != null ? d.dscr.toFixed(2) : 'n/a' },
+    { l: 'Cap rate',          v: d.capRate != null ? pct(d.capRate) : '—' },
+    { l: 'Cash-on-cash',      v: d.coc != null ? pct(d.coc) : '—' },
+    { l: 'Monthly cash flow', v: d.cashFlowMo != null ? fmt(d.cashFlowMo) : '—' },
+    { l: 'Loan / LTV',        v: (d.loan != null ? fmt(d.loan) : '—') + (d.ltv != null ? ' · ' + pct(d.ltv) : '') },
+    { l: 'Cash to close',     v: d.cashToClose != null ? fmt(d.cashToClose) : '—' },
+  ]);
+}
+
+function buildBrrrDetail(d) {
+  return detailSection('BRRR (Bridge → DSCR Refi)', [
+    { l: 'Purchase price',            v: d.price != null ? fmt(d.price) : '—' },
+    { l: 'Rehab (incl. contingency)', v: d.rehabTotal != null ? fmt(d.rehabTotal) : '—' },
+    { l: 'ARV',                       v: d.arv != null ? fmt(d.arv) : '—' },
+    { l: 'All-in cost',               v: d.allInCost != null ? fmt(d.allInCost) : '—' },
+    { l: 'Refi loan',                 v: d.refiLoan != null ? fmt(d.refiLoan) : '—' },
+    { l: 'Cash out',                  v: d.cashOut != null ? fmt(d.cashOut) : '—' },
+    { l: 'Capital left',              v: d.capitalLeft != null ? fmt(d.capitalLeft) : '—' },
+    { l: 'Cash recovered',            v: d.cashRecoveredPct != null ? pct(d.cashRecoveredPct) : '—' },
+    { l: 'DSCR',                      v: d.dscr != null ? d.dscr.toFixed(2) : 'n/a' },
+    { l: 'Monthly cash flow',         v: d.cashFlowMo != null ? fmt(d.cashFlowMo) : '—' },
+  ]);
+}
+
 function buildDealCard(d) {
   const data       = d.data || {};
   const address    = data.addr ? `<div class="deal-address">${escapeHtml(data.addr)}</div>` : '';
-  const detailRows = d.type === 'flip' ? buildFlipDetail(data) : buildRentalDetail(data);
+  const detailRows = d.type === 'flip' ? buildFlipDetail(data)
+    : d.type === 'ltr'  ? buildLtrDetail(data)
+    : d.type === 'brrr' ? buildBrrrDetail(data)
+    : buildRentalDetail(data);
   const notesBlock = d.notes
     ? `<div class="detail-section"><div class="detail-title">Notes</div><div class="detail-notes">${escapeHtml(d.notes)}</div></div>`
     : '';
@@ -152,7 +217,7 @@ function buildDealCard(d) {
           <div style="flex:1;min-width:0">
             <div class="deal-name">${escapeHtml(d.name)}</div>
             ${address}
-            <div class="deal-region">${d.type === 'flip' ? 'Fix & Flip' : 'Short-Term Rental'}</div>
+            <div class="deal-region">${dealRegionLabel(d.type)}</div>
           </div>
           <div class="deal-badge ${d.cls}">${d.verdict}</div>
         </div>

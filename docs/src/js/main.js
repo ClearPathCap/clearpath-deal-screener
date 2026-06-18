@@ -2,6 +2,8 @@
 
 import { analyzeFlip, setFlipPreset, resetFlip, getLastFlipResult } from './flip.js';
 import { analyzeRental, setRentalPreset, resetRental }              from './rental.js';
+import { analyzeLtr, setLtrPreset, resetLtr }                       from './ltr.js';
+import { analyzeBrrr, setBrrrPreset, resetBrrr }                    from './brrr.js';
 import { setRepairTier, calcRepair, useRepairEstimate,
          onSelfRenoToggle }                                          from './repair.js';
 import { saveDeal as _saveDeal, renderPipeline,
@@ -180,6 +182,28 @@ function clearNewDeal(type) {
     document.getElementById('flip-notes').value     = '';
     calcRepair();
     updateCarryTotal();
+  } else if (type === 'ltr') {
+    ['l-addr','l-price','l-rent','l-tax','l-ins'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.value = ''; delete el.dataset.userEdited; }
+    });
+    const lt = document.getElementById('l-self-manage-toggle'); if (lt) lt.checked = false;
+    resetLtr();
+    renderMarketSlots('ltr-slots', 'ltr');
+    const btn = document.getElementById('ltr-save-btn');
+    if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
+    const dn = document.getElementById('ltr-deal-name'); if (dn) dn.value = '';
+  } else if (type === 'brrr') {
+    ['b-addr','b-price','b-rehab','b-arv','b-rent','b-acqloan','b-tax','b-ins'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.value = ''; delete el.dataset.userEdited; }
+    });
+    const bt = document.getElementById('b-self-manage-toggle'); if (bt) bt.checked = false;
+    resetBrrr();
+    renderMarketSlots('brrr-slots', 'brrr');
+    const btn = document.getElementById('brrr-save-btn');
+    if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
+    const dn = document.getElementById('brrr-deal-name'); if (dn) dn.value = '';
   } else {
     ['v-addr','v-price','v-rent'].forEach(id => {
       const el = document.getElementById(id);
@@ -210,7 +234,7 @@ function clearNewDeal(type) {
 // ─── Picker market list (flip+str only, derived from full ALL_MARKETS) ────────
 
 const _pickerEligible = PICKER_ALL.filter(m =>
-  m.types && (m.types.includes('flip') || m.types.includes('str'))
+  m.types && (m.types.includes('flip') || m.types.includes('str') || m.types.includes('ltr'))
 );
 // De-dupe "City ST" twins: when a base slug and its "-str" sibling are both
 // eligible (e.g. charleston-sc + charleston-sc-str render as two identical
@@ -282,11 +306,24 @@ function renderMarketSlots(containerId, tabType) {
     const el = container.querySelector('[data-slot="' + _activeSlot + '"]');
     if (tabType === 'flip') {
       setFlipPreset(activeId, el);
+    } else if (tabType === 'ltr') {
+      setLtrPreset(activeId, el);
+    } else if (tabType === 'brrr') {
+      setBrrrPreset(activeId, el);
     } else {
       setRentalPreset(activeId, el);
       updateRentRangeHint(activeId);
     }
   }
+}
+
+// Render the shared market slots into every analyzer's container (hidden ones are
+// guarded). Keeps the active-market highlight + presets in sync across all tabs.
+function renderAllSlots() {
+  renderMarketSlots('flip-slots',   'flip');
+  renderMarketSlots('rental-slots', 'rental');
+  renderMarketSlots('ltr-slots',    'ltr');
+  renderMarketSlots('brrr-slots',   'brrr');
 }
 
 // ─── Slot click handler — Task 5 logic ───────────────────────────────────────
@@ -307,8 +344,7 @@ function handleSlotClick(slotIndex, currentMarketId) {
   if (slotIndex !== _activeSlot) {
     setActiveSlot(slotIndex);
     const label = getMarketLabel(currentMarketId);
-    renderMarketSlots('flip-slots',   'flip');
-    renderMarketSlots('rental-slots', 'rental');
+    renderAllSlots();
     showToast('Switched to ' + label);
     return;
   }
@@ -521,8 +557,7 @@ function pickerSelectMarket(marketId) {
     // First launch — always slot 0
     completePrimarySelection(marketId);
     setActiveSlot(0);
-    renderMarketSlots('flip-slots',   'flip');
-    renderMarketSlots('rental-slots', 'rental');
+    renderAllSlots();
     renderGuideMarketIntel();   // item 4: keep Guide intel in sync with selected regions
     return;
   }
@@ -534,8 +569,7 @@ function pickerSelectMarket(marketId) {
   setMarketSlot(_pickerSlot, marketId);
   // Make the newly set slot active
   setActiveSlot(_pickerSlot);
-  renderMarketSlots('flip-slots',   'flip');
-  renderMarketSlots('rental-slots', 'rental');
+  renderAllSlots();
   renderGuideMarketIntel();     // item 4: regenerate region intel
 
   const label = getMarketLabel(marketId);
@@ -580,6 +614,10 @@ function setRentalPresetWithHint(type, el) {
 function validateRequiredFields(type) {
   const fields = type === 'flip'
     ? [{ id: 'f-ask', label: 'Purchase Price' }, { id: 'f-arv', label: 'ARV' }, { id: 'f-rep', label: 'Repair Costs' }]
+    : type === 'ltr'
+    ? [{ id: 'l-price', label: 'Purchase Price' }, { id: 'l-rent', label: 'Monthly Rent' }]
+    : type === 'brrr'
+    ? [{ id: 'b-price', label: 'Purchase Price' }, { id: 'b-rehab', label: 'Rehab Budget' }, { id: 'b-arv', label: 'ARV' }, { id: 'b-rent', label: 'Monthly Rent' }]
     : [{ id: 'v-price', label: 'Purchase Price' }, { id: 'v-rent', label: 'Potential Annual Revenue' }];
 
   let valid = true;
@@ -612,6 +650,23 @@ function analyzeFlipValidated() {
 
 function analyzeRentalValidated() {
   if (validateRequiredFields('rental')) analyzeRental();
+}
+
+function analyzeLtrValidated()  { if (validateRequiredFields('ltr'))  analyzeLtr();  }
+function analyzeBrrrValidated() { if (validateRequiredFields('brrr')) analyzeBrrr(); }
+
+// Rentals sub-toggle: swap the STR / LTR / BRRR sub-views and render that view's
+// (shared) market slots so presets prefill into the visible form.
+function switchRentalView(view, btn) {
+  ['str', 'ltr', 'brrr'].forEach(v => {
+    const el = document.getElementById('rental-view-' + v);
+    if (el) el.style.display = v === view ? '' : 'none';
+  });
+  document.querySelectorAll('#page-rental .sub-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (view === 'ltr')       renderMarketSlots('ltr-slots',    'ltr');
+  else if (view === 'brrr') renderMarketSlots('brrr-slots',   'brrr');
+  else                      renderMarketSlots('rental-slots', 'rental');
 }
 
 // ─── Self-reno toggle — recalc + re-run analysis (item 9) ────────────────────
@@ -829,8 +884,7 @@ function refreshTierUI() {
   document.querySelectorAll('.tier-badge').forEach(b => { b.textContent = label; });
   updateDevModeIndicator();
   applyTierToUI();
-  renderMarketSlots('flip-slots',   'flip');
-  renderMarketSlots('rental-slots', 'rental');
+  renderAllSlots();
   renderGuideMarketIntel();
   updateAccountUI();
 }
@@ -1021,6 +1075,14 @@ Object.assign(window, {
   analyzeRental: analyzeRentalValidated,
   setRentalPreset: setRentalPresetWithHint,
   resetRental,
+  // rental sub-views: Long-Term (LTR / DSCR) + BRRR
+  switchRentalView,
+  analyzeLtr: analyzeLtrValidated,
+  setLtrPreset,
+  resetLtr,
+  analyzeBrrr: analyzeBrrrValidated,
+  setBrrrPreset,
+  resetBrrr,
   // dev tier switch (console: setTier('investor'))
   setTier(name, el) {
     if (name === 'starter' || name === 'investor' || name === 'pro') {
@@ -1094,8 +1156,7 @@ initCurrencyInputs();
 updateDevModeIndicator();
 initTierBadge();
 applyTierToUI();
-renderMarketSlots('flip-slots',   'flip');
-renderMarketSlots('rental-slots', 'rental');
+renderAllSlots();
 renderGuideMarketIntel();   // item 4: build region intel from selected markets
 initOnboarding();
 

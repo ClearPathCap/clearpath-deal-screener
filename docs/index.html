@@ -254,12 +254,16 @@
     </div>
   </div>
 
-  <!-- item 7: Phase 2 sub-tabs (not upgrade-locked) -->
+  <!-- Rentals sub-toggle: Short-Term | Long-Term | BRRR (SPEC_LTR D6 / SPEC_BRRR B1) -->
   <div class="sub-tabs">
-    <button class="sub-tab active">STR</button>
-    <button class="sub-tab phase2">Long-Term · Phase 2</button>
-    <button class="sub-tab phase2">BRRR · Phase 2</button>
+    <button class="sub-tab active" id="subtab-str"  onclick="switchRentalView('str',this)">🌙 Short-Term</button>
+    <button class="sub-tab"        id="subtab-ltr"  onclick="switchRentalView('ltr',this)">🏠 Long-Term</button>
+    <button class="sub-tab"        id="subtab-brrr" onclick="switchRentalView('brrr',this)">🔄 BRRR</button>
   </div>
+
+  <!-- ░░░░░ SHORT-TERM (STR) sub-view ░░░░░ -->
+  <div id="rental-view-str">
+  <div class="unit-chip">$ / night · occupancy-based</div>
 
   <!-- item 6: MARKET REGIONS label + shared 6-slot container -->
   <div class="slabel">Market Regions</div>
@@ -381,6 +385,329 @@
       <button class="btn-secondary" onclick="clearNewDeal('rental')">Clear &amp; New Deal</button>
     </div>
   </div>
+  </div><!-- /rental-view-str -->
+
+  <!-- ░░░░░ LONG-TERM RENTAL (LTR / DSCR) sub-view ░░░░░ -->
+  <div id="rental-view-ltr" data-analyzer="ltr" style="display:none">
+    <div class="unit-chip">$ / month · lease-based · DSCR</div>
+
+    <div class="slabel">Market Regions</div>
+    <div class="market-slots" id="ltr-slots"></div>
+
+    <div class="slabel">Property Info</div>
+    <div class="field full">
+      <label>Address <span>(optional)</span></label>
+      <input type="text" id="l-addr" placeholder="318 Greenwood Ave, Memphis TN">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Purchase Price</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-price" class="has-pfx" placeholder="260,000" data-currency></div>
+        <div class="field-hint beginner-only">What you'd pay to buy this rental.</div>
+      </div>
+      <div class="field">
+        <label>Monthly Rent</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-rent" class="has-pfx" placeholder="2,100" data-currency></div>
+        <div class="field-hint beginner-only">The monthly lease rent — not annual. Prefilled from your market.</div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Down Payment</label>
+        <div class="input-wrap"><input type="number" id="l-down" class="has-sfx" value="20" placeholder="20"><span class="sfx">%</span></div>
+        <div class="field-hint beginner-only">20% is typical. 25% down (75% LTV) is the DSCR best-pricing sweet spot — putting more down quietly flatters DSCR.</div>
+      </div>
+      <div class="field">
+        <label>Vacancy</label>
+        <div class="input-wrap"><input type="number" id="l-vac" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Property Type</label>
+        <select id="l-ptype">
+          <option>SFR</option>
+          <option>2–4 Unit</option>
+          <option>Condo</option>
+          <option>Townhome</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Min Cash-on-Cash</label>
+        <div class="input-wrap"><input type="number" id="l-target" class="has-sfx" value="8" placeholder="8"><span class="sfx">%</span></div>
+      </div>
+    </div>
+
+    <div class="slabel">Operating Expenses <span style="font-weight:400;color:#9aa4b2">(NOI excludes the CapEx reserve)</span></div>
+    <div class="field-row">
+      <div class="field">
+        <label>Property Taxes <span>(annual)</span></label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-tax" class="has-pfx" placeholder="2,200" data-currency></div>
+      </div>
+      <div class="field">
+        <label>Insurance <span>(annual)</span></label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-ins" class="has-pfx" placeholder="1,050" data-currency></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>HOA <span>(monthly)</span></label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-hoa" class="has-pfx" value="0" placeholder="0" data-currency></div>
+      </div>
+      <div class="field">
+        <label>Property Management</label>
+        <div class="self-manage-toggle-row">
+          <span class="self-manage-label">Self-manage (skip PM fee)</span>
+          <label class="toggle toggle-sm"><input type="checkbox" id="l-self-manage-toggle"><div class="toggle-track"></div></label>
+        </div>
+        <div class="input-wrap"><input type="number" id="l-pm" class="has-sfx" value="8" placeholder="8"><span class="sfx">%</span></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Maintenance Reserve</label>
+        <div class="input-wrap"><input type="number" id="l-maint" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
+      </div>
+      <div class="field">
+        <label>CapEx Reserve</label>
+        <div class="input-wrap"><input type="number" id="l-capex" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
+        <div class="field-hint beginner-only">Capital reserve for big-ticket items. Deducted below NOI (lenders don't count it against DSCR).</div>
+      </div>
+    </div>
+
+    <div class="slabel">DSCR Financing</div>
+    <div class="field-row">
+      <div class="field">
+        <label>Loan Rate</label>
+        <div class="input-wrap"><input type="number" id="l-rate" class="has-sfx" value="7.25" step="0.125" placeholder="7.25"><span class="sfx">%</span></div>
+        <div class="field-hint beginner-only">DSCR rates run ~0.5–1pt above owner-occupied. Check with Clear Path Capital.</div>
+      </div>
+      <div class="field">
+        <label>Amortization</label>
+        <div class="input-wrap"><input type="number" id="l-amort" class="has-sfx" value="30" placeholder="30"><span class="sfx">yr</span></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Points</label>
+        <div class="input-wrap"><input type="number" id="l-points" class="has-sfx" value="1" step="0.25" placeholder="1"><span class="sfx">%</span></div>
+      </div>
+      <div class="field">
+        <label>Closing Costs</label>
+        <div class="input-wrap"><input type="number" id="l-cc" class="has-sfx" value="2" step="0.25" placeholder="2"><span class="sfx">%</span></div>
+      </div>
+    </div>
+
+    <button class="btn-analyze" onclick="analyzeLtr()">Analyze This Deal</button>
+
+    <div class="results" id="ltr-results">
+      <div class="verdict" id="ltr-verdict">
+        <div class="vtag" id="lvtag"></div>
+        <div class="vlabel" id="lvlabel"></div>
+        <div class="vsub" id="lvsub"></div>
+      </div>
+      <div class="metrics" id="ltr-metrics"></div>
+      <div class="breakdown"><div class="btitle">Income &amp; DSCR Breakdown</div><div id="ltr-breakdown"></div></div>
+      <div id="ltr-funding-btn"></div>
+
+      <div class="slabel">Save This Deal</div>
+      <div class="save-row">
+        <input type="text" id="ltr-deal-name" placeholder="Deal name e.g. 3BR Rental Memphis">
+        <button class="btn-save" id="ltr-save-btn" onclick="saveDeal('ltr')">Save</button>
+      </div>
+      <div class="field full" style="margin-top:6px">
+        <label>Notes <span>(optional)</span></label>
+        <textarea id="ltr-notes" placeholder="Lease status, tenant, condition, rent comps..."></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="clearNewDeal('ltr')">Clear &amp; New Deal</button>
+      </div>
+    </div>
+  </div><!-- /rental-view-ltr -->
+
+  <!-- ░░░░░ BRRR sub-view ░░░░░ -->
+  <div id="rental-view-brrr" data-analyzer="brrr" style="display:none">
+    <div class="unit-chip">buy · rehab · refi · hold · repeat</div>
+
+    <div class="slabel">Market Regions</div>
+    <div class="market-slots" id="brrr-slots"></div>
+
+    <div class="slabel">Acquisition</div>
+    <div class="field full">
+      <label>Address <span>(optional)</span></label>
+      <input type="text" id="b-addr" placeholder="77 Birch St, Indianapolis IN">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Purchase Price</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-price" class="has-pfx" placeholder="150,000" data-currency></div>
+      </div>
+      <div class="field">
+        <label>Rehab Budget</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-rehab" class="has-pfx" placeholder="40,000" data-currency></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>After-Repair Value (ARV)</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-arv" class="has-pfx" placeholder="250,000" data-currency></div>
+      </div>
+      <div class="field">
+        <label>Rehab Contingency</label>
+        <div class="input-wrap"><input type="number" id="b-contingency" class="has-sfx" value="15" placeholder="15"><span class="sfx">%</span></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Purchase Costs</label>
+        <div class="input-wrap"><input type="number" id="b-cc" class="has-sfx" value="2" step="0.25" placeholder="2"><span class="sfx">%</span></div>
+      </div>
+      <div class="field">
+        <label>Rehab / Hold Period</label>
+        <div class="input-wrap"><input type="number" id="b-hold" class="has-sfx" value="6" placeholder="6"><span class="sfx">mo</span></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Monthly Holding Cost</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-carry" class="has-pfx" value="600" placeholder="600" data-currency></div>
+        <div class="field-hint beginner-only">Taxes/insurance/utilities during the rehab.</div>
+      </div>
+      <div class="field">
+        <label>Property Type</label>
+        <select id="b-ptype">
+          <option>SFR</option>
+          <option>2–4 Unit</option>
+          <option>Condo</option>
+          <option>Townhome</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Acquisition Loan <span>(bridge — blank = all-cash)</span></label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-acqloan" class="has-pfx" placeholder="all-cash" data-currency></div>
+        <div class="field-hint beginner-only">Optional hard-money for the buy. Leave blank if paying cash up front.</div>
+      </div>
+      <div class="field">
+        <label>Acq. Rate / Points</label>
+        <div class="field-row" style="gap:8px;margin:0">
+          <div class="input-wrap"><input type="number" id="b-acqrate" class="has-sfx" value="10" step="0.25" placeholder="10"><span class="sfx">%</span></div>
+          <div class="input-wrap"><input type="number" id="b-acqpoints" class="has-sfx" value="2" step="0.25" placeholder="2"><span class="sfx">pt</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slabel">Refinance <span style="font-weight:400;color:#9aa4b2">(DSCR cash-out takeout)</span></div>
+    <div class="field-row">
+      <div class="field">
+        <label>Refi LTV</label>
+        <div class="input-wrap"><input type="number" id="b-refiltv" class="has-sfx" value="75" placeholder="75"><span class="sfx">%</span></div>
+        <div class="field-hint beginner-only">New loan = ARV × this. 75% is the standard DSCR cash-out LTV.</div>
+      </div>
+      <div class="field">
+        <label>Refi Rate</label>
+        <div class="input-wrap"><input type="number" id="b-refirate" class="has-sfx" value="7.0" step="0.125" placeholder="7.0"><span class="sfx">%</span></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Refi Amortization</label>
+        <div class="input-wrap"><input type="number" id="b-refiamort" class="has-sfx" value="30" placeholder="30"><span class="sfx">yr</span></div>
+      </div>
+      <div class="field">
+        <label>Refi Costs</label>
+        <div class="input-wrap"><input type="number" id="b-reficost" class="has-sfx" value="3" step="0.25" placeholder="3"><span class="sfx">%</span></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Seasoning</label>
+        <div class="input-wrap"><input type="number" id="b-season" class="has-sfx" value="6" placeholder="6"><span class="sfx">mo</span></div>
+        <div class="field-hint beginner-only">Most DSCR cash-out needs ≥6 months title seasoning.</div>
+      </div>
+      <div class="field"></div>
+    </div>
+
+    <div class="slabel">Rental <span style="font-weight:400;color:#9aa4b2">(post-refi hold)</span></div>
+    <div class="field-row">
+      <div class="field">
+        <label>Monthly Rent</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-rent" class="has-pfx" placeholder="2,100" data-currency></div>
+      </div>
+      <div class="field">
+        <label>Vacancy</label>
+        <div class="input-wrap"><input type="number" id="b-vac" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Property Taxes <span>(annual)</span></label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-tax" class="has-pfx" placeholder="2,500" data-currency></div>
+      </div>
+      <div class="field">
+        <label>Insurance <span>(annual)</span></label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-ins" class="has-pfx" placeholder="1,200" data-currency></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>HOA <span>(monthly)</span></label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-hoa" class="has-pfx" value="0" placeholder="0" data-currency></div>
+      </div>
+      <div class="field">
+        <label>Property Management</label>
+        <div class="self-manage-toggle-row">
+          <span class="self-manage-label">Self-manage (skip PM fee)</span>
+          <label class="toggle toggle-sm"><input type="checkbox" id="b-self-manage-toggle"><div class="toggle-track"></div></label>
+        </div>
+        <div class="input-wrap"><input type="number" id="b-pm" class="has-sfx" value="8" placeholder="8"><span class="sfx">%</span></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Maintenance Reserve</label>
+        <div class="input-wrap"><input type="number" id="b-maint" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
+      </div>
+      <div class="field">
+        <label>CapEx Reserve</label>
+        <div class="input-wrap"><input type="number" id="b-capex" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Target DSCR</label>
+        <div class="input-wrap"><input type="number" id="b-targetdscr" class="has-sfx" value="1.25" step="0.05" placeholder="1.25"><span class="sfx">x</span></div>
+      </div>
+      <div class="field"></div>
+    </div>
+
+    <button class="btn-analyze" onclick="analyzeBrrr()">Analyze This Deal</button>
+
+    <div class="results" id="brrr-results">
+      <div class="verdict" id="brrr-verdict">
+        <div class="vtag" id="bvtag"></div>
+        <div class="vlabel" id="bvlabel"></div>
+        <div class="vsub" id="bvsub"></div>
+      </div>
+      <div class="metrics" id="brrr-metrics"></div>
+      <div class="breakdown"><div class="btitle">BRRR Breakdown</div><div id="brrr-breakdown"></div></div>
+      <div id="brrr-funding-btn"></div>
+
+      <div class="slabel">Save This Deal</div>
+      <div class="save-row">
+        <input type="text" id="brrr-deal-name" placeholder="Deal name e.g. BRRR 77 Birch St">
+        <button class="btn-save" id="brrr-save-btn" onclick="saveDeal('brrr')">Save</button>
+      </div>
+      <div class="field full" style="margin-top:6px">
+        <label>Notes <span>(optional)</span></label>
+        <textarea id="brrr-notes" placeholder="Rehab scope, ARV comps, refi lender, seasoning..."></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="clearNewDeal('brrr')">Clear &amp; New Deal</button>
+      </div>
+    </div>
+  </div><!-- /rental-view-brrr -->
 </div>
 
 <!-- ═══════════════════════════════════════

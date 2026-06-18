@@ -1,0 +1,164 @@
+// ─── BRRR analyzer (Bridge acquisition → DSCR cash-out refi) ──────────────────
+// Two-phase: flip-style acquisition + LTR-style DSCR hold, joined by a cash-out
+// refinance. Reuses the SAME tested income engine as LTR (finance.js → computeBrrr
+// → incomeBlock). Reads both FLIP_MARKETS (ARV/carry) and LTR_MARKETS (rent) for
+// prefills. Mirrors ltr.js/rental.js conventions: b-* IDs, lastBrrrResult.
+
+import { fmt, pct, cClass, buildMetrics, buildRows } from './format.js';
+import { computeBrrr, brrrVerdict } from './finance.js';
+import { FLIP_MARKETS, LTR_MARKETS, BRRR_ASSUMPTIONS, ALL_MARKETS } from './markets.js';
+import { maybeShowFundingButton } from './clearpath.js';
+
+const elv = id => document.getElementById(id);
+function numOpt(id) { const el = elv(id); if (!el) return undefined; const v = el.value.trim(); return v === '' ? undefined : +v.replace(/,/g, ''); }
+
+function getBrrrMarket(slug) {
+  const entry  = ALL_MARKETS.find(m => m.id === slug);
+  const region = entry?.region || 'Southeast';
+  return {
+    flip: FLIP_MARKETS[slug] || null,
+    ltr:  LTR_MARKETS[slug]  || null,
+    region,
+  };
+}
+
+let lastBrrrResult = null;
+export function getLastBrrrResult() { return lastBrrrResult; }
+
+export function setBrrrPreset(slug, el) {
+  if (el) el.classList.add('slot-active');
+  const m = getBrrrMarket(slug);
+  const arvEl  = elv('b-arv');
+  const rentEl = elv('b-rent');
+  const carryEl = elv('b-carry');
+  const taxEl  = elv('b-tax');
+  if (arvEl && m.flip?.medianArv && !arvEl.dataset.userEdited) arvEl.value = Math.round(m.flip.medianArv).toLocaleString();
+  if (rentEl && m.ltr?.rent2br && !rentEl.dataset.userEdited) rentEl.value = Math.round(m.ltr.rent2br).toLocaleString();
+  if (carryEl && m.flip?.monthlyHoldLow && !carryEl.dataset.userEdited) carryEl.value = Math.round(m.flip.monthlyHoldLow).toLocaleString();
+  const arv = numOpt('b-arv');
+  if (taxEl && !taxEl.dataset.userEdited && arv && m.ltr?.taxRate != null) {
+    taxEl.value = Math.round(arv * m.ltr.taxRate).toLocaleString();
+  }
+}
+
+export function analyzeBrrr() {
+  const price = numOpt('b-price');
+  const rehab = numOpt('b-rehab');
+  const arv   = numOpt('b-arv');
+  const rent  = numOpt('b-rent');
+  if (!price || !rehab || !arv || !rent) return; // validation handled in main.js
+
+  const selfManage = elv('b-self-manage-toggle')?.checked;
+  const input = {
+    addr: elv('b-addr')?.value.trim() || '',
+    price, rehab, arv, rent,
+    contingency: numOpt('b-contingency'),
+    cc:    numOpt('b-cc'),
+    hold:  numOpt('b-hold'),
+    carry: numOpt('b-carry'),
+    acqLoan:   numOpt('b-acqloan'),
+    acqRate:   numOpt('b-acqrate'),
+    acqPoints: numOpt('b-acqpoints'),
+    refiLtv:   numOpt('b-refiltv'),
+    refiRate:  numOpt('b-refirate'),
+    refiAmort: numOpt('b-refiamort'),
+    reficost:  numOpt('b-reficost'),
+    season:    numOpt('b-season'),
+    vac:   numOpt('b-vac'),
+    tax:   numOpt('b-tax'),
+    ins:   numOpt('b-ins'),
+    hoa:   numOpt('b-hoa'),
+    maint: numOpt('b-maint'),
+    pm:    numOpt('b-pm'),
+    selfManage,
+    capex: numOpt('b-capex'),
+    targetDscr: numOpt('b-targetdscr'),
+    ptype: elv('b-ptype')?.value || 'SFR',
+  };
+
+  const m = computeBrrr(input);
+  const { cls, verdict, vsub } = brrrVerdict(m);
+  const dscrText = m.dscr === null ? 'n/a' : m.dscr.toFixed(2);
+  const cocText  = m.postRefiCoC === Infinity ? '∞ (capital fully recovered)' : pct(m.postRefiCoC);
+  const refiRate = (input.refiRate == null ? 7.0 : input.refiRate) + '%';
+  const refiLtvPct = input.refiLtv == null ? 75 : input.refiLtv;
+  const cont = input.contingency == null ? 15 : input.contingency;
+
+  // Seasoning warning chip (non-blocking).
+  const seasonWarn = (input.season != null && input.season < (BRRR_ASSUMPTIONS.seasoningMonthsLow || 6));
+
+  elv('brrr-verdict').className = 'verdict ' + cls;
+  elv('bvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
+  elv('bvlabel').textContent = verdict;
+  elv('bvsub').textContent   = vsub + (seasonWarn ? '  ⚠ Most DSCR cash-out needs 6mo title seasoning.' : '');
+
+  const capInvested = m.cashInvested || 1;
+  elv('brrr-metrics').innerHTML = buildMetrics([
+    { label: 'DSCR (post-refi)',    val: dscrText,                cls: m.dscr === null ? 'good' : m.dscr >= 1.25 ? 'good' : m.dscr >= 1.0 ? 'warn' : 'bad' },
+    { label: 'Capital Left In Deal',val: fmt(m.capitalLeft),      cls: m.capitalLeft <= 0.25 * capInvested ? 'good' : m.capitalLeft <= 0.5 * capInvested ? 'warn' : 'bad' },
+    { label: 'Cash Recovered',      val: pct(m.cashRecoveredPct), cls: cClass(m.cashRecoveredPct, 75, 40) },
+    { label: 'Monthly Cash Flow',   val: fmt(m.cashFlowMo),       cls: cClass(m.cashFlowMo, 150, 0) },
+  ]);
+
+  const rows = [
+    { l: '— Acquisition —', v: '', tot: true },
+    { l: 'Purchase price',                          v: fmt(m.price) },
+    { l: 'Rehab + contingency (' + cont + '%)',     v: '–' + fmt(m.rehabTotal) },
+    { l: 'Purchase costs (' + (input.cc == null ? 2 : input.cc) + '%)', v: '–' + fmt(m.purchCosts) },
+    { l: 'Holding costs (' + (input.hold == null ? 6 : input.hold) + ' mo)', v: '–' + fmt(m.carryTotal) },
+    ...(m.acqLoan > 0 ? [{ l: 'Bridge interest + points', v: '–' + fmt(m.acqInterest + m.acqFees) }] : []),
+    { l: 'All-in cost basis', v: fmt(m.allInCost), tot: true },
+    { l: 'Cash invested (all-in − bridge loan)',    v: fmt(m.cashInvested) },
+    { l: '— Refinance —', v: '', tot: true },
+    { l: 'ARV',                                     v: fmt(m.arv) },
+    { l: 'New loan @ ' + refiLtvPct + '% LTV',      v: fmt(m.refiLoan) },
+    { l: 'Refi costs (' + (input.reficost == null ? 3 : input.reficost) + '%)', v: '–' + fmt(m.refiCosts) },
+    ...(m.acqPayoff > 0 ? [{ l: 'Bridge payoff', v: '–' + fmt(m.acqPayoff) }] : []),
+    { l: 'Cash out at refi',                        v: fmt(m.cashOut) },
+    { l: 'Capital left in deal', v: fmt(m.capitalLeft), tot: true, color: m.capitalLeft <= 0 ? 'var(--accent)' : 'var(--danger)' },
+    { l: 'Cash recovered',                          v: pct(m.cashRecoveredPct) },
+    { l: 'Equity created (ARV − all-in)',           v: fmt(m.equityCreated) },
+    { l: '— Hold (post-refi) —', v: '', tot: true },
+    { l: 'Net operating income',                    v: fmt(m.NOI) },
+    { l: 'Annual debt service (refi, ' + refiRate + ')', v: '–' + fmt(m.refiDebtYr) },
+    { l: 'CapEx reserve (' + (input.capex == null ? 5 : input.capex) + '%, below NOI)', v: '–' + fmt(m.capexRes) },
+    { l: 'Net cash flow (annual)', v: fmt(m.cashFlowYr), tot: true, color: m.cashFlowYr >= 0 ? 'var(--accent)' : 'var(--danger)' },
+    { l: 'DSCR (NOI ÷ refi debt)',                  v: dscrText },
+    { l: 'Cap rate (NOI ÷ all-in)',                 v: pct(m.capRate) },
+    { l: 'Post-refi cash-on-cash',                  v: cocText },
+  ];
+  elv('brrr-breakdown').innerHTML = buildRows(rows);
+
+  lastBrrrResult = {
+    type: 'brrr', addr: input.addr,
+    price: m.price, rehab, arv: m.arv,
+    contingency: cont, cc: input.cc == null ? 2 : input.cc, hold: input.hold == null ? 6 : input.hold,
+    carry: input.carry == null ? 600 : input.carry, acqLoan: m.acqLoan,
+    acqRate: input.acqRate == null ? 10 : input.acqRate, acqPoints: input.acqPoints == null ? 2 : input.acqPoints,
+    refiLtv: refiLtvPct, refiRate: input.refiRate == null ? 7.0 : input.refiRate, refiAmort: input.refiAmort == null ? 30 : input.refiAmort,
+    reficost: input.reficost == null ? 3 : input.reficost, season: input.season == null ? 6 : input.season,
+    rent, vac: input.vac == null ? 5 : input.vac, tax: input.tax || 0, ins: input.ins || 0, hoa: input.hoa || 0,
+    maint: input.maint == null ? 5 : input.maint, pm: selfManage ? 0 : (input.pm == null ? 8 : input.pm),
+    capex: input.capex == null ? 5 : input.capex, ptype: input.ptype,
+    rehabTotal: m.rehabTotal, allInCost: m.allInCost, cashInvested: m.cashInvested,
+    refiLoan: m.refiLoan, refiCosts: m.refiCosts, cashOut: m.cashOut, capitalLeft: m.capitalLeft,
+    cashRecoveredPct: m.cashRecoveredPct, equityCreated: m.equityCreated,
+    NOI: m.NOI, refiDebtYr: m.refiDebtYr, capexRes: m.capexRes, cashFlowYr: m.cashFlowYr, cashFlowMo: m.cashFlowMo,
+    dscr: m.dscr, capRate: m.capRate, postRefiCoC: m.postRefiCoC, ltv: m.refiLTVactual / 100,
+    verdict, cls, hot: cls === 'hot',
+  };
+
+  const r = elv('brrr-results');
+  r.style.display = 'block';
+  r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  maybeShowFundingButton(lastBrrrResult);
+}
+
+export function resetBrrr() {
+  const r = elv('brrr-results');
+  if (r) r.style.display = 'none';
+  const notes = elv('brrr-notes'); if (notes) notes.value = '';
+  const btn = elv('brrr-funding-btn'); if (btn) btn.innerHTML = '';
+  lastBrrrResult = null;
+}

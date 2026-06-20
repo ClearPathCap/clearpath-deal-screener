@@ -60,6 +60,19 @@ export function validateInputs(type, raw) {
     if (oob(raw.acqRate,     RANGE.rate))  err('b-acqrate','Bridge rate','must be between 0% and 30%.');
     if (oob(raw.refiRate,    RANGE.rate))  err('b-refirate','Refi rate','must be between 0% and 30%.');
     if (oob(raw.acqPoints,   RANGE.points))err('b-acqpoints','Bridge points','must be between 0 and 15.');
+  } else if (type === 'str') {
+    // STR % fields are whole numbers (validate the raw value before the /100). No
+    // points field and no separate loan input — so no flip-style loan-vs-cost check.
+    if (oob(raw.down, RANGE.pct))  err('v-down','Down payment','must be between 0% and 100%.');
+    if (oob(raw.occ,  RANGE.pct))  err('v-occ','Occupancy','must be between 0% and 100%.');
+    if (oob(raw.mgmt, RANGE.pct))  err('v-mgmt','Platform fee','must be between 0% and 100%.');
+    if (oob(raw.pm,   RANGE.pct))  err('v-pm','Property mgmt','must be between 0% and 100%.');
+    if (oob(raw.rate, RANGE.rate)) err('v-interest-rate','Interest rate','must be between 0% and 30%.');
+    if (raw.price   !== undefined && Number.isFinite(+raw.price)   && +raw.price   <= 0) err('v-price','Purchase price','must be greater than 0.');
+    if (raw.revenue !== undefined && Number.isFinite(+raw.revenue) && +raw.revenue <= 0) err('v-rent','Annual revenue','must be greater than 0.');
+    if (raw.tax     !== undefined && Number.isFinite(+raw.tax)     && +raw.tax     < 0) err('v-tax','Taxes + insurance','can\'t be negative.');
+    if (raw.maint   !== undefined && Number.isFinite(+raw.maint)   && +raw.maint   < 0) err('v-maint','Maintenance','can\'t be negative.');
+    if (raw.furnish !== undefined && Number.isFinite(+raw.furnish) && +raw.furnish < 0) err('v-furnish','Furnishing','can\'t be negative.');
   } else { // flip
     if (oob(raw.cc1, RANGE.pct)) err('f-cc1','Purchase costs','must be between 0% and 100%.');
     if (oob(raw.cc2, RANGE.pct)) err('f-cc2','Sale costs','must be between 0% and 100%.');

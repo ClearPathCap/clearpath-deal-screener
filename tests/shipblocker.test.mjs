@@ -101,4 +101,23 @@ const finance = await load("docs/src/js/finance.js");
   console.log("#9 OK (HOT+Tight reachable)");
 }
 
+// ─── B2-STR — STR validation (no garbage can grade "Strong STR Play") ─────────
+{
+  const { validateInputs } = finance;
+  const hasErr = (raw) => validateInputs("str", raw).errors.length > 0;
+  // STR uses the SAME hardened parseComma (B3) for currency — "$425,000" already parses.
+  assert.ok(hasErr({ down: 150 })); // 150% down
+  assert.ok(hasErr({ occ: 150 })); // 150% occupancy
+  assert.ok(hasErr({ rate: -5 })); // negative rate
+  assert.ok(hasErr({ price: 200000, revenue: -1000 })); // negative revenue
+  assert.ok(hasErr({ tax: -500 })); // negative expense
+  assert.ok(hasErr({ price: -5 })); // non-positive price
+  assert.ok(hasErr({ mgmt: 120 })); // platform fee >100
+  assert.ok(
+    !hasErr({ price: 400000, revenue: 45000, down: 20, occ: 65, mgmt: 3, pm: 8,
+              rate: 6.75, tax: 5500, maint: 3000, furnish: 15000 })
+  ); // valid STR → no error
+  console.log("B2-STR OK");
+}
+
 console.log("\nAll ship-blocker tests passed ✓");

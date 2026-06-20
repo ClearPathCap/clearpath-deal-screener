@@ -1,8 +1,9 @@
 // ─── STR / Rental analyzer ────────────────────────────────────────────────────
 
-import { fmt, pct, cClass, buildMetrics, buildRows, parseComma } from './format.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, renderInputIssues } from './format.js';
 import { STR_MARKETS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
+import { validateInputs, plausibilityWarnings } from './finance.js';
 
 // ─── Regional STR fallback defaults (Task 3) ──────────────────────────────────
 const STR_REGIONAL_DEFAULTS = {
@@ -60,7 +61,26 @@ export function analyzeRental() {
   const tgtCoc  = +document.getElementById('v-target').value || 6;
   // Item 14: editable interest rate field — default 6.75%
   const interestRate = (+document.getElementById('v-interest-rate')?.value || 6.75) / 100;
-  if (!price || !rent) { return; } // validation handled by wrapper in main.js
+  if (!price || !rent) { return; } // empty-required handled by main.js wrapper
+
+  // B2 (STR): validate pre-compute — out-of-range inputs abort (no compute, no "Strong
+  // STR", no funnel). STR % fields are whole numbers, so read the RAW values (pre /100).
+  const strRaw = {
+    price,
+    revenue: rent,
+    down:  +document.getElementById('v-down').value,
+    occ:   +document.getElementById('v-occ').value,
+    mgmt:  +document.getElementById('v-mgmt').value,
+    pm:    selfManage ? 0 : +document.getElementById('v-pm').value,
+    rate:  +(document.getElementById('v-interest-rate')?.value),
+    tax, maint, furnish,
+  };
+  const { errors: strErrors } = validateInputs('str', strRaw);
+  if (renderInputIssues('rental', strErrors, [])) {
+    document.getElementById('rental-results').style.display = 'none';
+    const fb = document.getElementById('rental-funding-btn'); if (fb) fb.innerHTML = '';
+    return;
+  }
 
   const effRent     = rent * occ;
   const platformFee = effRent * mgmt;
@@ -147,6 +167,17 @@ export function analyzeRental() {
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   maybeShowFundingButton(lastRentalResult);
+
+  // Post-compute soft warnings (non-blocking): DSCR/cap plausibility + a rent-to-price
+  // sanity check, appended to the same inline box.
+  const strWarn = plausibilityWarnings(lastRentalResult);
+  const monthlyEquiv = rent / 12; // potential monthly-equivalent revenue
+  if (price > 0 && monthlyEquiv > 0) {
+    const ratio = (monthlyEquiv / price) * 100;
+    if (ratio > 3)   strWarn.push({ field: 'rent', label: 'Revenue', message: 'looks high for the price — double-check this number.' });
+    if (ratio < 0.3) strWarn.push({ field: 'rent', label: 'Revenue', message: 'looks low for the price — double-check this number.' });
+  }
+  renderInputIssues('rental', [], strWarn);
 }
 
 export function resetRental() {

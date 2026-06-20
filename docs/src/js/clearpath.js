@@ -98,21 +98,16 @@ function qualifiesForType(type, deal) {
 // ─── Tier-aware button config ─────────────────────────────────────────────────
 
 function getTierConfig() {
+  // B6b — neutral funding CTA across ALL tiers: the user-facing label/toast carry no
+  // loan-priority/term claims ("Priority Review"/"Dedicated Broker" removed). The tier
+  // still flows internally for tracking — via the per-tier tag (clipboard summary) and
+  // the `tier` query param in buildCpcUrl (→ HubSpot).
   const tier = getActiveTier();
-  if (tier === 'pro') return {
-    label: 'Get Funding — Dedicated Broker',
-    tag:   '[Pro — Dedicated Broker Requested]',
-    toast: 'Form pre-filled on the Clear Path page — review and submit. Your dedicated broker will follow up directly. (Summary also copied as backup.)',
-  };
-  if (tier === 'investor') return {
-    label: 'Get Funding — Priority Review',
-    tag:   '[Investor — Priority Review]',
-    toast: 'Form pre-filled on the Clear Path page — review and submit for priority review. (Summary also copied as backup.)',
-  };
+  const tagByTier = { pro: '[Pro Submission]', investor: '[Investor Submission]' };
   return {
     label: 'Get Funding — Clear Path Capital',
-    tag:   '[Starter Submission]',
-    toast: 'Form pre-filled on the Clear Path page — review and submit. (Summary also copied as backup.)',
+    tag:   tagByTier[tier] || '[Starter Submission]',
+    toast: 'Form pre-filled on the Clear Path page — review and submit. Summary also copied as backup.',
   };
 }
 

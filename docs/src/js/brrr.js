@@ -4,13 +4,13 @@
 // → incomeBlock). Reads both FLIP_MARKETS (ARV/carry) and LTR_MARKETS (rent) for
 // prefills. Mirrors ltr.js/rental.js conventions: b-* IDs, lastBrrrResult.
 
-import { fmt, pct, cClass, buildMetrics, buildRows } from './format.js';
-import { computeBrrr, brrrVerdict, mosLabel } from './finance.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseNumOpt, renderInputIssues } from './format.js';
+import { computeBrrr, brrrVerdict, mosLabel, validateInputs, plausibilityWarnings } from './finance.js';
 import { FLIP_MARKETS, LTR_MARKETS, BRRR_ASSUMPTIONS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
 
 const elv = id => document.getElementById(id);
-function numOpt(id) { const el = elv(id); if (!el) return undefined; const v = el.value.trim(); return v === '' ? undefined : +v.replace(/,/g, ''); }
+function numOpt(id) { const el = elv(id); return el ? parseNumOpt(el.value) : undefined; }
 
 function getBrrrMarket(slug) {
   const entry  = ALL_MARKETS.find(m => m.id === slug);
@@ -76,7 +76,16 @@ export function analyzeBrrr() {
     ptype: elv('b-ptype')?.value || 'SFR',
   };
 
+  // B2: validate pre-compute — out-of-range inputs abort (no compute, no HOT, no funnel).
+  const { errors, warnings } = validateInputs('brrr', input);
+  if (renderInputIssues('brrr', errors, warnings)) {
+    const r = elv('brrr-results'); if (r) r.style.display = 'none';
+    const btn = elv('brrr-funding-btn'); if (btn) btn.innerHTML = '';
+    return;
+  }
+
   const m = computeBrrr(input);
+  renderInputIssues('brrr', [], warnings.concat(plausibilityWarnings(m)));
   const { cls, verdict, vsub } = brrrVerdict(m);
   const dscrText = m.dscr === null ? 'n/a' : m.dscr.toFixed(2);
   const cocText  = m.postRefiCoC === Infinity ? '∞ (capital fully recovered)' : pct(m.postRefiCoC);
@@ -90,7 +99,7 @@ export function analyzeBrrr() {
   elv('brrr-verdict').className = 'verdict ' + cls;
   elv('bvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
   elv('bvlabel').textContent = verdict;
-  elv('bvsub').textContent   = vsub + (seasonWarn ? '  ⚠ Most DSCR cash-out needs 6mo title seasoning.' : '');
+  elv('bvsub').textContent   = vsub + (cls === 'hot' && m.marginOfSafety === 'tight' ? ' Strong signal, thin cushion.' : '') + (seasonWarn ? '  ⚠ Most DSCR cash-out needs 6mo title seasoning.' : '');
 
   const capInvested = m.cashInvested || 1;
   const mos = mosLabel(m.marginOfSafety);

@@ -22,6 +22,79 @@ export function qualifiesForCpcBrrr({ loan, ltv, dscr }) {
   return qualifiesForCpcLtr({ loan, ltv, dscr });
 }
 
+// ─── Input validation (B2). Pure: returns blocking errors + soft warnings. Caller
+// (analyzer glue) renders inline and aborts compute on any error. Treat undefined as
+// "absent → default → in range" (skip it) — no out-of-range input may produce HOT. ──
+const RANGE = {
+  pct:    [0, 100],   // down, vacancy, pm, maint, capex, contingency, refiLtv, cc, reficost
+  rate:   [0, 30],    // rate, acqRate, refiRate
+  points: [0, 15],    // points, acqPoints
+};
+function oob(v, [lo, hi]) { return v !== undefined && v !== null && Number.isFinite(+v) && (+v < lo || +v > hi); }
+
+// type: 'flip' | 'ltr' | 'brrr'. raw = the same whole-number/$ values the analyzer read.
+export function validateInputs(type, raw) {
+  const errors = [];
+  const warnings = [];
+  const err  = (field, label, message) => errors.push({ field, label, message });
+  const warn = (field, label, message) => warnings.push({ field, label, message });
+
+  if (type === 'ltr') {
+    if (oob(raw.down,  RANGE.pct))   err('l-down','Down payment','must be between 0% and 100%.');
+    if (oob(raw.vac,   RANGE.pct))   err('l-vac','Vacancy','must be between 0% and 100%.');
+    if (oob(raw.pm,    RANGE.pct))   err('l-pm','Property mgmt','must be between 0% and 100%.');
+    if (oob(raw.maint, RANGE.pct))   err('l-maint','Maintenance','must be between 0% and 100%.');
+    if (oob(raw.capex, RANGE.pct))   err('l-capex','CapEx reserve','must be between 0% and 100%.');
+    if (oob(raw.cc,    RANGE.pct))   err('l-cc','Closing costs','must be between 0% and 100%.');
+    if (oob(raw.rate,  RANGE.rate))  err('l-rate','Interest rate','must be between 0% and 30%.');
+    if (oob(raw.points,RANGE.points))err('l-points','Points','must be between 0 and 15.');
+  } else if (type === 'brrr') {
+    if (oob(raw.contingency, RANGE.pct))   err('b-contingency','Contingency','must be between 0% and 100%.');
+    if (oob(raw.refiLtv,     RANGE.pct))   err('b-refiltv','Refi LTV','must be between 0% and 100%.');
+    if (oob(raw.cc,          RANGE.pct))   err('b-cc','Closing costs','must be between 0% and 100%.');
+    if (oob(raw.reficost,    RANGE.pct))   err('b-reficost','Refi costs','must be between 0% and 100%.');
+    if (oob(raw.vac,         RANGE.pct))   err('b-vac','Vacancy','must be between 0% and 100%.');
+    if (oob(raw.pm,          RANGE.pct))   err('b-pm','Property mgmt','must be between 0% and 100%.');
+    if (oob(raw.maint,       RANGE.pct))   err('b-maint','Maintenance','must be between 0% and 100%.');
+    if (oob(raw.capex,       RANGE.pct))   err('b-capex','CapEx reserve','must be between 0% and 100%.');
+    if (oob(raw.acqRate,     RANGE.rate))  err('b-acqrate','Bridge rate','must be between 0% and 30%.');
+    if (oob(raw.refiRate,    RANGE.rate))  err('b-refirate','Refi rate','must be between 0% and 30%.');
+    if (oob(raw.acqPoints,   RANGE.points))err('b-acqpoints','Bridge points','must be between 0 and 15.');
+  } else { // flip
+    if (oob(raw.cc1, RANGE.pct)) err('f-cc1','Purchase costs','must be between 0% and 100%.');
+    if (oob(raw.cc2, RANGE.pct)) err('f-cc2','Sale costs','must be between 0% and 100%.');
+    if (oob(raw.rate, RANGE.rate)) err('f-rate','Loan rate','must be between 0% and 30%.');
+    if (oob(raw.points, RANGE.points)) err('f-points','Points','must be between 0 and 15.');
+    const cost = (+raw.ask || 0) + (+raw.rep || 0);
+    if (raw.loan !== undefined && cost > 0 && +raw.loan > cost)
+      err('f-loan','Loan amount','can\'t exceed purchase + rehab (' + Math.round(cost).toLocaleString() + ') — that makes cash invested negative.');
+  }
+
+  // ── Soft, non-blocking plausibility warnings (compute still runs) ──
+  const price = +raw.price || +raw.ask || 0;
+  const rentMo = +raw.rentMo || +raw.rent || 0;
+  if (price > 0 && rentMo > 0) {
+    const onePct = (rentMo / price) * 100;
+    if (onePct > 3)   warn('rent','Rent','looks high for the price (over 3% of price/mo) — double-check this number.');
+    if (onePct < 0.3) warn('rent','Rent','looks low for the price (under 0.3% of price/mo) — double-check this number.');
+  }
+  return { errors, warnings };
+}
+
+// Post-compute plausibility warnings (need NOI/DSCR, so they can't live in the pure
+// pre-compute validator). Caller appends these to the same inline warnings box AFTER
+// computeX. No-ops on metrics that don't apply (flip has no dscr/capRate).
+export function plausibilityWarnings(m) {
+  const w = [];
+  if (m && m.dscr != null && m.dscr > 3) {
+    w.push({ field: 'dscr', label: 'DSCR', message: 'looks unusually high — double-check rent/price.' });
+  }
+  if (m && m.capRate != null && m.capRate > 20) {
+    w.push({ field: 'cap', label: 'Cap rate', message: 'looks unusually high — double-check the numbers.' });
+  }
+  return w;
+}
+
 // ─── Verdict & Risk Framework (SPEC_VERDICT_RISK_FRAMEWORK_2026-06-18) ─────────
 // A HOT deal = strong dollars AND low risk. Every verdict clears 3 bars: a dollar
 // floor, a return/safety metric, and a STRESS TEST (conservative haircuts it must
@@ -250,13 +323,17 @@ export function ltrVerdict(m) {
   const cfMo = Math.round(m.cashFlowMo);
   let cls, verdict, vsub;
 
-  if (d < 1.0 || m.cashFlowMo < 0) {
+  // COLD only when the debt itself isn't covered: DSCR < 1.0 — equivalently NOI < annual
+  // debt service (cash-flow-negative BEFORE the CapEx reserve). dscr === null = all-cash =
+  // fully covered unless NOI itself is negative. The CapEx reserve alone never flips a
+  // DSCR-fundable deal COLD (decision B5).
+  const coversDebt = (m.dscr === null) ? (m.NOI >= 0) : (m.NOI >= m.debtYr);
+  if (!coversDebt) {
     cls = "pass";
     verdict = "Negative Leverage — Walk or Restructure";
-    vsub =
-      m.dscr !== null && m.dscr < 1.0
-        ? "DSCR of " + dscrText + " is below 1.0 — rent doesn't cover the debt at this price and down payment. Increase the down payment, negotiate price, or walk."
-        : "This loses $" + Math.abs(cfMo) + "/mo after reserves. Restructure the financing or walk.";
+    vsub = (m.dscr !== null)
+      ? "DSCR of " + dscrText + " is below 1.0 — rent doesn't cover the debt at this price and down payment. Increase the down payment, negotiate price, or walk."
+      : "Even all-cash, operating costs exceed income before any debt service — the property is cash-flow negative on its own. Rework rent or expenses, or walk.";
   } else if (d >= 1.25 && (annualCF >= 6000 || m.coc >= target) && m.cashFlowMo > 0 && survives) {
     cls = "hot";
     verdict = "Strong Rental — Lender-Ready";
@@ -269,7 +346,12 @@ export function ltrVerdict(m) {
   } else {
     cls = "warm";
     verdict = "Dig Deeper & Negotiate";
-    if (d >= 1.25 && !survives) {
+    if (m.cashFlowMo < 0) {
+      // B5: DSCR ≥ 1.0 covers the debt, but the CapEx reserve tips monthly cash flow negative.
+      verdict = "Covers Debt — Thin After Reserves";
+      vsub = "DSCR " + dscrText + " covers the debt (lender-fundable), but it runs about $" + Math.abs(cfMo) +
+             "/mo negative after the CapEx reserve. Finance-and-hold and build a cushion — negotiate price or raise rent to firm it up.";
+    } else if (d >= 1.25 && !survives) {
       vsub =
         "DSCR " + dscrText + " clears underwriting at base case, but a stress test (rent −5%, vacancy +3pts, rate +0.5%) thins the margin of safety. Build in more cushion before treating it as a lock.";
     } else if (d >= 1.25 && m.coc < target && annualCF < 6000) {

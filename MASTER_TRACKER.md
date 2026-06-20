@@ -82,8 +82,8 @@ Deal summary clipboard text includes tier tag:
 
 **Rentals tab sub-categories:**
 - STR (Short-Term Rental) — active
-- Long-Term Rental — Phase 2 placeholder (locked)
-- BRRR — Phase 2 placeholder (locked)
+- Long-Term Rental — **spec ready (`SPEC_LTR_ANALYZER.md`), next build.** DSCR funnel into CPC's rental-loan product. Builds as a "Short-Term | Long-Term" sub-toggle under Rentals (D6).
+- BRRR — **spec ready (`SPEC_BRRR_ANALYZER.md`), build after LTR.** Two-phase (bridge acquisition → DSCR cash-out refi); shares LTR's income/DSCR engine. Third toggle under Rentals.
 
 ---
 
@@ -141,13 +141,18 @@ Nashville TN (STR)
 - **Phase 1 Addendum + Revisions 1–6** (committed through Jun 4; independently QA'd by Cowork 6/12 — see QA_PHASE1_ADDENDUM_REPORT.md): tiers Starter/Investor/Pro, first-launch market picker, slot cooldowns 30/14/0, upgrade modals, Guide toggle mirroring, dev testing mode (`setTier()`), CPC priority tier messaging
 - **Markets integration** — DONE (verified 6/12: `docs/src/js/markets.js` byte-identical to `Market Data/markets_data.js`; 204 market ids, FLIP/STR/LTR + BRRR_ASSUMPTIONS live in picker)
 
+### ✅ 2026-06-12 evening: SPEC_THEME_AND_FUNDING built by Code (76b319a) and VERIFIED by full live walkthrough
+Green theme live, funding bridge live, 15-deal walkthrough across all 3 tiers, 6 live CPC submissions verified in HubSpot (source-tagged) + borrower emails delivered. Logo decision: keep ChatGPT mark (A-Aron + eyes-on comparison agree); lime stays on Hot Deal verdict. See WALKTHROUGH_REPORT_2026-06-12.md.
+
 ### ⏳ Pending — Pre-Phase 2 (in order)
-1. **A-Aron decision: canonical logo mark** — ChatGPT mark (currently deployed) vs `clearpath-mark-transparent.png` (Rev 6b + integration spec say this). See QA report Defect 3. Check the box in SPEC_THEME_AND_FUNDING.md Part 0.
-2. **Hand SPEC_THEME_AND_FUNDING.md to Claude Code** — fixes PWA icon defect + uncommitted repo state (QA Defects 1–2), swaps lime→CPC green `#22c55e`, builds `funding.js` CPC pre-fill bridge per CPC_INTEGRATION_SPEC.md (CPC site side already live)
-3. **A-Aron 10-min spot check** — first-launch picker, `setTier()`, upgrade modal, Get Funding URL pre-fill (test list at end of QA report / spec Part 2)
-4. **GitHub Pages deploy** — follow GITHUB_PAGES_RUNBOOK.md (~20 min, incl. gitignore for strategy docs before public push)
-5. TrueDataPro API investigation — does it expose market-level benchmarks? If yes, changes hardcoded data approach
-6. Stripe account setup (Aaron) — Phase 2, only after auth/backend decision (see TIER_STRATEGY.md gap #1: localStorage tiers MUST move to real auth before charging)
+1. **Hand SPEC_PHASE1D_FIXES.md to Claude Code** — 9 screener fixes (STR label HIGH, funding gate HIGH, upgrade-pitch rewrite HIGH, region-keyed Guide intel HIGH, plus 5 smaller) + 3 CPC-site fixes (submit timeout HIGH)
+2. **A-Aron: verify deals@ inbox** — 7 test intake emails: tier tags in body, ⚠ LICENSING REVIEW flag on the Destin FL submission
+3. **Test-data purge** (after review) — HubSpot 6 contacts + 7 deals (search "screenertest"; one Brookdale dupe), Gmail aliases, deals@ copies. Cowork can run it on request.
+4. **Tier follow-up SLAs in HubSpot** — 3 templates + task SLAs (Pro 4h+booking link / Investor same-day / Starter 24h) to make tier promises real (drafts in walkthrough report)
+5. **GitHub Pages deploy** — GITHUB_PAGES_RUNBOOK.md (~20 min; gitignore strategy docs before public push)
+6. **Chase AMP TPO approval** — P3-type DSCR/STR files have no home until it lands; LoanBidz fallback meanwhile
+7. TrueDataPro API investigation — market-level benchmarks?
+8. Stripe (Phase 2) — only after auth/backend (TIER_STRATEGY gap #1)
 
 ### 📋 Phase 2 (do not build yet)
 - Full SaaS backend: user accounts, auth, subscription status, tier enforcement
@@ -187,6 +192,28 @@ Nashville TN (STR)
 | Sharing mechanic | One-way: Investor → Starter | Starter cannot share back |
 | Guide for Starter | Partial access | Basics unlocked, market intel locked |
 | Guide toggle | Global (mirrors both tabs) | One toggle affects Fix & Flip + Rentals |
+| LTR analyzer | Promoted from Phase 2 → next build | DSCR borrower had no home in the tool; DSCR is the core CPC rental product. Spec: `SPEC_LTR_ANALYZER.md` |
+| LTR default down payment | 20% (not 25%) | Matches what investors model; bigger loan clears the $150K CPC min more often; sits at the LTV≤80% gate. 25% surfaced as a "best DSCR pricing" tip only |
+| LTR funnel gate | loan $150K–$5M AND LTV ≤ 80% AND DSCR ≥ 1.0 | DSCR is LTV/DSCR-underwritten, NOT the flip ARV/LTC box — needs a separate `qualifiesForCpcLtr` in funding.js |
+| LTR NOI definition | Excludes CapEx reserve (deducted below NOI) | Keeps cap rate + DSCR comparable to lender numbers; cash flow/CoC still net of reserves |
+| LTR navigation | Sub-toggle under Rentals (STR \| Long-Term) | Honors locked Rentals-tab design; keeps mobile nav uncluttered |
+| LTR CPC purpose | `purpose=dscr` → "DSCR / Rental Hold" | Standardized to `dscr` after live QA (was `rental_ltr`); CPC must add inbound mapping — see QA report |
+| BRRR analyzer | Spec ready, build after LTR | Two-phase bridge→DSCR refi; shares LTR income engine (build `incomeBlock()` once); dual CPC funnel |
+| BRRR CPC purpose/exit | `purpose=brrr` → "DSCR / Rental Hold", `exit=brrr` → "BRRRR" | CPC options exist live but unmapped inbound — Code wires both sides |
+| CPC QA (2026-06-17) | Flip pre-fill PASS; DSCR/BRRR FAIL | CPC snapshot hardwired to flip box (90% cost/70% ARV); needs income/LTV snapshot mode + token mapping. $500 loan-rounding false-flag on flip (minor) |
+| **CPC loan minimum $150K → $50K** (2026-06-18) | Lower the box floor | Applies everywhere: CPC site box copy, deal-fit logic, screener `qualifiesForCpc*`, LTR/BRRR funnel gates, CPC_INTEGRATION_SPEC. License-required states → refer out (nationwide otherwise) |
+| **No upper loan cap** (2026-06-18) | Remove the $5M ceiling; keep $50K floor | "Cap low, not high." Large deals still qualify (optionally route >$Xm to priority team). Update `qualifiesForCpc*` (drop `loan > 5000000`), CPC box copy → "$50K+" |
+| **Absolute-$ profit in verdicts** (2026-06-18) | Don't let low % alone kill a high-dollar deal | A-Aron: a $60K flip is a good deal even if ROI% is modest on a big purchase. Weight absolute net profit (the user's $ target) as a primary HOT driver, ROI as secondary. Exact thresholds = open decision |
+| LTR Golden Test B corrected | WARM (not HOT) | Code's catch: §2 formula yields CoC ≈6.84% → WARM (DSCR 1.41). Spec prose "HOT" was an estimate slip. Added Test B2 as a true HOT case (price 230K) |
+| LTR premium server-seed | Do the Supabase migration | Bundle leak closed (ltrNote/sourceUrl stripped), but notes now show for NO ONE until seeded into market_premium for get_market_intel (Pro/Investor). Approved to build |
+| CPC UAT live test (2026-06-18) | 3 deals submitted end-to-end | See CPC-PMB `UAT_CPC_EndToEnd_Test_Plan`. Findings: 🔴 Estimated Closing Date is REQUIRED + fails submit SILENTLY (make optional + show errors); DSCR snapshot uses flip box (LTV 0%); no $ minimum enforced; Quick-Action link encoding bug; CRM auto-creates contact+deal but into DEFAULT pipeline/"appointmentscheduled" not a CPC stage; no lender template (per-program needed) |
+| **B3 — One hardened parser** (2026-06-19) | Strip $/spaces/dashes in `format.js`; add `parseNumOpt` (undefined on blank) | Live `parseComma` only stripped commas → "$425,000" = 0; flip was vulnerable too. Can't reuse parseComma in ltr/brrr (its 0-on-blank kills finance.js defaults), so we harden the shared stripper + add an optional variant. |
+| **B2 — Validate before compute** (2026-06-19) | Pure `validateInputs(type,raw)` in finance.js; analyzers render inline errors + abort | Out-of-range inputs (150% down, −5% rate, vacancy>100, refiLtv 150, loan>cost) reached the funnel as "HOT." Reject (not silent-clamp) so the user sees the typo. Hard rule: no out-of-range input grades HOT. |
+| **B1 — Funnel never blanks on hot/warm** (2026-06-19) | Replace `… ? underBoxHTML : ''` with `outsideBoxHTML(type,deal)` at BOTH call sites | A qualifying all-cash/high-LTV hot/warm deal rendered an empty funding area — verdict said "Lender-Ready" with no path to act. Pipeline card had the same bug; both fixed. |
+| **B5 — DSCR ≥ 1.0 is never COLD** (2026-06-19) | COLD only for DSCR<1.0 or NOI<debt service; DSCR≥1.0 + CF-negative-after-reserve → WARM "Covers Debt — Thin After Reserves" | CapEx reserve alone was flipping fundable deals to "Negative Leverage — Walk," suppressing the button on deals CPC would fund. Aligns the verdict bar with the funnel gate (≥1.0). MoS-tile interaction (B5-MoS) left to a separate A-Aron decision. |
+| **B4 — "$50K+, no upper cap"** (2026-06-19) | CPC site copy only; screener already clean | Only `$5M` strings in the screener are code comments. B4 is a clearpathcapfunding.com edit (not in this repo) → Cowork. |
+| **B6 — No guarantee/loan-benefit copy** (2026-06-19) | B6a index.html copy DONE by Code this pass (lines 286/859/946/959/960); B6b Investor "Priority Review" tier label (clearpath.js getTierConfig) HELD pending A-Aron compliance call | Paid tiers must buy app features, never loan priority/terms. "Priority Review"/"first look"/"highest-priority funding" reframed to app value. The JS tier label needs A-Aron's sign-off before edit (left exactly as-is). |
+| **Fold-in (2026-06-19)** | Added 2 post-compute plausibility warnings (DSCR>3, cap>20%) + HOT/Tight clarity (#9) to the ship-blocker pass | Serves new-investor confidence — stop bad-deal-as-HOT and good-deal-as-false-COLD. |
 
 ---
 
@@ -213,7 +240,10 @@ Nashville TN (STR)
 | PHASE1_ADDENDUM.md + PHASE1_REVISION1–6b | Phase 1 addendum + revision specs | Complete/superseded — QA'd 6/12 |
 | QA_PHASE1_ADDENDUM_REPORT.md | Cowork independent build audit (6/12) | Active — read first |
 | SPEC_THEME_AND_FUNDING.md | Next Code handoff: cleanup + green theme + funding bridge | **Ready to hand off** |
-| CPC_INTEGRATION_SPEC.md | Query-param contract with CPC site (CPC side live) | Active contract |
+| SPEC_LTR_ANALYZER.md | Long-Term Rental analyzer — inputs, formulas, thresholds, DSCR funnel, tests | **Ready to hand off** |
+| SPEC_BRRR_ANALYZER.md | BRRR analyzer — two-phase (bridge→DSCR refi), shares LTR income engine, tests | **Ready to hand off (build after LTR)** |
+| QA_CPC_INTEGRATION_2026-06-17.md | Live QA: flip pre-fill PASS; DSCR/BRRR purpose mapping + income snapshot FAIL | **Active — Code must fix CPC side before LTR/BRRR funnels work** |
+| CPC_INTEGRATION_SPEC.md | Query-param contract with CPC site (CPC side live) | Active contract — needs `dscr`/`brrr` purpose, `hold`/`brrr` exit, + `ltv`/`dscr` params added (see QA) |
 | TIER_STRATEGY.md | Pricing framework ($14/$29), auth gap analysis | Active strategy |
 | GITHUB_PAGES_RUNBOOK.md | Deploy steps for A-Aron | Ready — run after spec build |
 | Logo/ | CPC brand assets | Active (canonical mark decision pending) |

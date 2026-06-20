@@ -252,9 +252,34 @@ function belowMinimumOnly(type, deal) {
   return true;
 }
 
-function underBoxHTML(deal) {
-  const approxK = Math.round(deal.loan / 1000);
-  return `<div class="funding-underbox">This deal's loan (~$${approxK}K) is below the $50K private-money minimum Clear Path brokers. Deals $50K+ get a funding option here.</div>`;
+function fundingNote(msg) {
+  return `<div class="funding-underbox">${msg}</div>`;
+}
+
+// Always returns a specific reason — never ''. Covers every way a hot/warm deal can
+// miss the CPC box, so the funding area is never blank on a hot/warm verdict (B1).
+function outsideBoxHTML(type, deal) {
+  const { loan, ltv, dscr } = deal;
+
+  if (!loan || loan <= 0) {
+    return fundingNote("All-cash scenario — no financing requested, so there's nothing to submit. Add a loan amount to screen it against the Clear Path box.");
+  }
+  if (loan < CPC_LOAN_MIN) {
+    return fundingNote(`This deal's loan (~$${Math.round(loan / 1000)}K) is below the $50K private-money minimum Clear Path brokers. Deals $50K+ get a funding option here.`);
+  }
+  if (type === 'ltr' || type === 'brrr') {
+    if (ltv !== undefined && ltv > 0.80)
+      return fundingNote(`Estimated LTV ${Math.round(ltv * 100)}% exceeds the 80% DSCR ceiling — raise the down payment toward 20%+ (or lower the refi LTV) to fit the box.`);
+    if (dscr !== undefined && dscr < 1.0)
+      return fundingNote(`DSCR ${(+dscr).toFixed(2)} is below 1.0 — rent doesn't cover the debt at this structure. Raise rent or lower the loan to fit the box.`);
+  } else {
+    if (deal.ltc !== undefined && deal.ltc > 0.90)
+      return fundingNote(`Estimated LTC ${Math.round(deal.ltc * 100)}% exceeds the 90% loan-to-cost ceiling — lower the loan to fit the box.`);
+    if (deal.arv && loan / deal.arv > 0.70)
+      return fundingNote(`Estimated loan is over 70% of ARV — lower the loan to fit the box.`);
+  }
+  // Catch-all so a hot/warm verdict is NEVER blank.
+  return fundingNote("This scenario sits just outside the Clear Path box as entered — adjust the loan, LTV, or DSCR and re-run, or contact Clear Path to review it.");
 }
 
 // Type-aware CTA label. LTR names the DSCR product, BRRR names BRRR.
@@ -284,8 +309,8 @@ export function maybeShowFundingButton(result) {
 
   const deal = buildDealParams(result);
   if (!qualifiesForType(result.type, deal)) {
-    // Item 6: hot/warm deal that only misses on loan size → muted explainer, no button
-    container.innerHTML = belowMinimumOnly(result.type, deal) ? underBoxHTML(deal) : '';
+    // B1: a hot/warm deal outside the box gets a SPECIFIC reason, never a blank area.
+    container.innerHTML = outsideBoxHTML(result.type, deal);
     return;
   }
 
@@ -315,7 +340,7 @@ export function getPipelineFundingButtonHTML(deal) {
   if (!shouldShowFunding(result)) return '';
   // Same CPC qualification gate as the analyzer; mirror the under-$50K explainer
   const dp = buildDealParams(result);
-  if (!qualifiesForType(result.type, dp)) return belowMinimumOnly(result.type, dp) ? underBoxHTML(dp) : '';
+  if (!qualifiesForType(result.type, dp)) return outsideBoxHTML(result.type, dp);
   const cfg = getTierConfig();
   const btnLabel = getFundingLabel(result.type, cfg, result.cls);
   return `<button class="btn-get-funding pipeline-funding-btn" onclick="event.stopPropagation();handlePipelineFundingClick(${deal.id})">

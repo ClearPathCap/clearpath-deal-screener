@@ -4,8 +4,8 @@
 // rental.js (STR) conventions: l-* field IDs, getLtrMarket regional fallback,
 // lastLtrResult, maybeShowFundingButton reuse.
 
-import { fmt, pct, cClass, buildMetrics, buildRows } from './format.js';
-import { computeLtr, ltrVerdict, mosLabel } from './finance.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseNumOpt, renderInputIssues } from './format.js';
+import { computeLtr, ltrVerdict, mosLabel, validateInputs, plausibilityWarnings } from './finance.js';
 import { LTR_MARKETS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
 
@@ -32,7 +32,7 @@ export function getLastLtrResult() { return lastLtrResult; }
 
 // Field readers — return undefined when blank so finance.js applies its defaults.
 const elv = id => document.getElementById(id);
-function numOpt(id) { const el = elv(id); if (!el) return undefined; const v = el.value.trim(); return v === '' ? undefined : +v.replace(/,/g, ''); }
+function numOpt(id) { const el = elv(id); return el ? parseNumOpt(el.value) : undefined; }
 function moneyOpt(id) { return numOpt(id); }
 
 export function setLtrPreset(slug, el) {
@@ -77,7 +77,17 @@ export function analyzeLtr() {
     ptype:  elv('l-ptype')?.value || 'SFR',
   };
 
+  // B2: validate pre-compute — out-of-range inputs abort (no compute, no HOT, no funnel).
+  const { errors, warnings } = validateInputs('ltr', input);
+  if (renderInputIssues('ltr', errors, warnings)) {
+    const r = elv('ltr-results'); if (r) r.style.display = 'none';
+    const btn = elv('ltr-funding-btn'); if (btn) btn.innerHTML = '';
+    return;
+  }
+
   const m = computeLtr(input);
+  // Post-compute soft warnings (DSCR/cap plausibility) appended to the same box.
+  renderInputIssues('ltr', [], warnings.concat(plausibilityWarnings(m)));
   const { cls, verdict, vsub } = ltrVerdict(m);
   const dscrText = m.dscr === null ? 'n/a' : m.dscr.toFixed(2);
   const rateDisp = (input.rate == null ? 7.25 : input.rate) + '%';
@@ -87,7 +97,7 @@ export function analyzeLtr() {
   elv('ltr-verdict').className = 'verdict ' + cls;
   elv('lvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
   elv('lvlabel').textContent = verdict;
-  elv('lvsub').textContent   = vsub;
+  elv('lvsub').textContent   = vsub + (cls === 'hot' && m.marginOfSafety === 'tight' ? ' Strong signal, thin cushion.' : '');
 
   const mos = mosLabel(m.marginOfSafety);
   elv('ltr-metrics').innerHTML = buildMetrics([

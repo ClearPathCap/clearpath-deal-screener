@@ -5,9 +5,10 @@
 // prefills. Mirrors ltr.js/rental.js conventions: b-* IDs, lastBrrrResult.
 
 import { fmt, pct, cClass, buildMetrics, buildRows, parseNumOpt, renderInputIssues } from './format.js';
-import { computeBrrr, brrrVerdict, mosLabel, validateInputs, plausibilityWarnings } from './finance.js';
+import { computeBrrr, brrrVerdict, mosLabel, validateInputs, plausibilityWarnings, propertyBand, BAND_RULES } from './finance.js';
 import { FLIP_MARKETS, LTR_MARKETS, BRRR_ASSUMPTIONS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
+import { buildCpcUrl } from './funding.js';
 
 const elv = id => document.getElementById(id);
 function numOpt(id) { const el = elv(id); return el ? parseNumOpt(el.value) : undefined; }
@@ -46,12 +47,28 @@ export function analyzeBrrr() {
   const rehab = numOpt('b-rehab');
   const arv   = numOpt('b-arv');
   const rent  = numOpt('b-rent');
+  const units = numOpt('b-units');
+  const band  = propertyBand(units);
+
+  // Rent label reflects the band (small-multifamily rent is total across all units).
+  const rentLabel = elv('b-rent-label');
+  if (rentLabel) rentLabel.textContent = band === '5-8' ? 'Total gross monthly rent (all units)' : 'Monthly Rent';
+  const notice = elv('b-band-notice');
+  if (notice) { notice.style.display = 'none'; notice.innerHTML = ''; notice.className = 'band-notice'; }
+
+  // 9+ units = commercial: a referral, not a calculator. Skip analysis entirely.
+  if (band === '9plus') {
+    showBrrrManualReview(units, { price, addr: elv('b-addr')?.value.trim() || '', ptype: elv('b-ptype')?.value || 'Multifamily' });
+    return;
+  }
+
   if (!price || !rehab || !arv || !rent) return; // validation handled in main.js
 
   const selfManage = elv('b-self-manage-toggle')?.checked;
   const input = {
     addr: elv('b-addr')?.value.trim() || '',
     price, rehab, arv, rent,
+    units,
     contingency: numOpt('b-contingency'),
     cc:    numOpt('b-cc'),
     hold:  numOpt('b-hold'),
@@ -92,6 +109,7 @@ export function analyzeBrrr() {
   const refiRate = (input.refiRate == null ? 7.0 : input.refiRate) + '%';
   const refiLtvPct = input.refiLtv == null ? 75 : input.refiLtv;
   const cont = input.contingency == null ? 15 : input.contingency;
+  const capexPct = input.capex == null ? BAND_RULES[band].capex : input.capex;
 
   // Seasoning warning chip (non-blocking).
   const seasonWarn = (input.season != null && input.season < (BRRR_ASSUMPTIONS.seasoningMonthsLow || 6));
@@ -132,7 +150,7 @@ export function analyzeBrrr() {
     { l: '— Hold (post-refi) —', v: '', tot: true },
     { l: 'Net operating income',                    v: fmt(m.NOI) },
     { l: 'Annual debt service (refi, ' + refiRate + ')', v: '–' + fmt(m.refiDebtYr) },
-    { l: 'CapEx reserve (' + (input.capex == null ? 5 : input.capex) + '%, below NOI)', v: '–' + fmt(m.capexRes) },
+    { l: 'CapEx reserve (' + capexPct + '%, below NOI)', v: '–' + fmt(m.capexRes) },
     { l: 'Net cash flow (annual)', v: fmt(m.cashFlowYr), tot: true, color: m.cashFlowYr >= 0 ? 'var(--accent)' : 'var(--danger)' },
     { l: 'DSCR (NOI ÷ refi debt)',                  v: dscrText },
     { l: 'Cap rate (NOI ÷ all-in)',                 v: pct(m.capRate) },
@@ -143,15 +161,16 @@ export function analyzeBrrr() {
 
   lastBrrrResult = {
     type: 'brrr', addr: input.addr,
+    units: units || null, band,
     price: m.price, rehab, arv: m.arv,
     contingency: cont, cc: input.cc == null ? 2 : input.cc, hold: input.hold == null ? 6 : input.hold,
     carry: input.carry == null ? 600 : input.carry, acqLoan: m.acqLoan,
     acqRate: input.acqRate == null ? 10 : input.acqRate, acqPoints: input.acqPoints == null ? 2 : input.acqPoints,
     refiLtv: refiLtvPct, refiRate: input.refiRate == null ? 7.0 : input.refiRate, refiAmort: input.refiAmort == null ? 30 : input.refiAmort,
     reficost: input.reficost == null ? 3 : input.reficost, season: input.season == null ? 6 : input.season,
-    rent, vac: input.vac == null ? 5 : input.vac, tax: input.tax || 0, ins: input.ins || 0, hoa: input.hoa || 0,
-    maint: input.maint == null ? 5 : input.maint, pm: selfManage ? 0 : (input.pm == null ? 8 : input.pm),
-    capex: input.capex == null ? 5 : input.capex, ptype: input.ptype,
+    rent, vac: input.vac == null ? BAND_RULES[band].vac : input.vac, tax: input.tax || 0, ins: input.ins || 0, hoa: input.hoa || 0,
+    maint: input.maint == null ? BAND_RULES[band].maint : input.maint, pm: selfManage ? 0 : (input.pm == null ? BAND_RULES[band].pm : input.pm),
+    capex: capexPct, ptype: input.ptype,
     rehabTotal: m.rehabTotal, allInCost: m.allInCost, cashInvested: m.cashInvested,
     refiLoan: m.refiLoan, refiCosts: m.refiCosts, cashOut: m.cashOut, capitalLeft: m.capitalLeft,
     cashRecoveredPct: m.cashRecoveredPct, equityCreated: m.equityCreated,
@@ -166,6 +185,44 @@ export function analyzeBrrr() {
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   maybeShowFundingButton(lastBrrrResult);
+
+  // Small-multifamily info banner (5–8): rent is all-units; one vacant unit is a
+  // meaningful vacancy hit on the post-refi hold. Non-blocking.
+  if (band === '5-8' && notice) {
+    const vacOneUnit = units > 0 ? (Math.round((100 / units) * 10) / 10) : null;
+    notice.style.display = 'block';
+    notice.className = 'band-notice band-notice-info';
+    notice.innerHTML =
+      '<strong>Small multifamily (' + units + ' units).</strong> Rent above is total gross across all units. '
+      + (vacOneUnit != null ? 'One vacant unit in a ' + units + '-unit building ≈ ' + vacOneUnit + '% vacancy — ' : '')
+      + 'verify rent roll, leases, and stabilized occupancy.';
+  }
+}
+
+// 9+ units → commercial-review referral (not a calculator). Routes the scenario to
+// Clear Path with band=9plus so it lands in manual/commercial review, never rejected.
+function showBrrrManualReview(units, info) {
+  const r = elv('brrr-results'); if (r) r.style.display = 'none';
+  const fb = elv('brrr-funding-btn'); if (fb) fb.innerHTML = '';
+  const notice = elv('b-band-notice');
+  if (!notice) return;
+  notice.style.display = 'block';
+  notice.className = 'band-notice band-notice-warn';
+  notice.innerHTML =
+    '<div class="band-notice-title">9+ unit multifamily — commercial review</div>'
+    + '<div class="band-notice-body">A ' + (units || '9+') + '-unit building is financed as a commercial multifamily deal, not a standard BRRR/DSCR loan. Deal Screener doesn\'t auto-screen it — submit through Clear Path Capital and we\'ll route it to the right lender.</div>'
+    + '<button class="btn-get-funding" id="b-manual-review-btn" type="button"><img src="icons/clearpath-mark.png" class="funding-icon" alt="">Submit to Clear Path — Commercial Review</button>';
+  const btn = elv('b-manual-review-btn');
+  if (btn) btn.addEventListener('click', () => {
+    const deal = {
+      pp: info.price ? Math.round(info.price) : undefined,
+      addr: info.addr || undefined,
+      units: units || undefined, band: '9plus',
+      ptype: info.ptype || 'Multifamily', purpose: 'brrr', exit: 'brrr',
+    };
+    window.open(buildCpcUrl(deal), '_blank', 'noopener');
+    if (window.showToast) window.showToast('Opening Clear Path for commercial multifamily review.');
+  });
 }
 
 export function resetBrrr() {
@@ -173,5 +230,6 @@ export function resetBrrr() {
   if (r) r.style.display = 'none';
   const notes = elv('brrr-notes'); if (notes) notes.value = '';
   const btn = elv('brrr-funding-btn'); if (btn) btn.innerHTML = '';
+  const notice = elv('b-band-notice'); if (notice) { notice.style.display = 'none'; notice.innerHTML = ''; }
   lastBrrrResult = null;
 }

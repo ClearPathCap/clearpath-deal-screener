@@ -22,6 +22,8 @@ const {
   computeFlipStress,
   flipVerdict,
   mosLabel,
+  propertyBand,
+  BAND_RULES,
 } = await import("data:text/javascript," + encodeURIComponent(financeSrc));
 
 let pass = 0,
@@ -283,6 +285,73 @@ eq("gate: $20M loan IN box (no upper cap)", qualifiesForCpcBrrr({ loan: 20000000
 eq("gate: LTV 85% out of box", qualifiesForCpcLtr({ loan: 200000, ltv: 0.85, dscr: 1.3 }), false);
 eq("gate: DSCR 0.9 out of box", qualifiesForCpcLtr({ loan: 200000, ltv: 0.75, dscr: 0.9 }), false);
 eq("gate: $50K floor in box", qualifiesForCpcLtr({ loan: 50000, ltv: 0.75, dscr: 1.3 }), true);
+
+// ─── Multifamily bands (5–8 small multifamily; 9+ manual review) ──────────────
+{
+  // propertyBand boundaries — blank/≤4 = 1-4, 5–8 = 5-8, 9+ = 9plus.
+  eq("band: blank → 1-4", propertyBand(undefined), "1-4");
+  eq("band: 4 → 1-4", propertyBand(4), "1-4");
+  eq("band: 5 → 5-8", propertyBand(5), "5-8");
+  eq("band: 8 → 5-8", propertyBand(8), "5-8");
+  eq("band: 9 → 9plus", propertyBand(9), "9plus");
+
+  // Gate: 5–8 LTV ceiling is 75% (vs 80% for 1–4); 9+ never auto-qualifies.
+  eq("gate 5-8: LTV 0.78 out of box (75% ceiling)",
+     qualifiesForCpcLtr({ loan: 450000, ltv: 0.78, dscr: 1.30, band: "5-8" }), false);
+  eq("gate 1-4: LTV 0.78 in box (80% ceiling)",
+     qualifiesForCpcLtr({ loan: 450000, ltv: 0.78, dscr: 1.30, band: "1-4" }), true);
+  eq("gate 5-8: LTV 0.74 in box",
+     qualifiesForCpcLtr({ loan: 450000, ltv: 0.74, dscr: 1.30, band: "5-8" }), true);
+  eq("gate 9plus: never auto-qualifies",
+     qualifiesForCpcLtr({ loan: 450000, ltv: 0.60, dscr: 1.50, band: "9plus" }), false);
+  eq("gate BRRR 5-8: LTV 0.78 out of box",
+     qualifiesForCpcBrrr({ loan: 450000, ltv: 0.78, dscr: 1.30, band: "5-8" }), false);
+
+  // 8-unit base deal; rent dialed to land DSCR at four points across the bands.
+  const base8 = (rentMo) => computeLtr({
+    price: 800000, units: 8, rentMo, down: 25, vac: 5, pm: 8, maint: 5, capex: 6,
+    tax: 5000, ins: 2000, hoa: 0, rate: 7.0, amort: 30, points: 1, cc: 2, target: 8, ptype: "2–4 Unit",
+  });
+
+  // HOT — DSCR ~1.30 that survives the one-vacant-unit stress.
+  const hot = base8(7006);
+  eq("5-8 band tag carried in result", hot.band, "5-8");
+  eq("5-8 units carried in result", hot.units, 8);
+  near("5-8 HOT DSCR ≈ 1.30", hot.dscr, 1.30, 0.02);
+  truthy("5-8 HOT survives stress", hot.marginOfSafety !== "fails");
+  eq("5-8 DSCR 1.30 → HOT", ltrVerdict(hot).cls, "hot");
+  truthy("5-8 HOT label names small-multifamily", /Small-Multifamily/.test(ltrVerdict(hot).verdict));
+
+  // WARM (clears floor) — DSCR ~1.22, between the 1.20 floor and 1.25 best-pricing.
+  const warmFloor = base8(6618);
+  near("5-8 WARM DSCR ≈ 1.22", warmFloor.dscr, 1.22, 0.02);
+  eq("5-8 DSCR 1.22 → WARM", ltrVerdict(warmFloor).cls, "warm");
+  truthy("5-8 1.22 clears-floor copy", /clears the ~1\.20/.test(ltrVerdict(warmFloor).vsub));
+
+  // WARM (below floor) — DSCR ~1.05, covers debt but under the ~1.20 lender floor.
+  const warmBelow = base8(5795);
+  near("5-8 WARM DSCR ≈ 1.05", warmBelow.dscr, 1.05, 0.02);
+  eq("5-8 DSCR 1.05 → WARM", ltrVerdict(warmBelow).cls, "warm");
+  truthy("5-8 1.05 below-floor copy", /below the ~1\.20 small-multifamily lender floor/.test(ltrVerdict(warmBelow).vsub));
+
+  // COLD — DSCR ~0.95, debt not covered.
+  const cold = base8(5310);
+  near("5-8 COLD DSCR ≈ 0.95", cold.dscr, 0.95, 0.02);
+  eq("5-8 DSCR 0.95 → COLD", ltrVerdict(cold).cls, "pass");
+  truthy("5-8 COLD negative-leverage copy", /Negative Leverage/.test(ltrVerdict(cold).verdict));
+
+  // Band-default reserves actually bite: a 5–8 deal left to defaults uses tighter
+  // vacancy/PM/maintenance than a 1–4 deal with identical rent → lower NOI.
+  const def58 = computeLtr({ price: 800000, units: 6, rentMo: 7000, rate: 7.0, amort: 30 });
+  const def14 = computeLtr({ price: 800000, units: 2, rentMo: 7000, rate: 7.0, amort: 30 });
+  eq("5-8 default band", def58.band, "5-8");
+  truthy("5-8 default reserves stricter than 1-4 (lower NOI)", def58.NOI < def14.NOI);
+
+  // BAND_RULES sanity — the constants the gate/stress/verdict read.
+  eq("BAND_RULES 1-4 maxLtv", BAND_RULES["1-4"].maxLtv, 0.80);
+  eq("BAND_RULES 5-8 maxLtv", BAND_RULES["5-8"].maxLtv, 0.75);
+  eq("BAND_RULES 5-8 floor", BAND_RULES["5-8"].smallMfFloor, 1.20);
+}
 
 // ─── Report ───────────────────────────────────────────────────────────────────
 console.log(`\n${pass} passed, ${fail} failed\n`);

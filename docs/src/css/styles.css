@@ -89,6 +89,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .field{margin-bottom:10px}
 .field.full{grid-column:1/-1}
+/* Multifamily band notice — info banner (5–8) + commercial-review referral (9+) */
+.band-notice{border-radius:10px;padding:12px 14px;margin:14px 0;font-size:13px;line-height:1.55;color:var(--text)}
+.band-notice-info{background:var(--info-dim);border:1px solid var(--info)}
+.band-notice-info strong{color:var(--info)}
+.band-notice-warn{background:var(--warn-dim);border:1px solid var(--warn)}
+.band-notice-title{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--warn);margin-bottom:6px}
+.band-notice-body{margin-bottom:10px;color:var(--text)}
 .field label{display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
 .field label span{font-weight:400;text-transform:none;color:var(--muted2)}
 .input-wrap{position:relative}

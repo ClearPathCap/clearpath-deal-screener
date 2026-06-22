@@ -12,7 +12,8 @@ import { saveDeal as _saveDeal, renderPipeline,
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
-import { initCurrencyInputs, parseComma }                           from './format.js';
+import { initCurrencyInputs, parseComma, parseNumOpt }              from './format.js';
+import { propertyBand, BAND_RULES }                                 from './finance.js';
 import { handlePipelineFundingClick }                               from './clearpath.js';
 import {
   getActiveTier, isDevMode, setDevTier,
@@ -1200,3 +1201,34 @@ if (repField) {
   });
   repField.addEventListener('focus', () => repField.classList.remove('auto-filled'));
 }
+
+// ─── Multifamily band sync (LTR + BRRR) ───────────────────────────────────────
+// Unit count drives the financing band: 1–4 standard DSCR, 5–8 small-multifamily
+// DSCR (tighter LTV + higher reserve defaults), 9+ commercial (manual review). When
+// the band changes, refresh the band-derived % fields to that band's defaults — but
+// never clobber a field the user has explicitly edited (programmatic .value writes
+// don't fire 'input', so they stay "default"; user typing marks it edited).
+['l-down','l-vac','l-pm','l-maint','l-capex','b-vac','b-pm','b-maint','b-capex'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => { el.dataset.userEdited = '1'; });
+});
+function syncBandDefaults(prefix) {
+  const unitsEl = document.getElementById(prefix + '-units');
+  const band = propertyBand(unitsEl ? parseNumOpt(unitsEl.value) : undefined);
+  const rentLabel = document.getElementById(prefix + '-rent-label');
+  if (rentLabel) rentLabel.textContent = band === '5-8' ? 'Total gross monthly rent (all units)' : 'Monthly Rent';
+  const rules = BAND_RULES[band];
+  if (!rules) return band;                          // 9+ has no calculator defaults
+  const fields = prefix === 'l'
+    ? { down: rules.down, vac: rules.vac, pm: rules.pm, maint: rules.maint, capex: rules.capex }
+    : { vac: rules.vac, pm: rules.pm, maint: rules.maint, capex: rules.capex };   // BRRR has no down field
+  for (const [suf, val] of Object.entries(fields)) {
+    const el = document.getElementById(prefix + '-' + suf);
+    if (el && !el.dataset.userEdited) el.value = val;
+  }
+  return band;
+}
+['l','b'].forEach(p => {
+  const u = document.getElementById(p + '-units');
+  if (u) u.addEventListener('input', () => syncBandDefaults(p));
+});

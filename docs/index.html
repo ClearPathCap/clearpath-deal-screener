@@ -406,10 +406,18 @@
         <div class="field-hint beginner-only">What you'd pay to buy this rental.</div>
       </div>
       <div class="field">
-        <label>Monthly Rent</label>
+        <label id="l-rent-label">Monthly Rent</label>
         <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-rent" class="has-pfx" placeholder="2,100" data-currency></div>
         <div class="field-hint beginner-only">The monthly lease rent — not annual. Prefilled from your market.</div>
       </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Units</label>
+        <div class="input-wrap"><input type="number" id="l-units" class="has-sfx" value="1" min="1" placeholder="1"><span class="sfx">#</span></div>
+        <div class="field-hint">1–4 = standard DSCR · 5–8 = small multifamily DSCR · 9+ = manual CPC review.</div>
+      </div>
+      <div class="field"></div>
     </div>
     <div class="field-row">
       <div class="field">
@@ -499,6 +507,8 @@
     </div>
 
     <button class="btn-analyze" onclick="analyzeLtr()">Analyze This Deal</button>
+
+    <div class="band-notice" id="l-band-notice" style="display:none"></div>
 
     <div class="results" id="ltr-results">
       <div class="verdict" id="ltr-verdict">
@@ -632,7 +642,7 @@
     <div class="slabel">Rental <span style="font-weight:400;color:#9aa4b2">(post-refi hold)</span></div>
     <div class="field-row">
       <div class="field">
-        <label>Monthly Rent</label>
+        <label id="b-rent-label">Monthly Rent</label>
         <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-rent" class="has-pfx" placeholder="2,100" data-currency></div>
       </div>
       <div class="field">
@@ -679,10 +689,16 @@
         <label>Target DSCR</label>
         <div class="input-wrap"><input type="number" id="b-targetdscr" class="has-sfx" value="1.25" step="0.05" placeholder="1.25"><span class="sfx">x</span></div>
       </div>
-      <div class="field"></div>
+      <div class="field">
+        <label>Units</label>
+        <div class="input-wrap"><input type="number" id="b-units" class="has-sfx" value="1" min="1" placeholder="1"><span class="sfx">#</span></div>
+        <div class="field-hint">1–4 = standard DSCR · 5–8 = small multifamily DSCR · 9+ = manual CPC review.</div>
+      </div>
     </div>
 
     <button class="btn-analyze" onclick="analyzeBrrr()">Analyze This Deal</button>
+
+    <div class="band-notice" id="b-band-notice" style="display:none"></div>
 
     <div class="results" id="brrr-results">
       <div class="verdict" id="brrr-verdict">

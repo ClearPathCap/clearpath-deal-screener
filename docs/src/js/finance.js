@@ -8,18 +8,32 @@
 // removed 2026-06-18 (box/explainer copy → "$50K+"). Pure so the gates stay testable.
 export const CPC_LOAN_MIN = 50000;
 
+// ─── Property-size bands (multifamily support) ───────────────────────────────
+// 1–4 units = standard SFR / small-residential DSCR; 5–8 = small-multifamily DSCR
+// (tighter LTV, higher reserves, a ~1.20 lender floor); 9+ = commercial — routed to
+// manual CPC review, never auto-screened. propertyBand defaults to '1-4' for blank or
+// invalid units, so every pre-existing 1–4 code path is byte-for-byte unchanged.
+export function propertyBand(units){const n=Number(units);if(!Number.isFinite(n)||n<=4)return '1-4';if(n<=8)return '5-8';return '9plus';}
+export const BAND_RULES={
+ '1-4':{maxLtv:0.80,down:20,vac:5, pm:8,maint:5,capex:5,hotDscr:1.25,mosStrong:1.15,label:'Rental / DSCR'},
+ '5-8':{maxLtv:0.75,down:25,vac:10,pm:9,maint:8,capex:6,hotDscr:1.25,smallMfFloor:1.20,mosStrong:1.20,label:'Small Multifamily DSCR'},
+};
+
 // DSCR / LTR funnel gate (SPEC_LTR §6c). ltv is a FRACTION (loan ÷ value, ~0.75);
-// dscr a number. Undefined ltv/dscr are not disqualifying. No upper loan cap.
-export function qualifiesForCpcLtr({ loan, ltv, dscr }) {
+// dscr a number. Undefined ltv/dscr are not disqualifying. No upper loan cap. The
+// LTV ceiling is band-specific (1–4 ≤ 80%, 5–8 ≤ 75%); 9+ never auto-qualifies.
+export function qualifiesForCpcLtr({ loan, ltv, dscr, band = '1-4' }) {
+  if (band === '9plus') return false;                         // commercial → manual review only
   if (!loan || loan < CPC_LOAN_MIN) return false;
-  if (ltv !== undefined && ltv > 0.8) return false;
+  const maxLtv = (BAND_RULES[band] || BAND_RULES['1-4']).maxLtv;
+  if (ltv !== undefined && ltv > maxLtv) return false;
   if (dscr !== undefined && dscr < 1.0) return false;
   return true;
 }
 
 // BRRR funnel gate (SPEC_BRRR §6) — qualifies on the refi takeout (loan = refiLoan).
-export function qualifiesForCpcBrrr({ loan, ltv, dscr }) {
-  return qualifiesForCpcLtr({ loan, ltv, dscr });
+export function qualifiesForCpcBrrr({ loan, ltv, dscr, band = '1-4' }) {
+  return qualifiesForCpcLtr({ loan, ltv, dscr, band });
 }
 
 // ─── Input validation (B2). Pure: returns blocking errors + soft warnings. Caller
@@ -231,13 +245,18 @@ export function incomeBlock({
 // Inputs are raw field values: $ amounts as numbers, percentages as whole numbers
 // (down 20 → 20, not 0.20). selfManage true forces pm = 0.
 export function computeLtr(inp) {
+  // Band (1-4 / 5-8 / 9plus) sets the default down/vacancy/PM/maint/CapEx; all stay
+  // user-overridable. 9plus should be intercepted upstream (referral, not a calc) —
+  // the BAND_RULES fallback to '1-4' here is purely defensive.
+  const band = propertyBand(inp.units);
+  const rules = BAND_RULES[band] || BAND_RULES['1-4'];
   const price = +inp.price || 0;
   const rentMo = +inp.rentMo || 0;
-  const downF = (inp.down == null ? 20 : +inp.down) / 100;
-  const vacF = (inp.vac == null ? 5 : +inp.vac) / 100;
-  const pmF = inp.selfManage ? 0 : (inp.pm == null ? 8 : +inp.pm) / 100;
-  const maintF = (inp.maint == null ? 5 : +inp.maint) / 100;
-  const capexF = (inp.capex == null ? 5 : +inp.capex) / 100;
+  const downF = (inp.down == null ? rules.down : +inp.down) / 100;
+  const vacF = (inp.vac == null ? rules.vac : +inp.vac) / 100;
+  const pmF = inp.selfManage ? 0 : (inp.pm == null ? rules.pm : +inp.pm) / 100;
+  const maintF = (inp.maint == null ? rules.maint : +inp.maint) / 100;
+  const capexF = (inp.capex == null ? rules.capex : +inp.capex) / 100;
   const rateF = (inp.rate == null ? 7.25 : +inp.rate) / 100;
   const pointsF = (inp.points == null ? 1 : +inp.points) / 100;
   const ccF = (inp.cc == null ? 2 : +inp.cc) / 100;
@@ -275,10 +294,16 @@ export function computeLtr(inp) {
   const grm = rentYr > 0 ? price / rentYr : 0;
   const ltv = price > 0 ? (loan / price) * 100 : 0;
 
-  // ── Stress test: rent −5%, vacancy +3 pts, rate +0.5% → DSCR ≥ 1.0 AND CF ≥ 0 ──
+  // ── Stress test. 1–4: rent −5%, vacancy +3 pts, rate +0.5% → DSCR ≥ 1.0 AND CF ≥ 0.
+  // 5–8: same rent/rate haircut, but vacancy floors at one full vacant unit (1/units),
+  // and Margin-of-Safety keys off the stressed DSCR vs the band's strong threshold
+  // (1.20) — debt coverage, not the CapEx-adjusted monthly cash flow, is the lender bar. ──
+  const stressVac = band === '5-8'
+    ? Math.max(vacF + 0.05, (+inp.units > 0 ? 1 / Number(inp.units) : vacF + 0.05))
+    : vacF + 0.03;
   const sIb = incomeBlock({
     rentYr: rentMo * 0.95 * 12,
-    vac: vacF + 0.03,
+    vac: stressVac,
     pm: pmF,
     maint: maintF,
     tax,
@@ -291,8 +316,16 @@ export function computeLtr(inp) {
   });
   const stressedDscr = sIb.dscr;
   const stressedCfMo = sIb.cashFlowYr / 12;
-  const survives = (stressedDscr === null || stressedDscr >= 1.0) && stressedCfMo >= 0;
-  const marginOfSafety = !survives ? 'fails' : (stressedDscr === null || stressedDscr >= 1.15) ? 'strong' : 'tight';
+  let survives, marginOfSafety;
+  if (band === '5-8') {
+    survives = (stressedDscr === null || stressedDscr >= 1.0);
+    marginOfSafety = !survives ? 'fails'
+      : (stressedDscr === null || stressedDscr >= rules.mosStrong) ? 'strong' : 'tight';
+  } else {
+    survives = (stressedDscr === null || stressedDscr >= 1.0) && stressedCfMo >= 0;
+    marginOfSafety = !survives ? 'fails'
+      : (stressedDscr === null || stressedDscr >= rules.mosStrong) ? 'strong' : 'tight';
+  }
 
   return {
     price,
@@ -320,6 +353,8 @@ export function computeLtr(inp) {
     stressedDscr,
     stressedCfMo,
     marginOfSafety,
+    units: inp.units == null ? null : Number(inp.units),
+    band,
   };
 }
 
@@ -327,6 +362,9 @@ export function computeLtr(inp) {
 // DSCR gate AND the dollar/CoC bar AND survives the stress test. dscr === null
 // (all-cash) → treated as fully covered.
 export function ltrVerdict(m) {
+  const band = m.band || '1-4';
+  const rules = BAND_RULES[band] || BAND_RULES['1-4'];
+  const hotDscr = rules.hotDscr;                 // 1.25 both bands
   const d = m.dscr === null ? Infinity : m.dscr;
   const target = m.target;
   const annualCF = m.cashFlowYr;
@@ -339,7 +377,7 @@ export function ltrVerdict(m) {
   // COLD only when the debt itself isn't covered: DSCR < 1.0 — equivalently NOI < annual
   // debt service (cash-flow-negative BEFORE the CapEx reserve). dscr === null = all-cash =
   // fully covered unless NOI itself is negative. The CapEx reserve alone never flips a
-  // DSCR-fundable deal COLD (decision B5).
+  // DSCR-fundable deal COLD (decision B5). Identical across bands.
   const coversDebt = (m.dscr === null) ? (m.NOI >= 0) : (m.NOI >= m.debtYr);
   if (!coversDebt) {
     cls = "pass";
@@ -347,15 +385,33 @@ export function ltrVerdict(m) {
     vsub = (m.dscr !== null)
       ? "DSCR of " + dscrText + " is below 1.0 — rent doesn't cover the debt at this price and down payment. Increase the down payment, negotiate price, or walk."
       : "Even all-cash, operating costs exceed income before any debt service — the property is cash-flow negative on its own. Rework rent or expenses, or walk.";
-  } else if (d >= 1.25 && (annualCF >= 6000 || m.coc >= target) && m.cashFlowMo > 0 && survives) {
+  } else if (d >= hotDscr && (annualCF >= 6000 || m.coc >= target) && m.cashFlowMo > 0 && survives) {
     cls = "hot";
-    verdict = "Strong Rental — Lender-Ready";
+    verdict = band === '5-8' ? "Strong Small-Multifamily — Lender-Ready" : "Strong Rental — Lender-Ready";
+    const stressText = band === '5-8'
+      ? "Survives a stress test (rent −5%, one-vacant-unit vacancy, rate +0.5%)"
+      : "Survives a stress test (rent −5%, vacancy +3pts, rate +0.5%)";
+    const confirm = band === '5-8'
+      ? "Verify rent roll, leases, and stabilized occupancy before closing."
+      : "Confirm market rent with comps before closing.";
     vsub =
-      "DSCR " + dscrText + " clears underwriting and " +
+      "DSCR " + dscrText + " clears " + (band === '5-8' ? "the small-multifamily floor" : "underwriting") + " and " +
       (annualCF >= 6000
         ? money(annualCF) + "/yr cash flow is strong"
         : "cash-on-cash " + cocText + " beats your " + target + "% target") +
-      ". Survives a stress test (rent −5%, vacancy +3pts, rate +0.5%). Confirm market rent with comps before closing.";
+      ". " + stressText + ". " + confirm;
+  } else if (band === '5-8') {
+    // 5–8 WARM is keyed to the ~1.20 small-multifamily lender floor (DSCR-band based).
+    cls = "warm";
+    if (d >= rules.smallMfFloor) {
+      // 1.20 ≤ DSCR < 1.25, or ≥ 1.25 that failed the multifamily stress test.
+      verdict = "Clears the Floor — Light for Best Pricing";
+      vsub = "DSCR " + dscrText + " clears the ~1.20 small-multifamily floor but light for best pricing — one vacant unit could break it. Verify rent roll, leases, and stabilized occupancy.";
+    } else {
+      // 1.0 ≤ DSCR < 1.20 — covers debt but under the small-multifamily lender floor.
+      verdict = "Covers Debt — Below Small-Multifamily Floor";
+      vsub = "DSCR " + dscrText + " covers debt but below the ~1.20 small-multifamily lender floor — needs more cushion to be fundable; verify rent roll, leases, stabilized occupancy.";
+    }
   } else {
     cls = "warm";
     verdict = "Dig Deeper & Negotiate";
@@ -364,10 +420,10 @@ export function ltrVerdict(m) {
       verdict = "Covers Debt — Thin After Reserves";
       vsub = "DSCR " + dscrText + " covers the debt (lender-fundable), but it runs about $" + Math.abs(cfMo) +
              "/mo negative after the CapEx reserve. Finance-and-hold and build a cushion — negotiate price or raise rent to firm it up.";
-    } else if (d >= 1.25 && !survives) {
+    } else if (d >= hotDscr && !survives) {
       vsub =
         "DSCR " + dscrText + " clears underwriting at base case, but a stress test (rent −5%, vacancy +3pts, rate +0.5%) thins the margin of safety. Build in more cushion before treating it as a lock.";
-    } else if (d >= 1.25 && m.coc < target && annualCF < 6000) {
+    } else if (d >= hotDscr && m.coc < target && annualCF < 6000) {
       // WARM (b) — the DSCR finance-and-hold bridge
       vsub =
         "Cash-on-cash " + cocText + " is light and cash flow " + money(annualCF) +
@@ -384,6 +440,10 @@ export function ltrVerdict(m) {
 
 // ─── BRRR ──────────────────────────────────────────────────────────────────────
 export function computeBrrr(inp) {
+  // Band sets the default hold-phase vacancy/PM/maint/CapEx (user-overridable). 9plus
+  // is intercepted upstream; the '1-4' fallback here is defensive.
+  const band = propertyBand(inp.units);
+  const rules = BAND_RULES[band] || BAND_RULES['1-4'];
   const price = +inp.price || 0;
   const rehab = +inp.rehab || 0;
   const contingencyF = (inp.contingency == null ? 15 : +inp.contingency) / 100;
@@ -402,10 +462,10 @@ export function computeBrrr(inp) {
   const season = inp.season == null ? 6 : +inp.season;
 
   const rentMo = +inp.rent || 0;
-  const vacF = (inp.vac == null ? 5 : +inp.vac) / 100;
-  const pmF = inp.selfManage ? 0 : (inp.pm == null ? 8 : +inp.pm) / 100;
-  const maintF = (inp.maint == null ? 5 : +inp.maint) / 100;
-  const capexF = (inp.capex == null ? 5 : +inp.capex) / 100;
+  const vacF = (inp.vac == null ? rules.vac : +inp.vac) / 100;
+  const pmF = inp.selfManage ? 0 : (inp.pm == null ? rules.pm : +inp.pm) / 100;
+  const maintF = (inp.maint == null ? rules.maint : +inp.maint) / 100;
+  const capexF = (inp.capex == null ? rules.capex : +inp.capex) / 100;
   const tax = +inp.tax || 0;
   const ins = +inp.ins || 0;
   const hoaYr = (+inp.hoa || 0) * 12;
@@ -454,15 +514,20 @@ export function computeBrrr(inp) {
   const postRefiCoC = capitalLeft > 0 ? (ib.cashFlowYr / capitalLeft) * 100 : Infinity;
   const refiLTVactual = arv > 0 ? (refiLoan / arv) * 100 : 0;
 
-  // ── Stress test: ARV −5%, rent −5% → DSCR ≥ 1.0 AND capital-left ≤ 50% invested ──
+  // ── Stress test: ARV −5%, rent −5% → DSCR ≥ 1.0 AND capital-left ≤ 50% invested.
+  // For 5–8, hold-phase vacancy also floors at one full vacant unit (1/units), and the
+  // "strong" DSCR bar rises to the band's mosStrong (1.20 vs 1.15). ──
   const sArv = arv * 0.95;
   const sRefiLoan = sArv * refiLtvF;
   const sCashOut = sRefiLoan - acqPayoff - sRefiLoan * reficostF;
   const sCapitalLeft = cashInvested - sCashOut;
   const sCapitalLeftPct = cashInvested > 0 ? (sCapitalLeft / cashInvested) * 100 : 0;
+  const stressVac = band === '5-8'
+    ? Math.max(vacF + 0.05, (+inp.units > 0 ? 1 / Number(inp.units) : vacF + 0.05))
+    : vacF;
   const sIb = incomeBlock({
     rentYr: rentMo * 0.95 * 12,
-    vac: vacF,
+    vac: stressVac,
     pm: pmF,
     maint: maintF,
     tax,
@@ -477,7 +542,7 @@ export function computeBrrr(inp) {
   const stressSurvives = (stressedDscr === null || stressedDscr >= 1.0) && sCapitalLeftPct <= 50;
   const marginOfSafety = !stressSurvives
     ? "fails"
-    : (stressedDscr === null || stressedDscr >= 1.15) && sCapitalLeftPct <= 25
+    : (stressedDscr === null || stressedDscr >= rules.mosStrong) && sCapitalLeftPct <= 25
       ? "strong"
       : "tight";
 
@@ -485,6 +550,8 @@ export function computeBrrr(inp) {
     stressedDscr,
     stressedCapitalLeftPct: sCapitalLeftPct,
     marginOfSafety,
+    units: inp.units == null ? null : Number(inp.units),
+    band,
     price,
     arv,
     rehabTotal,
@@ -522,6 +589,9 @@ export function computeBrrr(inp) {
 
 // BRRR verdict (SPEC_BRRR §3). Evaluate HOT → WARM → COLD.
 export function brrrVerdict(m) {
+  const band = m.band || '1-4';
+  const rules = BAND_RULES[band] || BAND_RULES['1-4'];
+  const hotDscr = rules.hotDscr;                 // 1.25 both bands
   const d = m.dscr === null ? Infinity : m.dscr;
   const rec = m.cashRecoveredPct;
   const cf = m.cashFlowMo;
@@ -533,9 +603,9 @@ export function brrrVerdict(m) {
   const survives = m.marginOfSafety !== "fails"; // stress: ARV −5%, rent −5%
 
   let cls, verdict, vsub;
-  if (!hardFail && d >= 1.25 && rec >= 75 && cf > 0 && survives) {
+  if (!hardFail && d >= hotDscr && rec >= 75 && cf > 0 && survives) {
     cls = "hot";
-    verdict = "Textbook BRRR — Capital Recycled";
+    verdict = band === '5-8' ? "Textbook Small-Multifamily BRRR — Capital Recycled" : "Textbook BRRR — Capital Recycled";
     const left =
       m.capitalLeft <= 0
         ? "You pulled out more than you put in — an infinite-return BRRR."
@@ -546,14 +616,14 @@ export function brrrVerdict(m) {
   } else if (
     !hardFail &&
     ((d >= 1.1 && cf >= 0 && rec >= 40) ||
-      (d >= 1.25 && cf > 0 && rec >= 40 && rec < 75) ||
-      (rec >= 90 && d >= 1.1 && d < 1.25))
+      (d >= hotDscr && cf > 0 && rec >= 40 && rec < 75) ||
+      (rec >= 90 && d >= 1.1 && d < hotDscr))
   ) {
     cls = "warm";
     verdict = "Partial BRRR — Capital Trapped or Tight";
     const why = !survives
       ? "it thins under a stress test (ARV −5%, rent −5%)"
-      : m.dscr !== null && m.dscr < 1.25
+      : m.dscr !== null && m.dscr < hotDscr
         ? "cash flow is thin for best-pricing DSCR"
         : "capital is partly trapped";
     vsub =

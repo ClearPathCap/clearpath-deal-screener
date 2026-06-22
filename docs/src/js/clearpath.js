@@ -2,7 +2,7 @@
 
 import { getActiveTier } from './tiers.js';
 import { getDeals } from './storage.js';
-import { buildCpcUrl, qualifiesForCpc, qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_LOAN_MIN } from './funding.js';
+import { buildCpcUrl, qualifiesForCpc, qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_LOAN_MIN, propertyBand, BAND_RULES } from './funding.js';
 
 const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: 'ltr-funding-btn', brrr: 'brrr-funding-btn' };
 
@@ -52,6 +52,8 @@ function buildDealParams(r) {
       ltv:     r.price ? loan / r.price : undefined,
       dscr:    r.dscr != null ? +r.dscr.toFixed(2) : undefined,
       ptype:   r.ptype || 'SFR',
+      units:   r.units || undefined,
+      band:    r.band || propertyBand(r.units),
       addr:    r.addr || undefined,
       city, state,
       purpose: 'dscr',                 // → CPC "DSCR / Rental Hold"
@@ -68,6 +70,8 @@ function buildDealParams(r) {
       ltv:     r.arv ? (r.refiLoan || 0) / r.arv : undefined,
       dscr:    r.dscr != null ? +r.dscr.toFixed(2) : undefined,
       ptype:   r.ptype || 'SFR',
+      units:   r.units || undefined,
+      band:    r.band || propertyBand(r.units),
       addr:    r.addr || undefined,
       city, state,
       purpose: 'brrr',                 // → CPC "DSCR / Rental Hold"
@@ -166,6 +170,9 @@ function buildLtrSummary(r, tag) {
     tag,
     '---',
     'Property Type: ' + (r.ptype || 'SFR'),
+    (r.band === '5-8'
+      ? 'Units: ' + (r.units || '5–8') + '   |   Financing Band: Small Multifamily DSCR (5–8 units)'
+      : (r.units && r.units > 1 ? 'Units: ' + r.units : null)),
     'Purchase Price: $' + Math.round(r.price).toLocaleString(),
     'Monthly Rent: $' + Math.round(r.rent).toLocaleString() + '   (Annual Gross: $' + Math.round(r.rentYr).toLocaleString() + ')',
     'Vacancy: ' + r.vac + '%',
@@ -196,6 +203,9 @@ function buildBrrrSummary(r, tag) {
     tag,
     '--- ACQUISITION (bridge / hard money) ---',
     'Property Type: ' + (r.ptype || 'SFR'),
+    (r.band === '5-8'
+      ? 'Units: ' + (r.units || '5–8') + '   |   Financing Band: Small Multifamily DSCR (5–8 units)'
+      : (r.units && r.units > 1 ? 'Units: ' + r.units : null)),
     'Purchase Price: $' + Math.round(r.price).toLocaleString(),
     'Rehab (incl. contingency): $' + Math.round(r.rehabTotal).toLocaleString(),
     'ARV: $' + Math.round(r.arv).toLocaleString(),
@@ -236,9 +246,12 @@ function shouldShowFunding(result) {
 // Item 6: true when the ONLY reason a deal fails its CPC box is loan < the $50K min.
 function belowMinimumOnly(type, deal) {
   const { loan } = deal;
+  const band = deal.band || '1-4';
+  if (band === '9plus') return false;                // 9+ is a manual-review case, not below-min
   if (!loan || loan >= CPC_LOAN_MIN) return false;   // must be genuinely under the minimum
-  if (type === 'ltr' || type === 'brrr') {           // DSCR box: LTV ≤ 80%, DSCR ≥ 1.0
-    if (deal.ltv !== undefined && deal.ltv > 0.80) return false;
+  if (type === 'ltr' || type === 'brrr') {           // DSCR box: band LTV ceiling, DSCR ≥ 1.0
+    const maxLtv = (BAND_RULES[band] || BAND_RULES['1-4']).maxLtv;
+    if (deal.ltv !== undefined && deal.ltv > maxLtv) return false;
     if (deal.dscr !== undefined && deal.dscr < 1.0) return false;
     return true;
   }
@@ -255,7 +268,12 @@ function fundingNote(msg) {
 // miss the CPC box, so the funding area is never blank on a hot/warm verdict (B1).
 function outsideBoxHTML(type, deal) {
   const { loan, ltv, dscr } = deal;
+  const band = deal.band || '1-4';
 
+  // 9+ units = commercial: never auto-rejected — routed to manual CPC review.
+  if (band === '9plus') {
+    return fundingNote("9+ unit multifamily is reviewed as a commercial deal, not auto-screened here. Submit through Clear Path Capital and we'll route it to the right lender.");
+  }
   if (!loan || loan <= 0) {
     return fundingNote("All-cash scenario — no financing requested, so there's nothing to submit. Add a loan amount to screen it against the Clear Path box.");
   }
@@ -263,8 +281,9 @@ function outsideBoxHTML(type, deal) {
     return fundingNote(`This deal's loan (~$${Math.round(loan / 1000)}K) is below the $50K private-money minimum Clear Path brokers. Deals $50K+ get a funding option here.`);
   }
   if (type === 'ltr' || type === 'brrr') {
-    if (ltv !== undefined && ltv > 0.80)
-      return fundingNote(`Estimated LTV ${Math.round(ltv * 100)}% exceeds the 80% DSCR ceiling — raise the down payment toward 20%+ (or lower the refi LTV) to fit the box.`);
+    const maxLtv = (BAND_RULES[band] || BAND_RULES['1-4']).maxLtv;
+    if (ltv !== undefined && ltv > maxLtv)
+      return fundingNote(`Estimated LTV ${Math.round(ltv * 100)}% exceeds the ${Math.round(maxLtv * 100)}% ${band === '5-8' ? 'small-multifamily ' : ''}DSCR ceiling — raise the down payment (or lower the refi LTV) to fit the box.`);
     if (dscr !== undefined && dscr < 1.0)
       return fundingNote(`DSCR ${(+dscr).toFixed(2)} is below 1.0 — rent doesn't cover the debt at this structure. Raise rent or lower the loan to fit the box.`);
   } else {
@@ -277,15 +296,23 @@ function outsideBoxHTML(type, deal) {
   return fundingNote("This scenario sits just outside the Clear Path box as entered — adjust the loan, LTV, or DSCR and re-run, or contact Clear Path to review it.");
 }
 
-// Type-aware CTA label. LTR names the DSCR product, BRRR names BRRR.
-function getFundingLabel(type, cfg, cls) {
-  let base = cfg.label;
-  if (type === 'ltr')       base = base.replace('Get Funding', 'Get DSCR Funding');
-  else if (type === 'brrr') base = base.replace('Get Funding', 'Get BRRR Funding');
-  if (cls === 'hot') return base;
-  if (type === 'ltr')  return base.replace('Get DSCR Funding', 'Explore DSCR Options');
-  if (type === 'brrr') return base.replace('Get BRRR Funding', 'Explore BRRR Financing');
-  return base.replace('Get Funding', 'Explore Funding Options');  // flip/str warm
+// Type-aware CTA label. LTR names the DSCR product, BRRR names BRRR; 5–8 units name
+// the Small Multifamily DSCR product. cfg.label is "Get Funding — Clear Path Capital".
+function getFundingLabel(type, cfg, cls, band) {
+  const sm = band === '5-8';
+  let phrase;
+  if (type === 'ltr') {
+    phrase = cls === 'hot'
+      ? (sm ? 'Get Small Multifamily DSCR Funding' : 'Get DSCR Funding')
+      : (sm ? 'Explore Small Multifamily DSCR' : 'Explore DSCR Options');
+  } else if (type === 'brrr') {
+    phrase = cls === 'hot'
+      ? (sm ? 'Get Small Multifamily BRRR Funding' : 'Get BRRR Funding')
+      : (sm ? 'Explore Small Multifamily BRRR' : 'Explore BRRR Financing');
+  } else {
+    phrase = cls === 'hot' ? 'Get Funding' : 'Explore Funding Options';   // flip/str
+  }
+  return cfg.label.replace('Get Funding', phrase);
 }
 
 // ─── Analyzer tab funding button ──────────────────────────────────────────────
@@ -310,7 +337,7 @@ export function maybeShowFundingButton(result) {
   }
 
   const cfg = getTierConfig();
-  const btnLabel = getFundingLabel(result.type, cfg, result.cls);
+  const btnLabel = getFundingLabel(result.type, cfg, result.cls, deal.band);
   const summary = summaryFor(result.type, result, cfg.tag);
 
   container.innerHTML = `
@@ -337,7 +364,7 @@ export function getPipelineFundingButtonHTML(deal) {
   const dp = buildDealParams(result);
   if (!qualifiesForType(result.type, dp)) return outsideBoxHTML(result.type, dp);
   const cfg = getTierConfig();
-  const btnLabel = getFundingLabel(result.type, cfg, result.cls);
+  const btnLabel = getFundingLabel(result.type, cfg, result.cls, dp.band);
   return `<button class="btn-get-funding pipeline-funding-btn" onclick="event.stopPropagation();handlePipelineFundingClick(${deal.id})">
     <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
     <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${btnLabel}</span>

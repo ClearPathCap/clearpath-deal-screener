@@ -2,11 +2,12 @@
 // Implements the Deal Screener side of CPC_INTEGRATION_SPEC.md.
 
 import { getActiveTier } from './tiers.js';
-import { CPC_LOAN_MIN, qualifiesForCpcLtr, qualifiesForCpcBrrr } from './finance.js';
+import { CPC_LOAN_MIN, qualifiesForCpcLtr, qualifiesForCpcBrrr, propertyBand, BAND_RULES } from './finance.js';
 
 // DSCR (LTR) + BRRR funnel gates live in finance.js (pure/testable); re-export so
-// the funnel keeps a single import surface (clearpath.js).
-export { qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_LOAN_MIN };
+// the funnel keeps a single import surface (clearpath.js). propertyBand + BAND_RULES
+// ride along for the multifamily handoff (units → band → band-specific LTV ceiling).
+export { qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_LOAN_MIN, propertyBand, BAND_RULES };
 
 const CPC_BASE = 'https://clearpathcapfunding.com/';
 
@@ -17,7 +18,8 @@ export function buildCpcUrl(deal) {
   p.set('src', 'dealscreener');
   p.set('tier', getActiveTier());            // starter | investor | pro
   const map = { pp:'pp', rehab:'rehab', arv:'arv', loan:'loan', ltv:'ltv', dscr:'dscr',
-                addr:'addr', city:'city', state:'state', ptype:'ptype', purpose:'purpose', exit:'exit' };
+                addr:'addr', city:'city', state:'state', ptype:'ptype', purpose:'purpose', exit:'exit',
+                units:'units', band:'band' };
   for (const [k, param] of Object.entries(map)) {
     const v = deal[k];
     if (v !== undefined && v !== null && v !== '') p.set(param, String(v));

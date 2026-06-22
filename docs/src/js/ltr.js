@@ -5,9 +5,10 @@
 // lastLtrResult, maybeShowFundingButton reuse.
 
 import { fmt, pct, cClass, buildMetrics, buildRows, parseNumOpt, renderInputIssues } from './format.js';
-import { computeLtr, ltrVerdict, mosLabel, validateInputs, plausibilityWarnings } from './finance.js';
+import { computeLtr, ltrVerdict, mosLabel, validateInputs, plausibilityWarnings, propertyBand, BAND_RULES } from './finance.js';
 import { LTR_MARKETS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
+import { buildCpcUrl } from './funding.js';
 
 // Regional rent/vacancy fallback when a slug has no city-level LTR row.
 const LTR_REGIONAL_DEFAULTS = {
@@ -53,6 +54,21 @@ export function setLtrPreset(slug, el) {
 export function analyzeLtr() {
   const price = moneyOpt('l-price');
   const rent  = moneyOpt('l-rent');
+  const units = numOpt('l-units');
+  const band  = propertyBand(units);
+
+  // Rent label reflects the band (small-multifamily rent is total across all units).
+  const rentLabel = elv('l-rent-label');
+  if (rentLabel) rentLabel.textContent = band === '5-8' ? 'Total gross monthly rent (all units)' : 'Monthly Rent';
+  const notice = elv('l-band-notice');
+  if (notice) { notice.style.display = 'none'; notice.innerHTML = ''; notice.className = 'band-notice'; }
+
+  // 9+ units = commercial: a referral, not a calculator. Skip analysis entirely.
+  if (band === '9plus') {
+    showLtrManualReview(units, { price, addr: elv('l-addr')?.value.trim() || '', ptype: elv('l-ptype')?.value || 'Multifamily' });
+    return;
+  }
+
   if (!price || !rent) return; // validation handled by wrapper in main.js
 
   const selfManage = elv('l-self-manage-toggle')?.checked;
@@ -60,6 +76,7 @@ export function analyzeLtr() {
     addr:  elv('l-addr')?.value.trim() || '',
     price,
     rentMo: rent,
+    units,
     down:   numOpt('l-down'),
     vac:    numOpt('l-vac'),
     tax:    moneyOpt('l-tax'),
@@ -91,8 +108,10 @@ export function analyzeLtr() {
   const { cls, verdict, vsub } = ltrVerdict(m);
   const dscrText = m.dscr === null ? 'n/a' : m.dscr.toFixed(2);
   const rateDisp = (input.rate == null ? 7.25 : input.rate) + '%';
-  const pm = selfManage ? 0 : (input.pm == null ? 8 : input.pm);
-  const vacPct = input.vac == null ? 5 : input.vac;
+  const pm = selfManage ? 0 : (input.pm == null ? BAND_RULES[band].pm : input.pm);
+  const vacPct = input.vac == null ? BAND_RULES[band].vac : input.vac;
+  const maintPct = input.maint == null ? BAND_RULES[band].maint : input.maint;
+  const capexPct = input.capex == null ? BAND_RULES[band].capex : input.capex;
 
   elv('ltr-verdict').className = 'verdict ' + cls;
   elv('lvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
@@ -113,13 +132,13 @@ export function analyzeLtr() {
     { l: 'Gross scheduled rent (annual)',                                        v: fmt(m.rentYr) },
     { l: 'Effective gross income (' + vacPct + '% vacancy)',                     v: fmt(m.EGI) },
     { l: 'Property management' + (pm > 0 ? ' (' + pm + '%)' : ' (self)'),        v: pm > 0 ? '–' + fmt(m.EGI * (pm / 100)) : '$0' },
-    { l: 'Maintenance reserve (' + (input.maint == null ? 5 : input.maint) + '%)', v: '–' + fmt(m.rentYr * ((input.maint == null ? 5 : input.maint) / 100)) },
+    { l: 'Maintenance reserve (' + maintPct + '%)', v: '–' + fmt(m.rentYr * (maintPct / 100)) },
     { l: 'Property taxes',                                                       v: '–' + fmt(input.tax || 0) },
     { l: 'Insurance',                                                            v: '–' + fmt(input.ins || 0) },
     ...((input.hoa || 0) > 0 ? [{ l: 'HOA', v: '–' + fmt((input.hoa || 0) * 12) }] : []),
     { l: 'Net operating income',                                                 v: fmt(m.NOI) },
     { l: 'Annual debt service (' + rateDisp + ')',                               v: '–' + fmt(m.debtYr) },
-    { l: 'CapEx reserve (' + (input.capex == null ? 5 : input.capex) + '%, below NOI)', v: '–' + fmt(m.capexRes) },
+    { l: 'CapEx reserve (' + capexPct + '%, below NOI)', v: '–' + fmt(m.capexRes) },
     { l: 'Net cash flow (annual)', v: fmt(m.cashFlowYr), tot: true, color: m.cashFlowYr >= 0 ? 'var(--accent)' : 'var(--danger)' },
     { l: 'Net cash flow (monthly)',                                             v: fmt(m.cashFlowMo) },
     { l: 'DSCR (NOI ÷ debt service)',                                           v: dscrText },
@@ -133,9 +152,10 @@ export function analyzeLtr() {
 
   lastLtrResult = {
     type: 'ltr', addr: input.addr, price: m.price,
-    down: input.down == null ? 20 : input.down,
+    units: units || null, band,
+    down: input.down == null ? BAND_RULES[band].down : input.down,
     rent, vac: vacPct, tax: input.tax || 0, ins: input.ins || 0, hoa: input.hoa || 0,
-    maint: input.maint == null ? 5 : input.maint, pm, capex: input.capex == null ? 5 : input.capex,
+    maint: maintPct, pm, capex: capexPct,
     rate: input.rate == null ? 7.25 : input.rate, amort: input.amort == null ? 30 : input.amort,
     points: input.points == null ? 1 : input.points, cc: input.cc == null ? 2 : input.cc,
     ptype: input.ptype, target: m.target,
@@ -151,6 +171,44 @@ export function analyzeLtr() {
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   maybeShowFundingButton(lastLtrResult);
+
+  // Small-multifamily info banner (5–8): rent is all-units, and one vacant unit is a
+  // meaningful vacancy hit. Non-blocking — the full analysis still renders above it.
+  if (band === '5-8' && notice) {
+    const vacOneUnit = units > 0 ? (Math.round((100 / units) * 10) / 10) : null;
+    notice.style.display = 'block';
+    notice.className = 'band-notice band-notice-info';
+    notice.innerHTML =
+      '<strong>Small multifamily (' + units + ' units).</strong> Rent above is total gross across all units. '
+      + (vacOneUnit != null ? 'One vacant unit in a ' + units + '-unit building ≈ ' + vacOneUnit + '% vacancy — ' : '')
+      + 'verify rent roll, leases, and stabilized occupancy.';
+  }
+}
+
+// 9+ units → commercial-review referral (not a calculator). Routes the scenario to
+// Clear Path with band=9plus so it lands in manual/commercial review, never rejected.
+function showLtrManualReview(units, info) {
+  const r = elv('ltr-results'); if (r) r.style.display = 'none';
+  const fb = elv('ltr-funding-btn'); if (fb) fb.innerHTML = '';
+  const notice = elv('l-band-notice');
+  if (!notice) return;
+  notice.style.display = 'block';
+  notice.className = 'band-notice band-notice-warn';
+  notice.innerHTML =
+    '<div class="band-notice-title">9+ unit multifamily — commercial review</div>'
+    + '<div class="band-notice-body">A ' + (units || '9+') + '-unit building is financed as a commercial multifamily deal, not a standard DSCR loan. Deal Screener doesn\'t auto-screen it — submit through Clear Path Capital and we\'ll route it to the right lender.</div>'
+    + '<button class="btn-get-funding" id="l-manual-review-btn" type="button"><img src="icons/clearpath-mark.png" class="funding-icon" alt="">Submit to Clear Path — Commercial Review</button>';
+  const btn = elv('l-manual-review-btn');
+  if (btn) btn.addEventListener('click', () => {
+    const deal = {
+      pp: info.price ? Math.round(info.price) : undefined,
+      addr: info.addr || undefined,
+      units: units || undefined, band: '9plus',
+      ptype: info.ptype || 'Multifamily', purpose: 'dscr', exit: 'hold',
+    };
+    window.open(buildCpcUrl(deal), '_blank', 'noopener');
+    if (window.showToast) window.showToast('Opening Clear Path for commercial multifamily review.');
+  });
 }
 
 export function resetLtr() {
@@ -158,5 +216,6 @@ export function resetLtr() {
   if (r) r.style.display = 'none';
   const notes = elv('ltr-notes'); if (notes) notes.value = '';
   const btn = elv('ltr-funding-btn'); if (btn) btn.innerHTML = '';
+  const notice = elv('l-band-notice'); if (notice) { notice.style.display = 'none'; notice.innerHTML = ''; }
   lastLtrResult = null;
 }

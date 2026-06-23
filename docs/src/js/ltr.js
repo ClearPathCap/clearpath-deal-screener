@@ -91,7 +91,9 @@ export function analyzeLtr() {
     points: numOpt('l-points'),
     cc:     numOpt('l-cc'),
     target: numOpt('l-target'),
-    ptype:  elv('l-ptype')?.value || 'SFR',
+    // Handoff sends "Multifamily" for 5+ units so it lands on CPC's "Multifamily"
+    // option (CPC has no "5–8 Unit"). Display stays the "5–8 Unit" label for the user.
+    ptype:  (units >= 5) ? 'Multifamily' : (elv('l-ptype')?.value || 'SFR'),
   };
 
   // B2: validate pre-compute — out-of-range inputs abort (no compute, no HOT, no funnel).
@@ -204,7 +206,7 @@ function showLtrManualReview(units, info) {
       pp: info.price ? Math.round(info.price) : undefined,
       addr: info.addr || undefined,
       units: units || undefined, band: '9plus',
-      ptype: info.ptype || 'Multifamily', purpose: 'dscr', exit: 'hold',
+      ptype: 'Multifamily', purpose: 'dscr', exit: 'hold', // always MF for 9+ handoff
     };
     window.open(buildCpcUrl(deal), '_blank', 'noopener');
     if (window.showToast) window.showToast('Opening Clear Path for commercial multifamily review.');

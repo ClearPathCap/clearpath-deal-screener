@@ -1217,6 +1217,33 @@ function syncBandDefaults(prefix) {
   const band = propertyBand(unitsEl ? parseNumOpt(unitsEl.value) : undefined);
   const rentLabel = document.getElementById(prefix + '-rent-label');
   if (rentLabel) rentLabel.textContent = band === '5-8' ? 'Total gross monthly rent (all units)' : 'Monthly Rent';
+
+  // (a) Property-type auto-sync — a 5+ unit deal can never honestly sit on SFR / 2–4.
+  // 5–8 → "5–8 Unit", 9+ → "9+ Unit" (re-asserted on every units change). For 1–4,
+  // only reset a STALE "5–8 Unit"/"9+ Unit" left over from a higher count; otherwise
+  // leave the user's SFR/2–4/Condo/Townhome choice (unit count doesn't pick type in 1–4).
+  const ptypeEl = document.getElementById(prefix + '-ptype');
+  if (ptypeEl) {
+    if (band === '5-8') ptypeEl.value = '5–8 Unit';
+    else if (band === '9plus') ptypeEl.value = '9+ Unit';
+    else if (ptypeEl.value === '5–8 Unit' || ptypeEl.value === '9+ Unit') ptypeEl.value = '2–4 Unit';
+  }
+
+  // (b) Live 9+ hint before Analyze. Marked with its own class so it only ever clears
+  // its OWN live hint — never a post-Analyze banner (analyzeLtr/Brrr write here too).
+  const notice = document.getElementById(prefix + '-band-notice');
+  if (notice) {
+    if (band === '9plus') {
+      notice.style.display = 'block';
+      notice.className = 'band-notice band-notice-warn band-live-hint';
+      notice.innerHTML = '9+ units — commercial multifamily, manual CPC review on submit.';
+    } else if (notice.classList.contains('band-live-hint')) {
+      notice.style.display = 'none';
+      notice.innerHTML = '';
+      notice.className = 'band-notice';
+    }
+  }
+
   const rules = BAND_RULES[band];
   if (!rules) return band;                          // 9+ has no calculator defaults
   const fields = prefix === 'l'

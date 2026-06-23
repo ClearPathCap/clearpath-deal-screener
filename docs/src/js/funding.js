@@ -19,7 +19,16 @@ export function buildCpcUrl(deal) {
   p.set('tier', getActiveTier());            // starter | investor | pro
   const map = { pp:'pp', rehab:'rehab', arv:'arv', loan:'loan', ltv:'ltv', dscr:'dscr',
                 addr:'addr', city:'city', state:'state', ptype:'ptype', purpose:'purpose', exit:'exit',
-                units:'units', band:'band' };
+                units:'units', band:'band',
+                // Economics carried so CPC displays the screener's operator-view math
+                // instead of re-deriving a conflicting one. HOA is MONTHLY (CPC ×12).
+                monthlyRent:'monthlyRent', annualTaxes:'annualTaxes',
+                annualInsurance:'annualInsurance', monthlyHoa:'monthlyHoa',
+                vacancyPct:'vacancyPct', pmPct:'pmPct', maintPct:'maintPct', capexPct:'capexPct',
+                loanRate:'loanRate', amortYears:'amortYears', pointsPct:'pointsPct', closingPct:'closingPct',
+                screenerNoi:'screenerNoi', screenerDscr:'screenerDscr',
+                screenerCashFlowAnnual:'screenerCashFlowAnnual', screenerCashFlowMonthly:'screenerCashFlowMonthly',
+                screenerCapRate:'screenerCapRate', screenerVerdict:'screenerVerdict' };
   for (const [k, param] of Object.entries(map)) {
     const v = deal[k];
     if (v !== undefined && v !== null && v !== '') p.set(param, String(v));

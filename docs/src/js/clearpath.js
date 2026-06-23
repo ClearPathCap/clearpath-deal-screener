@@ -20,6 +20,30 @@ function parseCityState(addr) {
   return { city: m[1].trim(), state };
 }
 
+// ─── Carry the screener's economics into the CPC handoff (LTR/BRRR income deals) ──
+// so CPC DISPLAYS the operator-view math rather than re-deriving a conflicting one.
+// r already holds everything (lastLtrResult/lastBrrrResult) — pass through, no recompute.
+// HOA is MONTHLY here; CPC's field is annual and converts ×12 on receipt.
+function econHandoff(r) {
+  const n = (v, round) => (v == null ? undefined : (round ? Math.round(v) : v));
+  return {
+    monthlyRent: n(r.rent, true),
+    annualTaxes: n(r.tax, true),
+    annualInsurance: n(r.ins, true),
+    monthlyHoa: n(r.hoa, true),
+    vacancyPct: n(r.vac),
+    pmPct: n(r.pm),
+    maintPct: n(r.maint),
+    capexPct: n(r.capex),
+    screenerNoi: n(r.NOI, true),
+    screenerDscr: r.dscr != null ? +r.dscr.toFixed(2) : undefined,
+    screenerCashFlowAnnual: n(r.cashFlowYr, true),
+    screenerCashFlowMonthly: n(r.cashFlowMo, true),
+    screenerCapRate: r.capRate != null ? +r.capRate.toFixed(2) : undefined,
+    screenerVerdict: r.verdict || undefined,
+  };
+}
+
 // ─── Normalize an analyzer result into the CPC deal-param object ──────────────
 // Numbers raw integers (no commas/$). Address passed whole — URLSearchParams encodes.
 function buildDealParams(r) {
@@ -54,6 +78,8 @@ function buildDealParams(r) {
       ptype:   r.ptype || 'SFR',
       units:   r.units || undefined,
       band:    r.band || propertyBand(r.units),
+      ...econHandoff(r),
+      loanRate: r.rate, amortYears: r.amort, pointsPct: r.points, closingPct: r.cc,
       addr:    r.addr || undefined,
       city, state,
       purpose: 'dscr',                 // → CPC "DSCR / Rental Hold"
@@ -72,6 +98,8 @@ function buildDealParams(r) {
       ptype:   r.ptype || 'SFR',
       units:   r.units || undefined,
       band:    r.band || propertyBand(r.units),
+      ...econHandoff(r),
+      loanRate: r.refiRate, amortYears: r.refiAmort, closingPct: r.reficost,
       addr:    r.addr || undefined,
       city, state,
       purpose: 'brrr',                 // → CPC "DSCR / Rental Hold"

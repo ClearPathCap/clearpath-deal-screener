@@ -26,21 +26,29 @@ function parseCityState(addr) {
 // HOA is MONTHLY here; CPC's field is annual and converts ×12 on receipt.
 function econHandoff(r) {
   const n = (v, round) => (v == null ? undefined : (round ? Math.round(v) : v));
+  // P1: when insurance is blank/untouched (r.insMissing), it's MISSING data — not a clean $0.
+  // Omit the insurance value AND every screener metric that depends on it (NOI, DSCR, cash flow,
+  // cap rate, verdict) so CPC can't display a clean, overstated, "lender-ready" figure built on
+  // missing insurance. With screenerDscr absent, CPC's existing missing-data guard (gated on
+  // screenerDscr > 0, page.tsx) fires and shows "Pending — incomplete". Raw rent/taxes/HOA and
+  // the % assumptions still travel (not insurance-contaminated); src/tier attribution is in
+  // buildCpcUrl and is untouched here.
+  const insMissing = !!r.insMissing;
   return {
     monthlyRent: n(r.rent, true),
     annualTaxes: n(r.tax, true),
-    annualInsurance: n(r.ins, true),
+    annualInsurance: insMissing ? undefined : n(r.ins, true),
     monthlyHoa: n(r.hoa, true),
     vacancyPct: n(r.vac),
     pmPct: n(r.pm),
     maintPct: n(r.maint),
     capexPct: n(r.capex),
-    screenerNoi: n(r.NOI, true),
-    screenerDscr: r.dscr != null ? +r.dscr.toFixed(2) : undefined,
-    screenerCashFlowAnnual: n(r.cashFlowYr, true),
-    screenerCashFlowMonthly: n(r.cashFlowMo, true),
-    screenerCapRate: r.capRate != null ? +r.capRate.toFixed(2) : undefined,
-    screenerVerdict: r.verdict || undefined,
+    screenerNoi: insMissing ? undefined : n(r.NOI, true),
+    screenerDscr: insMissing ? undefined : (r.dscr != null ? +r.dscr.toFixed(2) : undefined),
+    screenerCashFlowAnnual: insMissing ? undefined : n(r.cashFlowYr, true),
+    screenerCashFlowMonthly: insMissing ? undefined : n(r.cashFlowMo, true),
+    screenerCapRate: insMissing ? undefined : (r.capRate != null ? +r.capRate.toFixed(2) : undefined),
+    screenerVerdict: insMissing ? undefined : (r.verdict || undefined),
   };
 }
 
@@ -196,6 +204,7 @@ function buildLtrSummary(r, tag) {
     r.addr ? 'Address: ' + r.addr : null,
     'Verdict: ' + r.verdict,
     tag,
+    r.insMissing ? '⚠ INSURANCE NOT ENTERED — NOI/DSCR below exclude insurance and are overstated; not lender-ready until insurance is added.' : null,
     '---',
     'Property Type: ' + (r.ptype || 'SFR'),
     (r.band === '5-8'
@@ -229,6 +238,7 @@ function buildBrrrSummary(r, tag) {
     cs ? 'City/State: ' + cs : null,
     'Verdict: ' + r.verdict,
     tag,
+    r.insMissing ? '⚠ INSURANCE NOT ENTERED — NOI/DSCR below exclude insurance and are overstated; not lender-ready until insurance is added.' : null,
     '--- ACQUISITION (bridge / hard money) ---',
     'Property Type: ' + (r.ptype || 'SFR'),
     (r.band === '5-8'

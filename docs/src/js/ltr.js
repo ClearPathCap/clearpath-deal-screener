@@ -115,14 +115,21 @@ export function analyzeLtr() {
   const maintPct = input.maint == null ? BAND_RULES[band].maint : input.maint;
   const capexPct = input.capex == null ? BAND_RULES[band].capex : input.capex;
 
-  elv('ltr-verdict').className = 'verdict ' + cls;
-  elv('lvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
-  elv('lvlabel').textContent = verdict;
-  elv('lvsub').textContent   = vsub + (cls === 'hot' && m.marginOfSafety === 'tight' ? ' Strong signal, thin cushion.' : '');
+  // P1: blank/untouched insurance is MISSING data, not a clean $0. parseNumOpt('') → undefined,
+  // so `== null` catches a blank field; an explicitly-entered 0 stays finite and still computes.
+  // DSCR computed on missing insurance is overstated — never present it as lender-ready.
+  const insMissing = input.ins == null;
+
+  elv('ltr-verdict').className = 'verdict ' + (insMissing ? 'warm' : cls);
+  elv('lvtag').textContent   = insMissing ? 'NEEDS INSURANCE' : cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
+  elv('lvlabel').textContent = insMissing ? 'Add Insurance for a Lender-Ready DSCR' : verdict;
+  elv('lvsub').textContent   = insMissing
+    ? 'Annual insurance wasn\'t entered — the DSCR below excludes it and is overstated, so it isn\'t lender-ready yet. Add insurance for an accurate figure; you can still explore funding in the meantime.'
+    : vsub + (cls === 'hot' && m.marginOfSafety === 'tight' ? ' Strong signal, thin cushion.' : '');
 
   const mos = mosLabel(m.marginOfSafety);
   elv('ltr-metrics').innerHTML = buildMetrics([
-    { label: 'DSCR',             val: dscrText,           cls: m.dscr === null ? 'good' : m.dscr >= 1.25 ? 'good' : m.dscr >= 1.0 ? 'warn' : 'bad' },
+    { label: 'DSCR',             val: insMissing ? 'Pending' : dscrText, cls: insMissing ? 'warn' : m.dscr === null ? 'good' : m.dscr >= 1.25 ? 'good' : m.dscr >= 1.0 ? 'warn' : 'bad' },
     { label: 'Cash-on-Cash',     val: pct(m.coc),         cls: cClass(m.coc, m.target, m.target * 0.6) },
     { label: 'Cap Rate',         val: pct(m.capRate),     cls: cClass(m.capRate, 6, 4.5) },
     { label: 'Monthly Cash Flow',val: fmt(m.cashFlowMo),  cls: cClass(m.cashFlowMo, 200, 0) },
@@ -136,7 +143,7 @@ export function analyzeLtr() {
     { l: 'Property management' + (pm > 0 ? ' (' + pm + '%)' : ' (self)'),        v: pm > 0 ? '–' + fmt(m.EGI * (pm / 100)) : '$0' },
     { l: 'Maintenance reserve (' + maintPct + '%)', v: '–' + fmt(m.rentYr * (maintPct / 100)) },
     { l: 'Property taxes',                                                       v: '–' + fmt(input.tax || 0) },
-    { l: 'Insurance',                                                            v: '–' + fmt(input.ins || 0) },
+    { l: 'Insurance' + (insMissing ? ' (not entered)' : ''),                     v: insMissing ? '— pending' : '–' + fmt(input.ins || 0) },
     ...((input.hoa || 0) > 0 ? [{ l: 'HOA', v: '–' + fmt((input.hoa || 0) * 12) }] : []),
     { l: 'Net operating income',                                                 v: fmt(m.NOI) },
     { l: 'Annual debt service (' + rateDisp + ')',                               v: '–' + fmt(m.debtYr) },
@@ -156,7 +163,7 @@ export function analyzeLtr() {
     type: 'ltr', addr: input.addr, price: m.price,
     units: units || null, band,
     down: input.down == null ? BAND_RULES[band].down : input.down,
-    rent, vac: vacPct, tax: input.tax || 0, ins: input.ins || 0, hoa: input.hoa || 0,
+    rent, vac: vacPct, tax: input.tax || 0, ins: input.ins || 0, insMissing, hoa: input.hoa || 0,
     maint: maintPct, pm, capex: capexPct,
     rate: input.rate == null ? 7.25 : input.rate, amort: input.amort == null ? 30 : input.amort,
     points: input.points == null ? 1 : input.points, cc: input.cc == null ? 2 : input.cc,

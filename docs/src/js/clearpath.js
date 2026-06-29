@@ -82,7 +82,7 @@ function buildDealParams(r) {
       pp:      Math.round(r.price || 0),
       loan,
       ltv:     r.price ? loan / r.price : undefined,
-      dscr:    r.dscr != null ? +r.dscr.toFixed(2) : undefined,
+      dscr:    r.insMissing ? undefined : (r.dscr != null ? +r.dscr.toFixed(2) : undefined),  // P1 follow-up: blank insurance omits the base dscr too (mirrors econHandoff's screenerDscr gate)
       ptype:   r.ptype || 'SFR',
       units:   r.units || undefined,
       band:    r.band || propertyBand(r.units),
@@ -102,7 +102,7 @@ function buildDealParams(r) {
       arv:     Math.round(r.arv || 0),
       loan:    Math.round(r.refiLoan || 0),     // DSCR cash-out takeout
       ltv:     r.arv ? (r.refiLoan || 0) / r.arv : undefined,
-      dscr:    r.dscr != null ? +r.dscr.toFixed(2) : undefined,
+      dscr:    r.insMissing ? undefined : (r.dscr != null ? +r.dscr.toFixed(2) : undefined),  // P1 follow-up: blank insurance omits the base dscr too (mirrors econHandoff's screenerDscr gate)
       ptype:   r.ptype || 'SFR',
       units:   r.units || undefined,
       band:    r.band || propertyBand(r.units),

@@ -3,3 +3,13 @@ Thumbs.db
 *.log
 node_modules/
 .env
+
+# Sensitive strategy/QA docs — this repo is PUBLIC (GitHub Pages); never publish these.
+# Exact filenames only (no broad patterns) — Phase A safety commit.
+COWORK_CATCHUP_2026-06-16.md
+QA_CPC_INTEGRATION_2026-06-17.md
+SPEC_BRRR_ANALYZER.md
+SPEC_LTR_ANALYZER.md
+SPEC_VERDICT_RISK_FRAMEWORK_2026-06-18.md
+STRESS_TEST_PROMPT_2026-06-18.md
+WALKTHROUGH_REPORT_2026-06-12.md

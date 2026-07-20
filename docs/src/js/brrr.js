@@ -9,6 +9,7 @@ import { computeBrrr, brrrVerdict, mosLabel, validateInputs, plausibilityWarning
 import { FLIP_MARKETS, LTR_MARKETS, BRRR_ASSUMPTIONS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
 import { buildCpcUrl } from './funding.js';
+import { insuranceStatus, insurancePresentation } from './insuranceReadiness.js';
 
 const elv = id => document.getElementById(id);
 function numOpt(id) { const el = elv(id); return el ? parseNumOpt(el.value) : undefined; }
@@ -116,22 +117,23 @@ export function analyzeBrrr() {
   // Seasoning warning chip (non-blocking).
   const seasonWarn = (input.season != null && input.season < (BRRR_ASSUMPTIONS.seasoningMonthsLow || 6));
 
-  // P1: blank/untouched insurance is MISSING data, not a clean $0 (parseNumOpt('') → undefined,
-  // so `== null` catches blank; an explicit 0 stays finite and computes). Post-refi DSCR on
-  // missing insurance is overstated — never present it as lender-ready.
-  const insMissing = input.ins == null;
+  // Phase A three-state insurance model ('missing' | 'explicit_zero' | 'valid'):
+  // both unresolved states are NOT lender-ready and present Pending, with distinct
+  // borrower-facing language. Shared decisions live in insuranceReadiness.js.
+  const insStatus = insuranceStatus(input.ins);
+  const insP = insurancePresentation(insStatus); // null when valid → normal verdict
 
-  elv('brrr-verdict').className = 'verdict ' + (insMissing ? 'warm' : cls);
-  elv('bvtag').textContent   = insMissing ? 'NEEDS INSURANCE' : cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
-  elv('bvlabel').textContent = insMissing ? 'Add Insurance for a Lender-Ready DSCR' : verdict;
-  elv('bvsub').textContent   = insMissing
-    ? 'Annual insurance wasn\'t entered — the post-refi DSCR below excludes it and is overstated, so it isn\'t lender-ready yet. Add insurance for an accurate figure; you can still explore funding in the meantime.'
+  elv('brrr-verdict').className = 'verdict ' + (insP ? 'warm' : cls);
+  elv('bvtag').textContent   = insP ? insP.tag : cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
+  elv('bvlabel').textContent = insP ? insP.label : verdict;
+  elv('bvsub').textContent   = insP
+    ? insP.sub
     : vsub + (cls === 'hot' && m.marginOfSafety === 'tight' ? ' Strong signal, thin cushion.' : '') + (seasonWarn ? '  ⚠ Most DSCR cash-out needs 6mo title seasoning.' : '');
 
   const capInvested = m.cashInvested || 1;
   const mos = mosLabel(m.marginOfSafety);
   elv('brrr-metrics').innerHTML = buildMetrics([
-    { label: 'DSCR (post-refi)',    val: insMissing ? 'Pending' : dscrText, cls: insMissing ? 'warn' : m.dscr === null ? 'good' : m.dscr >= 1.25 ? 'good' : m.dscr >= 1.0 ? 'warn' : 'bad' },
+    { label: 'DSCR (post-refi)',    val: insP ? insP.pendingText : dscrText, cls: insP ? 'warn' : m.dscr === null ? 'good' : m.dscr >= 1.25 ? 'good' : m.dscr >= 1.0 ? 'warn' : 'bad' },
     { label: 'Capital Left In Deal',val: fmt(m.capitalLeft),      cls: m.capitalLeft <= 0.25 * capInvested ? 'good' : m.capitalLeft <= 0.5 * capInvested ? 'warn' : 'bad' },
     { label: 'Cash Recovered',      val: pct(m.cashRecoveredPct), cls: cClass(m.cashRecoveredPct, 75, 40) },
     { label: 'Monthly Cash Flow',   val: fmt(m.cashFlowMo),       cls: cClass(m.cashFlowMo, 150, 0) },
@@ -157,11 +159,11 @@ export function analyzeBrrr() {
     { l: 'Cash recovered',                          v: pct(m.cashRecoveredPct) },
     { l: 'Equity created (ARV − all-in)',           v: fmt(m.equityCreated) },
     { l: '— Hold (post-refi) —', v: '', tot: true },
-    { l: 'Net operating income',                    v: fmt(m.NOI) },
+    { l: 'Net operating income',                    v: insP ? insP.pendingText : fmt(m.NOI) },
     { l: 'Annual debt service (refi, ' + refiRate + ')', v: '–' + fmt(m.refiDebtYr) },
     { l: 'CapEx reserve (' + capexPct + '%, below NOI)', v: '–' + fmt(m.capexRes) },
     { l: 'Net cash flow (annual)', v: fmt(m.cashFlowYr), tot: true, color: m.cashFlowYr >= 0 ? 'var(--accent)' : 'var(--danger)' },
-    { l: 'DSCR (NOI ÷ refi debt)',                  v: dscrText },
+    { l: 'DSCR (NOI ÷ refi debt)',                  v: insP ? insP.pendingText : dscrText },
     { l: 'Cap rate (NOI ÷ all-in)',                 v: pct(m.capRate) },
     { l: 'Post-refi cash-on-cash',                  v: cocText },
     { l: 'Margin of safety (stress: ARV −5%, rent −5%)', v: mos.label },
@@ -177,7 +179,7 @@ export function analyzeBrrr() {
     acqRate: input.acqRate == null ? 10 : input.acqRate, acqPoints: input.acqPoints == null ? 2 : input.acqPoints,
     refiLtv: refiLtvPct, refiRate: input.refiRate == null ? 7.0 : input.refiRate, refiAmort: input.refiAmort == null ? 30 : input.refiAmort,
     reficost: input.reficost == null ? 3 : input.reficost, season: input.season == null ? 6 : input.season,
-    rent, vac: input.vac == null ? BAND_RULES[band].vac : input.vac, tax: input.tax || 0, ins: input.ins || 0, insMissing, hoa: input.hoa || 0,
+    rent, vac: input.vac == null ? BAND_RULES[band].vac : input.vac, tax: input.tax || 0, ins: input.ins || 0, insStatus, hoa: input.hoa || 0,
     maint: input.maint == null ? BAND_RULES[band].maint : input.maint, pm: selfManage ? 0 : (input.pm == null ? BAND_RULES[band].pm : input.pm),
     capex: capexPct, ptype: input.ptype,
     rehabTotal: m.rehabTotal, allInCost: m.allInCost, cashInvested: m.cashInvested,

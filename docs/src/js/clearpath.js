@@ -3,6 +3,7 @@
 import { getActiveTier } from './tiers.js';
 import { getDeals } from './storage.js';
 import { buildCpcUrl, qualifiesForCpc, qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_LOAN_MIN, propertyBand, BAND_RULES } from './funding.js';
+import { resultInsuranceStatus, insuranceReady, insuranceDependentHandoff, insuranceSummaryWarning, INS_MISSING, INS_EXPLICIT_ZERO } from './insuranceReadiness.js';
 
 const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: 'ltr-funding-btn', brrr: 'brrr-funding-btn' };
 
@@ -26,29 +27,29 @@ function parseCityState(addr) {
 // HOA is MONTHLY here; CPC's field is annual and converts ×12 on receipt.
 function econHandoff(r) {
   const n = (v, round) => (v == null ? undefined : (round ? Math.round(v) : v));
-  // P1: when insurance is blank/untouched (r.insMissing), it's MISSING data — not a clean $0.
-  // Omit the insurance value AND every screener metric that depends on it (NOI, DSCR, cash flow,
-  // cap rate, verdict) so CPC can't display a clean, overstated, "lender-ready" figure built on
-  // missing insurance. With screenerDscr absent, CPC's existing missing-data guard (gated on
-  // screenerDscr > 0, page.tsx) fires and shows "Pending — incomplete". Raw rent/taxes/HOA and
-  // the % assumptions still travel (not insurance-contaminated); src/tier attribution is in
-  // buildCpcUrl and is untouched here.
-  const insMissing = !!r.insMissing;
+  // Phase A: unresolved insurance ('missing' OR 'explicit_zero') omits the insurance
+  // value AND every insurance-dependent screener metric (NOI, DSCR, cash flow, cap
+  // rate, verdict) — one shared decision (insuranceReadiness.js), so BOTH unresolved
+  // states produce the IDENTICAL omission set. With screenerDscr absent, CPC's
+  // existing missing-data guard (gated on screenerDscr > 0, page.tsx) fires and shows
+  // "Pending — incomplete". Raw rent/taxes/HOA and the % assumptions still travel
+  // (not insurance-contaminated); src/tier attribution is in buildCpcUrl, untouched.
+  const insFields = insuranceDependentHandoff(r);
   return {
     monthlyRent: n(r.rent, true),
     annualTaxes: n(r.tax, true),
-    annualInsurance: insMissing ? undefined : n(r.ins, true),
+    annualInsurance: insFields.annualInsurance,
     monthlyHoa: n(r.hoa, true),
     vacancyPct: n(r.vac),
     pmPct: n(r.pm),
     maintPct: n(r.maint),
     capexPct: n(r.capex),
-    screenerNoi: insMissing ? undefined : n(r.NOI, true),
-    screenerDscr: insMissing ? undefined : (r.dscr != null ? +r.dscr.toFixed(2) : undefined),
-    screenerCashFlowAnnual: insMissing ? undefined : n(r.cashFlowYr, true),
-    screenerCashFlowMonthly: insMissing ? undefined : n(r.cashFlowMo, true),
-    screenerCapRate: insMissing ? undefined : (r.capRate != null ? +r.capRate.toFixed(2) : undefined),
-    screenerVerdict: insMissing ? undefined : (r.verdict || undefined),
+    screenerNoi: insFields.screenerNoi,
+    screenerDscr: insFields.screenerDscr,
+    screenerCashFlowAnnual: insFields.screenerCashFlowAnnual,
+    screenerCashFlowMonthly: insFields.screenerCashFlowMonthly,
+    screenerCapRate: insFields.screenerCapRate,
+    screenerVerdict: insFields.screenerVerdict,
   };
 }
 
@@ -82,7 +83,7 @@ function buildDealParams(r) {
       pp:      Math.round(r.price || 0),
       loan,
       ltv:     r.price ? loan / r.price : undefined,
-      dscr:    r.insMissing ? undefined : (r.dscr != null ? +r.dscr.toFixed(2) : undefined),  // P1 follow-up: blank insurance omits the base dscr too (mirrors econHandoff's screenerDscr gate)
+      dscr:    insuranceDependentHandoff(r).dscr,  // Phase A: unresolved insurance (missing OR explicit_zero) omits the base dscr (mirrors econHandoff's screenerDscr gate)
       ptype:   r.ptype || 'SFR',
       units:   r.units || undefined,
       band:    r.band || propertyBand(r.units),
@@ -102,7 +103,7 @@ function buildDealParams(r) {
       arv:     Math.round(r.arv || 0),
       loan:    Math.round(r.refiLoan || 0),     // DSCR cash-out takeout
       ltv:     r.arv ? (r.refiLoan || 0) / r.arv : undefined,
-      dscr:    r.insMissing ? undefined : (r.dscr != null ? +r.dscr.toFixed(2) : undefined),  // P1 follow-up: blank insurance omits the base dscr too (mirrors econHandoff's screenerDscr gate)
+      dscr:    insuranceDependentHandoff(r).dscr,  // Phase A: unresolved insurance (missing OR explicit_zero) omits the base dscr (mirrors econHandoff's screenerDscr gate)
       ptype:   r.ptype || 'SFR',
       units:   r.units || undefined,
       band:    r.band || propertyBand(r.units),
@@ -199,12 +200,14 @@ function buildRentalSummary(r, tag) {
 }
 
 function buildLtrSummary(r, tag) {
+  const insStatus = resultInsuranceStatus(r);
+  const insOk = insuranceReady(insStatus);
   const lines = [
     'DEAL SCREENER SUMMARY — Long-Term Rental (DSCR)',
     r.addr ? 'Address: ' + r.addr : null,
     'Verdict: ' + r.verdict,
     tag,
-    r.insMissing ? '⚠ INSURANCE NOT ENTERED — NOI/DSCR below exclude insurance and are overstated; not lender-ready until insurance is added.' : null,
+    insuranceSummaryWarning(insStatus),
     '---',
     'Property Type: ' + (r.ptype || 'SFR'),
     (r.band === '5-8'
@@ -213,15 +216,15 @@ function buildLtrSummary(r, tag) {
     'Purchase Price: $' + Math.round(r.price).toLocaleString(),
     'Monthly Rent: $' + Math.round(r.rent).toLocaleString() + '   (Annual Gross: $' + Math.round(r.rentYr).toLocaleString() + ')',
     'Vacancy: ' + r.vac + '%',
-    'Net Operating Income (est.): $' + Math.round(r.NOI).toLocaleString(),
-    'DSCR (est.): ' + (r.dscr != null ? r.dscr.toFixed(2) : 'n/a'),
+    'Net Operating Income (est.): ' + (insOk ? '$' + Math.round(r.NOI).toLocaleString() : 'Pending'),
+    'DSCR (est.): ' + (insOk ? (r.dscr != null ? r.dscr.toFixed(2) : 'n/a') : 'Pending'),
     'Cap Rate (est.): ' + (Math.round(r.capRate * 10) / 10) + '%',
     'Monthly Cash Flow (est.): $' + Math.round(r.cashFlowMo).toLocaleString() + '   (Annual: $' + Math.round(r.cashFlowYr).toLocaleString() + ')',
     'Cash-on-Cash (est.): ' + (Math.round(r.coc * 10) / 10) + '%',
     'Down Payment: ' + r.down + '%   |   LTV (est.): ' + (Math.round(r.ltv * 10) / 10) + '%',
     'Estimated Loan Request: $' + Math.round(r.loan).toLocaleString(),
     'Assumed Rate / Amortization: ' + r.rate + '% / ' + r.amort + ' yr',
-    'Property Taxes (annual): $' + Math.round(r.tax).toLocaleString() + '   Insurance (annual): $' + Math.round(r.ins).toLocaleString(),
+    'Property Taxes (annual): $' + Math.round(r.tax).toLocaleString() + '   Insurance (annual): ' + (insStatus === INS_MISSING ? 'Pending' : insStatus === INS_EXPLICIT_ZERO ? '$0 — confirm' : '$' + Math.round(r.ins).toLocaleString()),
     '---',
     'Estimate only — not a loan offer, approval, or guarantee of terms. DSCR and final terms are set by the lender. Clear Path Capital is a broker.',
     'Generated by Deal Screener — Clear Path Capital',
@@ -232,13 +235,15 @@ function buildLtrSummary(r, tag) {
 function buildBrrrSummary(r, tag) {
   const { city, state } = parseCityState(r.addr);
   const cs = [city, state].filter(Boolean).join(', ');
+  const insStatus = resultInsuranceStatus(r);
+  const insOk = insuranceReady(insStatus);
   const lines = [
     'DEAL SCREENER SUMMARY — BRRR (Bridge → DSCR Cash-Out Refi)',
     r.addr ? 'Address: ' + r.addr : null,
     cs ? 'City/State: ' + cs : null,
     'Verdict: ' + r.verdict,
     tag,
-    r.insMissing ? '⚠ INSURANCE NOT ENTERED — NOI/DSCR below exclude insurance and are overstated; not lender-ready until insurance is added.' : null,
+    insuranceSummaryWarning(insStatus),
     '--- ACQUISITION (bridge / hard money) ---',
     'Property Type: ' + (r.ptype || 'SFR'),
     (r.band === '5-8'
@@ -252,13 +257,13 @@ function buildBrrrSummary(r, tag) {
     (r.acqLoan > 0 ? 'Acquisition Loan Requested (est.): $' + Math.round(r.acqLoan).toLocaleString() : null),
     '--- REFINANCE (DSCR cash-out takeout) ---',
     'Refi Loan @ ' + r.refiLtv + '% LTV (est.): $' + Math.round(r.refiLoan).toLocaleString(),
-    'DSCR (est.): ' + (r.dscr != null ? r.dscr.toFixed(2) : 'n/a'),
+    'DSCR (est.): ' + (insOk ? (r.dscr != null ? r.dscr.toFixed(2) : 'n/a') : 'Pending'),
     'Cash Out at Refi (est.): $' + Math.round(r.cashOut).toLocaleString(),
     'Capital Left In Deal (est.): $' + Math.round(r.capitalLeft).toLocaleString(),
     'Cash Recovered (est.): ' + (Math.round(r.cashRecoveredPct * 10) / 10) + '%',
     '--- HOLD ---',
     'Monthly Rent: $' + Math.round(r.rent).toLocaleString(),
-    'NOI (est.): $' + Math.round(r.NOI).toLocaleString(),
+    'NOI (est.): ' + (insOk ? '$' + Math.round(r.NOI).toLocaleString() : 'Pending'),
     'Monthly Cash Flow (est.): $' + Math.round(r.cashFlowMo).toLocaleString(),
     'Cap Rate on cost (est.): ' + (Math.round(r.capRate * 10) / 10) + '%',
     '---',

@@ -2,6 +2,7 @@
 
 import { fmt, pct } from './format.js';
 import { getDeals } from './storage.js';
+import { resultInsuranceStatus, insuranceReady, insurancePresentation } from './insuranceReadiness.js';
 
 // NOTE: Phase 1 will hard-code APP_URL to the deployed domain.
 const APP_URL = location.href.split('#')[0];
@@ -77,7 +78,12 @@ export function shareDeal(id) {
 
 function buildDealSummaryText(d) {
   const data  = d.data || {};
-  const lines = ['🏠 ' + d.name + ' — ' + d.verdict.toUpperCase()];
+  // Phase A: unresolved insurance on LTR/BRRR deals — the shared text must not
+  // expose finite insurance-dependent values or the positive verdict headline.
+  const insStatus     = resultInsuranceStatus(data);
+  const unresolvedIns = (d.type === 'ltr' || d.type === 'brrr') && !insuranceReady(insStatus);
+  const headline      = unresolvedIns ? insurancePresentation(insStatus).tag : d.verdict.toUpperCase();
+  const lines = ['🏠 ' + d.name + ' — ' + headline];
   if (data.addr) lines.push('📍 ' + data.addr);
   lines.push('');
   if (d.type === 'flip') {
@@ -90,8 +96,8 @@ function buildDealSummaryText(d) {
     lines.push('SHORT-TERM RENTAL ANALYSIS');
     lines.push('Price: ' + fmt(data.price) + '  |  Down: ' + data.down + '%');
     lines.push('Gross rent: ' + fmt(data.rent) + ' @ ' + data.occ + '% occ.');
-    lines.push('Cash flow: ' + fmt(data.cashflow) + '/yr');
-    lines.push('Cash-on-cash: ' + pct(data.coc) + '  |  Cap rate: ' + pct(data.capRate));
+    lines.push('Cash flow: ' + (unresolvedIns ? 'Pending' : fmt(data.cashflow)) + '/yr');
+    lines.push('Cash-on-cash: ' + (unresolvedIns ? 'Pending' : pct(data.coc)) + '  |  Cap rate: ' + (unresolvedIns ? 'Pending' : pct(data.capRate)));
   }
   if (d.notes) { lines.push(''); lines.push('Notes: ' + d.notes); }
   return lines.join('\n');

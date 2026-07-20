@@ -9,6 +9,7 @@ import { getLastLtrResult } from './ltr.js';
 import { getLastBrrrResult } from './brrr.js';
 import { getPipelineFundingButtonHTML } from './clearpath.js';
 import { getActiveTier } from './tiers.js';
+import { resultInsuranceStatus, insuranceReady, insurancePresentation } from './insuranceReadiness.js';
 
 // Local modal helpers — avoids circular dep with main.js
 const openModal  = id => document.getElementById(id).classList.add('active');
@@ -163,6 +164,29 @@ function buildDealStats(type, r) {
   ];
 }
 
+// Phase A: render-time Pending overlay for saved LTR/BRRR deals with unresolved
+// insurance ('missing' or 'explicit_zero'). Cards bake verdict/cls/stats at SAVE
+// time, so gating must happen at render — this also covers legacy saved deals
+// (resultInsuranceStatus falls back on insMissing / coerced ins:0).
+function unresolvedInsPresentation(type, data) {
+  if (type !== 'ltr' && type !== 'brrr') return null;
+  const status = resultInsuranceStatus(data || {});
+  return insuranceReady(status) ? null : insurancePresentation(status);
+}
+
+// Pending card stats when insurance is unresolved. Every LTR headline stat
+// (DSCR/CoC/Cash Flow) is insurance-dependent; BRRR keeps its refi-math stats
+// (Cap Left / Recovered) and pends only DSCR.
+function pendingDealStats(d) {
+  if (d.type === 'ltr') return [
+    { l: 'DSCR', v: 'Pending' }, { l: 'CoC', v: 'Pending' }, { l: 'Cash Flow', v: 'Pending' },
+  ];
+  return [
+    { l: 'DSCR', v: 'Pending' },
+    ...(Array.isArray(d.stats) ? d.stats.slice(1) : []),
+  ];
+}
+
 function detailSection(title, rows) {
   return `<div class="detail-section"><div class="detail-title">${title}</div>${
     rows.filter(Boolean).map(r => `<div class="detail-row"><span class="dl">${r.l}</span><span class="dv">${r.v}</span></div>`).join('')
@@ -170,15 +194,16 @@ function detailSection(title, rows) {
 }
 
 function buildLtrDetail(d) {
+  const pend = unresolvedInsPresentation('ltr', d) != null;
   return detailSection('Long-Term Rental (DSCR)', [
     { l: 'Purchase price',    v: d.price != null ? fmt(d.price) : '—' },
     { l: 'Monthly rent',      v: d.rent != null ? fmt(d.rent) : '—' },
     { l: 'Down payment',      v: d.down != null ? d.down + '%' : '—' },
-    { l: 'NOI',               v: d.NOI != null ? fmt(d.NOI) : '—' },
-    { l: 'DSCR',              v: d.dscr != null ? d.dscr.toFixed(2) : 'n/a' },
-    { l: 'Cap rate',          v: d.capRate != null ? pct(d.capRate) : '—' },
-    { l: 'Cash-on-cash',      v: d.coc != null ? pct(d.coc) : '—' },
-    { l: 'Monthly cash flow', v: d.cashFlowMo != null ? fmt(d.cashFlowMo) : '—' },
+    { l: 'NOI',               v: pend ? 'Pending' : (d.NOI != null ? fmt(d.NOI) : '—') },
+    { l: 'DSCR',              v: pend ? 'Pending' : (d.dscr != null ? d.dscr.toFixed(2) : 'n/a') },
+    { l: 'Cap rate',          v: pend ? 'Pending' : (d.capRate != null ? pct(d.capRate) : '—') },
+    { l: 'Cash-on-cash',      v: pend ? 'Pending' : (d.coc != null ? pct(d.coc) : '—') },
+    { l: 'Monthly cash flow', v: pend ? 'Pending' : (d.cashFlowMo != null ? fmt(d.cashFlowMo) : '—') },
     { l: 'Loan / LTV',        v: (d.loan != null ? fmt(d.loan) : '—') + (d.ltv != null ? ' · ' + pct(d.ltv) : '') },
     { l: 'Cash to close',     v: d.cashToClose != null ? fmt(d.cashToClose) : '—' },
   ]);
@@ -194,13 +219,16 @@ function buildBrrrDetail(d) {
     { l: 'Cash out',                  v: d.cashOut != null ? fmt(d.cashOut) : '—' },
     { l: 'Capital left',              v: d.capitalLeft != null ? fmt(d.capitalLeft) : '—' },
     { l: 'Cash recovered',            v: d.cashRecoveredPct != null ? pct(d.cashRecoveredPct) : '—' },
-    { l: 'DSCR',                      v: d.dscr != null ? d.dscr.toFixed(2) : 'n/a' },
-    { l: 'Monthly cash flow',         v: d.cashFlowMo != null ? fmt(d.cashFlowMo) : '—' },
+    { l: 'DSCR',                      v: unresolvedInsPresentation('brrr', d) ? 'Pending' : (d.dscr != null ? d.dscr.toFixed(2) : 'n/a') },
+    { l: 'Monthly cash flow',         v: unresolvedInsPresentation('brrr', d) ? 'Pending' : (d.cashFlowMo != null ? fmt(d.cashFlowMo) : '—') },
   ]);
 }
 
 function buildDealCard(d) {
   const data       = d.data || {};
+  // Phase A: unresolved-insurance overlay for the stored badge/stats (LTR/BRRR only).
+  const insP       = unresolvedInsPresentation(d.type, data);
+  const cardStats  = insP ? pendingDealStats(d) : d.stats;
   const address    = data.addr ? `<div class="deal-address">${escapeHtml(data.addr)}</div>` : '';
   const detailRows = d.type === 'flip' ? buildFlipDetail(data)
     : d.type === 'ltr'  ? buildLtrDetail(data)
@@ -219,10 +247,10 @@ function buildDealCard(d) {
             ${address}
             <div class="deal-region">${dealRegionLabel(d.type)}</div>
           </div>
-          <div class="deal-badge ${d.cls}">${d.verdict}</div>
+          <div class="deal-badge ${insP ? 'warm' : d.cls}">${insP ? insP.tag : d.verdict}</div>
         </div>
         <div class="deal-stats">
-          ${d.stats.map(s => `<div class="deal-stat"><div class="dsl">${s.l}</div><div class="dsv">${s.v}</div></div>`).join('')}
+          ${cardStats.map(s => `<div class="deal-stat"><div class="dsl">${s.l}</div><div class="dsv">${s.v}</div></div>`).join('')}
         </div>
         <div class="deal-footer">
           <div class="deal-date">Saved ${d.date}</div>

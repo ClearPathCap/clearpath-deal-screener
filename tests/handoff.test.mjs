@@ -187,6 +187,104 @@ eq("summary valid: no warning", IR.insuranceSummaryWarning("valid"), null);
 eq("no-contradiction: missing pendingText", pMissing.pendingText, "Pending");
 eq("no-contradiction: zero pendingText", pZero.pendingText, "Pending");
 
+// ─── 8. Amendment: complete insurance-dependent output suppression ───────────
+// Source-derived inventory (finance.js trace: ins → opEx → NOI → dscr/capRate/
+// cashFlowYr/cashFlowMo/coc/postRefiCoC/stress marginOfSafety → verdict text).
+// The rendering layer is DOM-coupled (not data-URL loadable without jsdom), so
+// each inventoried call site is verified by a static source assertion that the
+// shared insP/insOk gate is present AND the unguarded finite rendering is gone.
+// The browser gate provides the rendered-DOM proof.
+const srcOf = (rel) => readFileSync(join(here, "..", rel), "utf8");
+const ltrSrc = srcOf("docs/src/js/ltr.js");
+const brrrSrc = srcOf("docs/src/js/brrr.js");
+const cpSrc = srcOf("docs/src/js/clearpath.js");
+const plSrc = srcOf("docs/src/js/pipeline.js");
+const shSrc = srcOf("docs/src/js/share.js");
+const has = (label, src, needle) => truthy(label, src.includes(needle));
+const not = (label, src, needle) => truthy(label, !src.includes(needle));
+
+// ltr.js tiles + breakdown — gated
+has("ltr tile CoC gated", ltrSrc, "val: insP ? insP.pendingText : pct(m.coc)");
+has("ltr tile CapRate gated", ltrSrc, "val: insP ? insP.pendingText : pct(m.capRate)");
+has("ltr tile CashFlowMo gated", ltrSrc, "val: insP ? insP.pendingText : fmt(m.cashFlowMo)");
+has("ltr tile MoS gated", ltrSrc, "val: insP ? insP.pendingText : mos.label");
+has("ltr tile DSCR gated", ltrSrc, "val: insP ? insP.pendingText : dscrText");
+has("ltr row NOI gated", ltrSrc, "v: insP ? insP.pendingText : fmt(m.NOI)");
+has("ltr row cashFlowYr gated", ltrSrc, "v: insP ? insP.pendingText : fmt(m.cashFlowYr)");
+has("ltr row cashFlowMo gated", ltrSrc, "v: insP ? insP.pendingText : fmt(m.cashFlowMo)");
+has("ltr row capRate gated", ltrSrc, "v: insP ? insP.pendingText : pct(m.capRate)");
+has("ltr row DSCR gated", ltrSrc, "v: insP ? insP.pendingText : dscrText");
+has("ltr row MoS gated", ltrSrc, "v: insP ? insP.pendingText : mos.label");
+// ltr.js — no unguarded finite rendering remains
+for (const bad of ["val: pct(m.coc)", "val: pct(m.capRate)", "val: fmt(m.cashFlowMo)", "val: mos.label", "v: fmt(m.NOI)", "v: fmt(m.cashFlowYr)", "v: fmt(m.cashFlowMo)", "v: pct(m.capRate)", "v: dscrText", "v: mos.label"]) {
+  not(`ltr unguarded absent: ${bad}`, ltrSrc, bad);
+}
+
+// brrr.js tiles + breakdown — gated (Cap Left / Cash Recovered are refi math, independent)
+has("brrr tile CashFlowMo gated", brrrSrc, "val: insP ? insP.pendingText : fmt(m.cashFlowMo)");
+has("brrr tile MoS gated", brrrSrc, "val: insP ? insP.pendingText : mos.label");
+has("brrr tile DSCR gated", brrrSrc, "val: insP ? insP.pendingText : dscrText");
+has("brrr row NOI gated", brrrSrc, "v: insP ? insP.pendingText : fmt(m.NOI)");
+has("brrr row cashFlowYr gated", brrrSrc, "v: insP ? insP.pendingText : fmt(m.cashFlowYr)");
+has("brrr row capRate gated", brrrSrc, "v: insP ? insP.pendingText : pct(m.capRate)");
+has("brrr row postRefiCoC gated", brrrSrc, "v: insP ? insP.pendingText : cocText");
+has("brrr row DSCR gated", brrrSrc, "v: insP ? insP.pendingText : dscrText");
+has("brrr row MoS gated", brrrSrc, "v: insP ? insP.pendingText : mos.label");
+for (const bad of ["val: fmt(m.cashFlowMo)", "val: mos.label", "v: fmt(m.NOI)", "v: fmt(m.cashFlowYr)", "v: pct(m.capRate)", "v: cocText", "v: dscrText", "v: mos.label"]) {
+  not(`brrr unguarded absent: ${bad}`, brrrSrc, bad);
+}
+has("brrr independent Cap Left kept finite", brrrSrc, "val: fmt(m.capitalLeft)");
+has("brrr independent Cash Recovered kept finite", brrrSrc, "val: pct(m.cashRecoveredPct)");
+
+// clearpath.js summaries — verdict + remaining values gated; unguarded gone
+eq("summaries: both Verdict lines gated", (cpSrc.match(/'Verdict: ' \+ \(insOk \? r\.verdict : insurancePresentation\(insStatus\)\.label\)/g) || []).length, 2);
+has("ltr summary CapRate gated", cpSrc, "'Cap Rate (est.): ' + (insOk ?");
+has("ltr summary CashFlow gated", cpSrc, "'Monthly Cash Flow (est.): ' + (insOk ?");
+has("ltr summary CoC gated", cpSrc, "'Cash-on-Cash (est.): ' + (insOk ?");
+has("brrr summary CapRate gated", cpSrc, "'Cap Rate on cost (est.): ' + (insOk ?");
+// Scope "unguarded gone" checks to the LTR/BRRR summary bodies — the flip/STR
+// summaries have no insurance concept and legitimately keep unguarded lines.
+const ltrSumSrc = cpSrc.slice(cpSrc.indexOf("function buildLtrSummary"), cpSrc.indexOf("function buildBrrrSummary"));
+const brrrSumSrc = cpSrc.slice(cpSrc.indexOf("function buildBrrrSummary"), cpSrc.indexOf("function summaryFor"));
+not("ltr summary: unguarded Verdict gone", ltrSumSrc, "'Verdict: ' + r.verdict");
+not("ltr summary: unguarded CapRate gone", ltrSumSrc, "'Cap Rate (est.): ' + (Math.round");
+not("ltr summary: unguarded CoC gone", ltrSumSrc, "'Cash-on-Cash (est.): ' + (Math.round");
+not("ltr summary: unguarded CashFlow gone", ltrSumSrc, "'Monthly Cash Flow (est.): $'");
+not("brrr summary: unguarded Verdict gone", brrrSumSrc, "'Verdict: ' + r.verdict");
+not("brrr summary: unguarded CapRate-on-cost gone", brrrSumSrc, "'Cap Rate on cost (est.): ' + (Math.round");
+not("brrr summary: unguarded CashFlow gone", brrrSumSrc, "'Monthly Cash Flow (est.): $'");
+eq("flip+STR summaries untouched (out of scope)", (cpSrc.match(/'Verdict: ' \+ r\.verdict/g) || []).length, 2);
+
+// pipeline.js — saved-deal render path gated (badge, stats, LTR/BRRR details)
+has("pipeline imports readiness", plSrc, "from './insuranceReadiness.js'");
+has("pipeline badge cls gated", plSrc, "${insP ? 'warm' : d.cls}");
+has("pipeline badge text gated", plSrc, "${insP ? insP.tag : d.verdict}");
+has("pipeline stats gated", plSrc, "const cardStats  = insP ? pendingDealStats(d) : d.stats;");
+truthy("pipeline detail rows gated (>=7 Pending gates)", (plSrc.match(/pend \? 'Pending' :/g) || []).length >= 5 && (plSrc.match(/'Pending'/g) || []).length >= 10);
+not("pipeline: unguarded stats render gone", plSrc, "${d.stats.map(");
+
+// share.js — deal summary text gated
+has("share imports readiness", shSrc, "from './insuranceReadiness.js'");
+has("share headline gated", shSrc, "unresolvedIns ? insurancePresentation(insStatus).tag : d.verdict.toUpperCase()");
+eq("share: three Pending value gates", (shSrc.match(/unresolvedIns \? 'Pending' :/g) || []).length, 3);
+
+// Get Funding + handoff contracts unchanged
+has("Get Funding gate unchanged", cpSrc, "result.cls === 'hot' || result.cls === 'warm'");
+eq("handoff base-dscr gates unchanged", (cpSrc.match(/insuranceDependentHandoff\(r\)\.dscr/g) || []).length, 2);
+
+// Valid insurance: inventoried engine metrics remain finite and accurate
+truthy("LTR valid capRate finite>0", Number.isFinite(mL_valid.capRate) && mL_valid.capRate > 0);
+truthy("LTR valid capRate accurate (NOI/price)", Math.abs(mL_valid.capRate - (mL_valid.NOI / 250000) * 100) < 0.01);
+truthy("LTR valid cashFlowYr finite", Number.isFinite(mL_valid.cashFlowYr));
+truthy("LTR valid cashFlowMo = Yr/12", Math.abs(mL_valid.cashFlowMo - mL_valid.cashFlowYr / 12) < 0.01);
+truthy("LTR valid CoC finite", Number.isFinite(mL_valid.coc));
+truthy("LTR valid MoS emitted", ["strong", "tight", "fails"].includes(mL_valid.marginOfSafety));
+truthy("BRRR valid capRate finite>0", Number.isFinite(mB_valid.capRate) && mB_valid.capRate > 0);
+truthy("BRRR valid capRate accurate (NOI/all-in)", Math.abs(mB_valid.capRate - (mB_valid.NOI / mB_valid.allInCost) * 100) < 0.01);
+truthy("BRRR valid cashFlowYr finite", Number.isFinite(mB_valid.cashFlowYr));
+truthy("BRRR valid cashFlowMo finite", Number.isFinite(mB_valid.cashFlowMo));
+truthy("BRRR valid MoS emitted", ["strong", "tight", "fails"].includes(mB_valid.marginOfSafety));
+
 // ─── Result ──────────────────────────────────────────────────────────────────
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) {

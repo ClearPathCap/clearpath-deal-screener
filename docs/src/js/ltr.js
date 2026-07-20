@@ -132,10 +132,10 @@ export function analyzeLtr() {
   const mos = mosLabel(m.marginOfSafety);
   elv('ltr-metrics').innerHTML = buildMetrics([
     { label: 'DSCR',             val: insP ? insP.pendingText : dscrText, cls: insP ? 'warn' : m.dscr === null ? 'good' : m.dscr >= 1.25 ? 'good' : m.dscr >= 1.0 ? 'warn' : 'bad' },
-    { label: 'Cash-on-Cash',     val: pct(m.coc),         cls: cClass(m.coc, m.target, m.target * 0.6) },
-    { label: 'Cap Rate',         val: pct(m.capRate),     cls: cClass(m.capRate, 6, 4.5) },
-    { label: 'Monthly Cash Flow',val: fmt(m.cashFlowMo),  cls: cClass(m.cashFlowMo, 200, 0) },
-    { label: 'Margin of Safety', val: mos.label,          cls: mos.cls },
+    { label: 'Cash-on-Cash',     val: insP ? insP.pendingText : pct(m.coc),         cls: insP ? 'warn' : cClass(m.coc, m.target, m.target * 0.6) },
+    { label: 'Cap Rate',         val: insP ? insP.pendingText : pct(m.capRate),     cls: insP ? 'warn' : cClass(m.capRate, 6, 4.5) },
+    { label: 'Monthly Cash Flow',val: insP ? insP.pendingText : fmt(m.cashFlowMo),  cls: insP ? 'warn' : cClass(m.cashFlowMo, 200, 0) },
+    { label: 'Margin of Safety', val: insP ? insP.pendingText : mos.label,          cls: insP ? 'warn' : mos.cls },
   ]);
 
   const onePctPass = m.onePctRule >= 1.0;
@@ -150,14 +150,14 @@ export function analyzeLtr() {
     { l: 'Net operating income',                                                 v: insP ? insP.pendingText : fmt(m.NOI) },
     { l: 'Annual debt service (' + rateDisp + ')',                               v: '–' + fmt(m.debtYr) },
     { l: 'CapEx reserve (' + capexPct + '%, below NOI)', v: '–' + fmt(m.capexRes) },
-    { l: 'Net cash flow (annual)', v: fmt(m.cashFlowYr), tot: true, color: m.cashFlowYr >= 0 ? 'var(--accent)' : 'var(--danger)' },
-    { l: 'Net cash flow (monthly)',                                             v: fmt(m.cashFlowMo) },
+    { l: 'Net cash flow (annual)', v: insP ? insP.pendingText : fmt(m.cashFlowYr), tot: true, color: insP ? '' : (m.cashFlowYr >= 0 ? 'var(--accent)' : 'var(--danger)') },
+    { l: 'Net cash flow (monthly)',                                             v: insP ? insP.pendingText : fmt(m.cashFlowMo) },
     { l: 'DSCR (NOI ÷ debt service)',                                           v: insP ? insP.pendingText : dscrText },
-    { l: 'Cap rate (NOI ÷ price)',                                              v: pct(m.capRate) },
+    { l: 'Cap rate (NOI ÷ price)',                                              v: insP ? insP.pendingText : pct(m.capRate) },
     { l: '1% rule (rent ÷ price)',                                              v: m.onePctRule.toFixed(2) + '% ' + (onePctPass ? '· pass' : '· watch') },
     { l: 'Gross rent multiplier',                                              v: (Math.round(m.grm * 10) / 10) + 'x' },
     { l: 'Cash to close (down + points + closing)',                            v: fmt(m.cashToClose) },
-    { l: 'Margin of safety (stress: rent −5%, vacancy +3pts, rate +0.5%)',     v: mos.label },
+    { l: 'Margin of safety (stress: rent −5%, vacancy +3pts, rate +0.5%)',     v: insP ? insP.pendingText : mos.label },
   ];
   elv('ltr-breakdown').innerHTML = buildRows(rows);
 

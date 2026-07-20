@@ -136,8 +136,8 @@ export function analyzeBrrr() {
     { label: 'DSCR (post-refi)',    val: insP ? insP.pendingText : dscrText, cls: insP ? 'warn' : m.dscr === null ? 'good' : m.dscr >= 1.25 ? 'good' : m.dscr >= 1.0 ? 'warn' : 'bad' },
     { label: 'Capital Left In Deal',val: fmt(m.capitalLeft),      cls: m.capitalLeft <= 0.25 * capInvested ? 'good' : m.capitalLeft <= 0.5 * capInvested ? 'warn' : 'bad' },
     { label: 'Cash Recovered',      val: pct(m.cashRecoveredPct), cls: cClass(m.cashRecoveredPct, 75, 40) },
-    { label: 'Monthly Cash Flow',   val: fmt(m.cashFlowMo),       cls: cClass(m.cashFlowMo, 150, 0) },
-    { label: 'Margin of Safety',    val: mos.label,               cls: mos.cls },
+    { label: 'Monthly Cash Flow',   val: insP ? insP.pendingText : fmt(m.cashFlowMo),       cls: insP ? 'warn' : cClass(m.cashFlowMo, 150, 0) },
+    { label: 'Margin of Safety',    val: insP ? insP.pendingText : mos.label,               cls: insP ? 'warn' : mos.cls },
   ]);
 
   const rows = [
@@ -162,11 +162,11 @@ export function analyzeBrrr() {
     { l: 'Net operating income',                    v: insP ? insP.pendingText : fmt(m.NOI) },
     { l: 'Annual debt service (refi, ' + refiRate + ')', v: '–' + fmt(m.refiDebtYr) },
     { l: 'CapEx reserve (' + capexPct + '%, below NOI)', v: '–' + fmt(m.capexRes) },
-    { l: 'Net cash flow (annual)', v: fmt(m.cashFlowYr), tot: true, color: m.cashFlowYr >= 0 ? 'var(--accent)' : 'var(--danger)' },
+    { l: 'Net cash flow (annual)', v: insP ? insP.pendingText : fmt(m.cashFlowYr), tot: true, color: insP ? '' : (m.cashFlowYr >= 0 ? 'var(--accent)' : 'var(--danger)') },
     { l: 'DSCR (NOI ÷ refi debt)',                  v: insP ? insP.pendingText : dscrText },
-    { l: 'Cap rate (NOI ÷ all-in)',                 v: pct(m.capRate) },
-    { l: 'Post-refi cash-on-cash',                  v: cocText },
-    { l: 'Margin of safety (stress: ARV −5%, rent −5%)', v: mos.label },
+    { l: 'Cap rate (NOI ÷ all-in)',                 v: insP ? insP.pendingText : pct(m.capRate) },
+    { l: 'Post-refi cash-on-cash',                  v: insP ? insP.pendingText : cocText },
+    { l: 'Margin of safety (stress: ARV −5%, rent −5%)', v: insP ? insP.pendingText : mos.label },
   ];
   elv('brrr-breakdown').innerHTML = buildRows(rows);
 

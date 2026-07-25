@@ -1,0 +1,52 @@
+name: supabase-keepalive
+
+# Prevents the Supabase free-tier 7-day inactivity pause of project
+# qbddbblhduzwcfwslbac with one read-only request to its data API, twice
+# weekly. Uses ONLY the public publishable key that
+# docs/src/js/supabaseClient.js already ships to every browser
+# (SUPABASE_PUBLISHABLE_KEY). No secret / service_role key. Touches no
+# application source and no deployed assets.
+
+on:
+  schedule:
+    - cron: '23 7 * * 1'    # Mondays   07:23 UTC
+    - cron: '23 7 * * 4'    # Thursdays 07:23 UTC  (max gap 4 days << 7-day pause)
+  workflow_dispatch: {}       # manual run from the Actions tab
+
+permissions: {}               # least privilege — no repo scopes needed
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: https://qbddbblhduzwcfwslbac.supabase.co
+      # PUBLIC publishable key — same value as SUPABASE_PUBLISHABLE_KEY in
+      # docs/src/js/supabaseClient.js. NEVER a secret / service_role key.
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - name: Keep Supabase awake (read-only data-API query)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Real DB query (aggregate count under anon RLS -> 0 rows, no data)
+          # = unambiguous project activity. The publishable key is rejected by
+          # /rest/v1/ root but accepted for a concrete table path with
+          # apikey + Authorization: Bearer (verified 2026-07-24).
+          url="${SUPABASE_URL}/rest/v1/entitlements?select=count"
+          echo "GET ${url}"
+          code="$(curl -sS -o /tmp/ka_body -m 30 --retry 2 --retry-delay 10 \
+            -w '%{http_code}' \
+            -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
+            "${url}")"
+          echo "HTTP ${code}"
+          if [ "${code}" -lt 200 ] || [ "${code}" -ge 300 ]; then
+            echo "::error title=Supabase keep-alive failed::Ping returned HTTP ${code}; project qbddbblhduzwcfwslbac may pause within 7 days — investigate endpoint/key."
+            exit 1
+          fi
+          echo "Keep-alive OK (HTTP ${code})."

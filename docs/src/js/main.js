@@ -145,18 +145,51 @@ function updateSelfManage() {
 
 // ─── Save deal ────────────────────────────────────────────────────────────────
 
-function saveDeal(type) {
-  _saveDeal(type);
+// Pure outcome→button mapping (Wave A1): the success state is reachable ONLY
+// from a confirmed 'saved' status. label:null means "restore the pre-save label".
+function saveButtonUI(status) {
+  return status === 'saved'
+    ? { label: 'Saved ✓', saved: true }
+    : { label: null, saved: false };
+}
+
+async function saveDeal(type) {
   const btn = document.getElementById(type + '-save-btn');
-  if (btn) { btn.textContent = 'Saved ✓'; btn.classList.add('saved'); }
-  const page = document.getElementById('page-' + (type === 'flip' ? 'flip' : 'rental'));
-  const handler = () => {
-    if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
-    page.removeEventListener('input', handler);
-    page.removeEventListener('change', handler);
-  };
-  page.addEventListener('input', handler);
-  page.addEventListener('change', handler);
+  // Never restore a stale success/busy label — a re-save that fails must not
+  // resurrect 'Saved ✓' from a previous save.
+  const originalLabel = (btn && btn.textContent !== 'Saved ✓' && btn.textContent !== 'Saving…')
+    ? btn.textContent : 'Save';
+  const originalDisabled = btn ? btn.disabled : false;
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; btn.classList.remove('saved'); }
+
+  let outcome;
+  try {
+    outcome = await _saveDeal(type);
+  } catch (e) {
+    // Unexpected failure — pipeline.js owns expected-path feedback; never leave
+    // the button disabled or stuck on 'Saving…' (finally below restores it).
+    console.warn('Save failed unexpectedly:', e);
+  } finally {
+    if (btn) {
+      const ui = saveButtonUI(outcome && outcome.status);
+      btn.disabled = originalDisabled;
+      btn.textContent = ui.label == null ? originalLabel : ui.label;
+      btn.classList.toggle('saved', ui.saved);
+    }
+  }
+
+  // Existing revert-on-input behavior — armed only after a genuine success.
+  if (outcome && outcome.status === 'saved') {
+    const page = document.getElementById('page-' + (type === 'flip' ? 'flip' : 'rental'));
+    const handler = () => {
+      if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
+      page.removeEventListener('input', handler);
+      page.removeEventListener('change', handler);
+    };
+    page.addEventListener('input', handler);
+    page.addEventListener('change', handler);
+  }
+  return outcome;
 }
 
 // ─── Clear & New Deal ─────────────────────────────────────────────────────────
@@ -877,6 +910,35 @@ function updateAccountUI() {
   }
 }
 
+// ── Wave A1 auth chip (util-bar) ─────────────────────────────────────────────
+// Pure state→presentation mapping. `init` (ready=false) shows a neutral chip and
+// no action until the first auth resolution completes — isSignedIn()===false is
+// NOT evidence that initialization finished. Never exposes the email.
+function authChipUI(ready, signedIn) {
+  if (!ready) return { label: '…', aria: 'Checking sign-in status', action: null };
+  return signedIn
+    ? { label: 'Signed in', aria: 'Account — signed in', action: 'account' }
+    : { label: 'Sign in',  aria: 'Sign in',              action: 'signin' };
+}
+
+let _authReady = false;
+
+function renderAuthChip() {
+  const chip = document.getElementById('auth-chip');
+  if (!chip) return;
+  const ui = authChipUI(_authReady, isSignedIn());
+  chip.textContent = ui.label;
+  chip.setAttribute('aria-label', ui.aria);
+}
+
+function handleAuthChipClick() {
+  const ui = authChipUI(_authReady, isSignedIn());
+  if (!ui.action) return;   // init state: inert until auth readiness resolves
+  // Both views live in the existing upgrade modal's account block — signed-out
+  // shows the sign-in row, signed-in shows the account row (updateAccountUI).
+  openUpgrade(ui.action === 'account' ? 'general' : 'save');
+}
+
 // Re-render every tier-dependent surface after the server tier resolves (boot)
 // or after sign-in/out — without re-binding the badge's tap listener.
 function refreshTierUI() {
@@ -888,6 +950,7 @@ function refreshTierUI() {
   renderAllSlots();
   renderGuideMarketIntel();
   updateAccountUI();
+  renderAuthChip();
 }
 
 // ─── Dev mode indicator ───────────────────────────────────────────────────────
@@ -1147,6 +1210,10 @@ Object.assign(window, {
   verifySignInCode,
   signOutAccount: doSignOut,
   openUpgrade,
+  // auth chip (Wave A1) — pure mappers exposed for the executable test suite
+  handleAuthChipClick,
+  authChipUI,
+  saveButtonUI,
   // pipeline funding (clearpath)
   handlePipelineFundingClick,
 });
@@ -1172,7 +1239,14 @@ initOnboarding();
 // above paints from the cached tier for speed; this corrects it from the server.
 onAuthChange(refreshTierUI);
 onAuthChange(syncPipelineOnAuth);
-initAuthAndEntitlement();
+// Wave A1 (auth chip readiness): the boot promise is the proven completion
+// boundary — it resolves only after the initial getSession() settled, the auth
+// subscription is wired, and the first entitlement sync + notify ran. Until
+// then the chip stays in its neutral init state; no timers, no guessing.
+initAuthAndEntitlement().then(() => {
+  _authReady = true;
+  renderAuthChip();
+});
 
 // Keep the (account-scoped) pipeline in step with auth: pull it from the server on
 // sign-in / session restore, drop it on sign-out. Re-render if the pipeline tab is

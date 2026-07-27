@@ -20,25 +20,29 @@ let pendingDeleteId = null;
 
 // ─── Save ─────────────────────────────────────────────────────────────────────
 
-export function saveDeal(type) {
+// Wave A1 save outcome contract: resolves to {status} where status is exactly one
+// of refused-auth | refused-name | refused-result | refused-cap | refused-busy |
+// saved | save-failed (save-failed adds failureClass:'auth'|'other'). Success
+// feedback fires ONLY after the durable server write confirms (await-then-commit).
+export async function saveDeal(type) {
   // Pipeline requires a free account (Option A) — anonymous users can analyze a
   // deal and request funding, but SAVING prompts sign-in / account creation.
   if (!isSignedIn()) {
     window.showToast && window.showToast('Create a free account to save deals');
     window.openUpgrade && window.openUpgrade('save');
-    return;
+    return { status: 'refused-auth' };
   }
 
   const nameId  = type + '-deal-name';
   const notesId = type + '-notes';
   const name    = document.getElementById(nameId).value.trim();
-  if (!name) { alert('Give this deal a name first.'); return; }
+  if (!name) { alert('Give this deal a name first.'); return { status: 'refused-name' }; }
 
   const result = type === 'flip' ? getLastFlipResult()
     : type === 'ltr'  ? getLastLtrResult()
     : type === 'brrr' ? getLastBrrrResult()
     : getLastRentalResult();
-  if (!result) { alert('Analyze the deal first, then save.'); return; }
+  if (!result) { alert('Analyze the deal first, then save.'); return { status: 'refused-result' }; }
 
   // Free Starter keeps a small pipeline; Investor/Pro are unlimited.
   const tier  = getActiveTier();
@@ -46,7 +50,7 @@ export function saveDeal(type) {
   if (tier !== 'investor' && tier !== 'pro' && deals.length >= FREE_DEAL_CAP) {
     window.showToast && window.showToast(`That's your ${FREE_DEAL_CAP} free deal saves — upgrade for an unlimited pipeline`, 4200);
     window.openUpgrade && window.openUpgrade('cap');
-    return;
+    return { status: 'refused-cap' };
   }
 
   const notes = document.getElementById(notesId).value.trim();
@@ -62,11 +66,25 @@ export function saveDeal(type) {
     stats:   buildDealStats(type, result),
   };
 
-  deals.unshift(deal);
-  saveDeals(deals);
+  // Immutable candidate — the cache is committed by storage only on RPC success.
+  const res = await saveDeals([deal, ...deals]);
 
-  // Keep fields intact — only show brief confirmation (Section 5g)
-  window.showToast && window.showToast('Deal saved to pipeline');
+  if (res.ok) {
+    // Keep fields intact — only show brief confirmation (Section 5g)
+    window.showToast && window.showToast('Deal saved to pipeline');
+    return { status: 'saved' };
+  }
+  if (res.reason === 'busy') {
+    window.showToast && window.showToast('Another pipeline update is in progress.');
+    return { status: 'refused-busy' };
+  }
+  if (res.reason === 'auth') {
+    window.showToast && window.showToast('Your session has expired — sign in again to save this deal.', 4200);
+    window.openUpgrade && window.openUpgrade('save');
+    return { status: 'save-failed', failureClass: 'auth' };
+  }
+  window.showToast && window.showToast("Couldn't save this deal — connection or server problem. Try again.", 4200);
+  return { status: 'save-failed', failureClass: 'other' };
 }
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
@@ -82,14 +100,46 @@ export function requestDelete(id, e) {
   openModal('modal-delete');
 }
 
-export function confirmDelete() {
-  if (pendingDeleteId == null) return;
-  const deals = getDeals().filter(d => d.id !== pendingDeleteId);
-  saveDeals(deals);
+// Wave A1 delete outcome contract: resolves to {status} where status is exactly
+// one of refused-auth | refused-busy | deleted | delete-failed (delete-failed adds
+// failureClass:'auth'|'other'). The row stays visible until persistence succeeds —
+// a failed delete never removes it optimistically.
+export async function confirmDelete() {
+  // Entry auth gate (defense in depth — the signed-out UI can't reach this).
+  if (!isSignedIn()) {
+    pendingDeleteId = null;
+    closeModal('modal-delete');
+    window.showToast && window.showToast('Sign in to update your pipeline');
+    window.openUpgrade && window.openUpgrade('save');
+    return { status: 'refused-auth' };
+  }
+  // No pending delete = stale/duplicate invocation of an already-settled request.
+  if (pendingDeleteId == null) return { status: 'refused-busy' };
+
+  const candidate = getDeals().filter(d => d.id !== pendingDeleteId);
+  const res = await saveDeals(candidate);
+
+  if (res.ok) {
+    pendingDeleteId = null;
+    closeModal('modal-delete');
+    renderPipeline();
+    window.showToast && window.showToast('Deal deleted');
+    return { status: 'deleted' };
+  }
+  if (res.reason === 'busy') {
+    // Keep the row AND the pending id so the user can retry once the lock clears.
+    window.showToast && window.showToast('Another pipeline update is in progress.');
+    return { status: 'refused-busy' };
+  }
   pendingDeleteId = null;
   closeModal('modal-delete');
-  renderPipeline();
-  window.showToast && window.showToast('Deal deleted');
+  if (res.reason === 'auth') {
+    window.showToast && window.showToast('Your session has expired — sign in again to update your pipeline.', 4200);
+    window.openUpgrade && window.openUpgrade('save');
+    return { status: 'delete-failed', failureClass: 'auth' };
+  }
+  window.showToast && window.showToast("Couldn't delete this deal — connection or server problem. It's still in your pipeline.", 4200);
+  return { status: 'delete-failed', failureClass: 'other' };
 }
 
 // ─── Filter ───────────────────────────────────────────────────────────────────

@@ -30,6 +30,9 @@
 
 <!-- Global utility row — share + install, kept off the wordmark row (Round 2 #3) -->
 <div class="util-bar">
+  <!-- Wave A1: persistent auth chip — '…' until auth readiness resolves, then
+       Sign in / Signed in. Never shows the email; the account modal does. -->
+  <button class="auth-chip" id="auth-chip" type="button" aria-label="Checking sign-in status" onclick="handleAuthChipClick()" style="height:34px;padding:0 12px;border-radius:17px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;flex-shrink:0">…</button>
   <button class="icon-btn" title="Share app" onclick="openShareApp()" aria-label="Share app">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
   </button>
@@ -742,7 +745,7 @@
       </div>
       <div class="header-meta">
         <h1>My Pipeline</h1>
-        <p>Tap any deal to expand · all data stays on this device</p>
+        <p>Tap any deal to expand · When signed in, saved pipeline deals are stored with your account.</p>
       </div>
     </div>
   </div>

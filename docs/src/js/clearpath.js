@@ -2,7 +2,7 @@
 
 import { getActiveTier } from './tiers.js';
 import { getDeals } from './storage.js';
-import { buildCpcUrl, qualifiesForCpc, qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_LOAN_MIN, propertyBand, BAND_RULES } from './funding.js';
+import { buildCpcUrl, qualifiesForCpc, qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_BROKER_MIN, propertyBand, BAND_RULES } from './funding.js';
 import { resultInsuranceStatus, insuranceReady, insuranceDependentHandoff, insuranceSummaryWarning, insurancePresentation, INS_MISSING, INS_EXPLICIT_ZERO } from './insuranceReadiness.js';
 
 const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: 'ltr-funding-btn', brrr: 'brrr-funding-btn' };
@@ -286,12 +286,15 @@ function shouldShowFunding(result) {
   return result.cls === 'hot' || result.cls === 'warm';
 }
 
-// Item 6: true when the ONLY reason a deal fails its CPC box is loan < the $50K min.
+// Item 6: true when the ONLY reason a deal misses its CPC box is loan < the CPC
+// brokering minimum. This case gets the inactive Get Funding button with the
+// referral-floor caption (the deal is fully analyzed; only the handoff is
+// unavailable), while every other miss keeps its specific outsideBoxHTML reason.
 function belowMinimumOnly(type, deal) {
   const { loan } = deal;
   const band = deal.band || '1-4';
-  if (band === '9plus') return false;                // 9+ is a manual-review case, not below-min
-  if (!loan || loan >= CPC_LOAN_MIN) return false;   // must be genuinely under the minimum
+  if (band === '9plus') return false;                  // 9+ is a manual-review case, not below-min
+  if (!loan || loan >= CPC_BROKER_MIN) return false;   // must be genuinely under the minimum
   if (type === 'ltr' || type === 'brrr') {           // DSCR box: band LTV ceiling, DSCR ≥ 1.0
     const maxLtv = (BAND_RULES[band] || BAND_RULES['1-4']).maxLtv;
     if (deal.ltv !== undefined && deal.ltv > maxLtv) return false;
@@ -320,9 +323,6 @@ function outsideBoxHTML(type, deal) {
   if (!loan || loan <= 0) {
     return fundingNote("All-cash scenario — no financing requested, so there's nothing to submit. Add a loan amount to screen it against the Clear Path box.");
   }
-  if (loan < CPC_LOAN_MIN) {
-    return fundingNote(`This deal's loan (~$${Math.round(loan / 1000)}K) is below the $50K private-money minimum Clear Path brokers. Deals $50K+ get a funding option here.`);
-  }
   if (type === 'ltr' || type === 'brrr') {
     const maxLtv = (BAND_RULES[band] || BAND_RULES['1-4']).maxLtv;
     if (ltv !== undefined && ltv > maxLtv)
@@ -335,8 +335,32 @@ function outsideBoxHTML(type, deal) {
     if (deal.arv && loan / deal.arv > 0.70)
       return fundingNote(`Estimated loan is over 70% of ARV — lower the loan to fit the box.`);
   }
+  // Below-minimum: reached only when a fit reason above did not already apply
+  // (the pure below-min case renders the inactive button instead — see
+  // renderBelowMinFundingHTML). Kept as a defensive branch so a combined miss
+  // still explains itself if the fit checks ever pass it through.
+  if (loan < CPC_BROKER_MIN) {
+    return fundingNote(`Clear Path Capital brokers private-money loans from $100K, and this deal's estimated loan (~$${Math.round(loan / 1000)}K) is below that minimum — the analysis above still applies.`);
+  }
   // Catch-all so a hot/warm verdict is NEVER blank.
   return fundingNote("This scenario sits just outside the Clear Path box as entered — adjust the loan, LTV, or DSCR and re-run, or contact Clear Path to review it.");
+}
+
+// ─── Below-brokering-minimum treatment: inactive button + referral caption ────
+// The screener analyzes and grades every deal regardless of size; CPC's $100K
+// minimum is a referral threshold. Below it the Get Funding button renders
+// INACTIVE with a short caption saying why — CPC is not declining the deal and
+// no approval or terms are implied; the handoff is simply not available at this
+// loan size.
+function renderBelowMinFundingHTML(type, cfg, cls, deal) {
+  const btnLabel = getFundingLabel(type, cfg, cls, deal.band);
+  const k = Math.round((deal.loan || 0) / 1000);
+  return `
+    <button class="btn-get-funding" disabled aria-disabled="true" title="Clear Path Capital brokers loans from $100K">
+      <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
+      ${btnLabel}
+    </button>
+    <div style="font-size:11px;color:#9aa4b2;margin-top:6px;line-height:1.45">Clear Path Capital brokers private-money loans from $100K. This deal's estimated loan (~$${k}K) is below that minimum, so the Clear Path handoff isn't available for it — the analysis above is unaffected.</div>`;
 }
 
 // Type-aware CTA label. LTR names the DSCR product, BRRR names BRRR; 5–8 units name
@@ -374,7 +398,14 @@ export function maybeShowFundingButton(result) {
 
   const deal = buildDealParams(result);
   if (!qualifiesForType(result.type, deal)) {
-    // B1: a hot/warm deal outside the box gets a SPECIFIC reason, never a blank area.
+    // Below the CPC brokering minimum and otherwise in the box: inactive button
+    // + referral-floor caption. Every other miss keeps its specific reason —
+    // B1: a hot/warm deal outside the box never gets a blank area.
+    if (belowMinimumOnly(result.type, deal)) {
+      const cfg = getTierConfig();
+      container.innerHTML = renderBelowMinFundingHTML(result.type, cfg, result.cls, deal);
+      return;
+    }
     container.innerHTML = outsideBoxHTML(result.type, deal);
     return;
   }
@@ -403,9 +434,16 @@ export function getPipelineFundingButtonHTML(deal) {
   // Show for positive-return deals (not just hot) — Task 10
   const result = deal.data || deal;
   if (!shouldShowFunding(result)) return '';
-  // Same CPC qualification gate as the analyzer; mirror the under-$50K explainer
+  // Same CPC qualification gate as the analyzer; mirror the below-minimum
+  // inactive-button treatment and the specific outside-box reasons.
   const dp = buildDealParams(result);
-  if (!qualifiesForType(result.type, dp)) return outsideBoxHTML(result.type, dp);
+  if (!qualifiesForType(result.type, dp)) {
+    if (belowMinimumOnly(result.type, dp)) {
+      const cfg = getTierConfig();
+      return renderBelowMinFundingHTML(result.type, cfg, result.cls, dp);
+    }
+    return outsideBoxHTML(result.type, dp);
+  }
   const cfg = getTierConfig();
   const btnLabel = getFundingLabel(result.type, cfg, result.cls, dp.band);
   return `<button class="btn-get-funding pipeline-funding-btn" onclick="event.stopPropagation();handlePipelineFundingClick(${deal.id})">

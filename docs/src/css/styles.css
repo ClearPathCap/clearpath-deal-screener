@@ -314,8 +314,12 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 /* GET FUNDING BUTTON */
 .btn-get-funding{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:52px;background:var(--accent);border:none;border-radius:10px;color:var(--accent-text);font-family:var(--font);font-size:13px;font-weight:800;letter-spacing:.03em;cursor:pointer;margin:14px 0;transition:opacity .15s,transform .1s;white-space:nowrap}
 .btn-get-funding:active{transform:scale(.98);opacity:.9}
+/* Below CPC's $100K brokering minimum the button renders but is inactive —
+   the deal is fully analyzed; only the Clear Path handoff is unavailable. */
+.btn-get-funding:disabled{opacity:.5;cursor:not-allowed}
+.btn-get-funding:disabled:active{transform:none;opacity:.5}
 .funding-icon{width:20px;height:20px;object-fit:contain;flex-shrink:0}
-/* Under-box explainer — hot/warm deal below the $150K private-money minimum */
+/* Under-box explainer — hot/warm deal outside the CPC box for a specific reason */
 .funding-underbox{margin:14px 0;padding:11px 13px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;font-size:12px;line-height:1.5;color:var(--muted)}
 
 /* BEGINNER/GUIDE MODE — label/hint visibility */

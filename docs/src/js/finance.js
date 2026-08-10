@@ -4,9 +4,13 @@
 // so the analyzer glue (ltr.js / brrr.js) and the Node acceptance tests both run
 // the identical math. Reference for SPEC_LTR_ANALYZER §2 / SPEC_BRRR_ANALYZER §2.
 
-// CPC box: $50K floor (lowered from $150K), and NO upper cap — the $5M cap was
-// removed 2026-06-18 (box/explainer copy → "$50K+"). Pure so the gates stay testable.
-export const CPC_LOAN_MIN = 50000;
+// CPC brokering minimum — a REFERRAL threshold, not an analysis limit. The
+// screener sizes and grades every deal regardless of size; this constant only
+// governs whether the Clear Path handoff is available (CPC brokers loans of
+// $100K+, matching the CPC site's public range). History: $150K → $50K
+// (2026-06-18) → $100K (2026-08-10, aligned with CPC's owner-ratified floor).
+// No upper cap. Pure so the gates stay testable.
+export const CPC_BROKER_MIN = 100000;
 
 // ─── Property-size bands (multifamily support) ───────────────────────────────
 // 1–4 units = standard SFR / small-residential DSCR; 5–8 = small-multifamily DSCR
@@ -24,7 +28,7 @@ export const BAND_RULES={
 // LTV ceiling is band-specific (1–4 ≤ 80%, 5–8 ≤ 75%); 9+ never auto-qualifies.
 export function qualifiesForCpcLtr({ loan, ltv, dscr, band = '1-4' }) {
   if (band === '9plus') return false;                         // commercial → manual review only
-  if (!loan || loan < CPC_LOAN_MIN) return false;
+  if (!loan || loan < CPC_BROKER_MIN) return false;
   const maxLtv = (BAND_RULES[band] || BAND_RULES['1-4']).maxLtv;
   if (ltv !== undefined && ltv > maxLtv) return false;
   if (dscr !== undefined && dscr < 1.0) return false;

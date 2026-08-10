@@ -19,6 +19,7 @@ const {
   incomeBlock,
   qualifiesForCpcLtr,
   qualifiesForCpcBrrr,
+  CPC_BROKER_MIN,
   computeFlipStress,
   flipVerdict,
   mosLabel,
@@ -79,10 +80,10 @@ function truthy(label, v) {
   const v = ltrVerdict(m);
   eq("LTR-A verdict", v.cls, "warm");
   truthy("LTR-A DSCR-bridge sub-copy", v.vsub.includes("finance-and-hold"));
-  // $50K override: loan 135k ≥ 50k, LTV 75% ≤ 80%, DSCR 1.34 ≥ 1.0 → qualifies
-  // (the spec's $150K 'fails minimum' note is superseded by the 6/18 override).
+  // CPC brokering min: loan 135k ≥ 100k, LTV 75% ≤ 80%, DSCR 1.34 ≥ 1.0 → qualifies
+  // (threshold history: $150K → $50K on 6/18 → $100K on 8/10, aligned with CPC's floor).
   eq(
-    "LTR-A qualifiesForCpcLtr (under $50K override)",
+    "LTR-A qualifiesForCpcLtr (above $100K brokering min)",
     qualifiesForCpcLtr({ loan: Math.round(m.loan), ltv: m.loan / m.price, dscr: m.dscr }),
     true
   );
@@ -278,13 +279,21 @@ eq("mosLabel strong → good", mosLabel("strong").cls, "good");
 eq("mosLabel tight → warn", mosLabel("tight").cls, "warn");
 eq("mosLabel fails → bad", mosLabel("fails").cls, "bad");
 
-// ─── Funnel gate edge: $50K floor enforced; NO upper cap ($5M cap removed) ─────
+// ─── Funnel gate edge: CPC brokering minimum $100K (a referral threshold, not
+// an analysis limit — sizing/grading carry no floor); NO upper cap ─────────────
+eq("gate: CPC_BROKER_MIN is $100K", CPC_BROKER_MIN, 100000);
 eq("gate: $40K loan out of box", qualifiesForCpcLtr({ loan: 40000, ltv: 0.75, dscr: 1.3 }), false);
+eq("gate: $99,999 loan out of box (below brokering min)", qualifiesForCpcLtr({ loan: 99999, ltv: 0.75, dscr: 1.3 }), false);
+eq("gate: $100K floor exactly in box", qualifiesForCpcLtr({ loan: 100000, ltv: 0.75, dscr: 1.3 }), true);
 eq("gate: $6M loan IN box (no upper cap)", qualifiesForCpcLtr({ loan: 6000000, ltv: 0.75, dscr: 1.3 }), true);
 eq("gate: $20M loan IN box (no upper cap)", qualifiesForCpcBrrr({ loan: 20000000, ltv: 0.75, dscr: 1.3 }), true);
 eq("gate: LTV 85% out of box", qualifiesForCpcLtr({ loan: 200000, ltv: 0.85, dscr: 1.3 }), false);
 eq("gate: DSCR 0.9 out of box", qualifiesForCpcLtr({ loan: 200000, ltv: 0.75, dscr: 0.9 }), false);
-eq("gate: $50K floor in box", qualifiesForCpcLtr({ loan: 50000, ltv: 0.75, dscr: 1.3 }), true);
+// Analysis carries no floor: a tiny deal still computes and grades normally.
+{
+  const tiny = computeLtr({ price: 60000, down: 25, rate: 7.5, amort: 30, rent: 800, taxes: 900, ins: 400 });
+  eq("no analysis floor: $45K-loan deal still computes DSCR", Number.isFinite(tiny.dscr), true);
+}
 
 // ─── Multifamily bands (5–8 small multifamily; 9+ manual review) ──────────────
 {

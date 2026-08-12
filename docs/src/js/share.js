@@ -14,11 +14,11 @@ const closeModal = id => document.getElementById(id).classList.remove('active');
 // ─── Share app ────────────────────────────────────────────────────────────────
 
 export function openShareApp() {
-  const msg = 'Check out this real estate Deal Screener app — it analyzes flips and STRs in seconds: ' + APP_URL;
+  const msg = 'Check out DealFit by Clear Path Capital — it analyzes real estate deals in seconds: ' + APP_URL;
   const opts = [
     canNativeShare() ? {
       icon: shareIconSVG('native'), name: 'Quick Share', desc: 'Pick a contact from your phone',
-      action: () => nativeShare('Deal Screener app', msg),
+      action: () => nativeShare('DealFit by Clear Path Capital', msg),
     } : null,
     {
       icon: shareIconSVG('sms'), name: 'Send by Text', desc: 'Open your SMS app pre-filled',
@@ -30,7 +30,7 @@ export function openShareApp() {
     },
     {
       icon: shareIconSVG('email'), name: 'Email', desc: 'Email this app to someone',
-      href: 'mailto:?subject=' + encodeURIComponent('Deal Screener app') + '&body=' + encodeURIComponent(msg),
+      href: 'mailto:?subject=' + encodeURIComponent('DealFit by Clear Path Capital') + '&body=' + encodeURIComponent(msg),
     },
     {
       icon: shareIconSVG('copy'), name: 'Copy Link', desc: 'Paste anywhere',
@@ -49,7 +49,7 @@ export function shareDeal(id) {
   const deal = getDeals().find(d => d.id === id);
   if (!deal) return;
   const summary = buildDealSummaryText(deal);
-  const fullMsg = summary + '\n\nAnalyzed with Deal Screener: ' + APP_URL;
+  const fullMsg = summary + '\n\nAnalyzed with DealFit: ' + APP_URL;
   const opts = [
     canNativeShare() ? {
       icon: shareIconSVG('native'), name: 'Quick Share', desc: 'Pick a contact from your phone',

@@ -1,6 +1,6 @@
 {
-  "name": "Deal Screener — Powered by Clear Path Capital",
-  "short_name": "Deal Screener",
+  "name": "DealFit by Clear Path Capital",
+  "short_name": "DealFit",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

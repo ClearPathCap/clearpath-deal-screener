@@ -21,7 +21,7 @@ export function openInstall() {
 
   let html;
   if (isStandalone) {
-    html = "<strong>You're already running the installed app.</strong><br>Look on your home screen for the Deal Screener icon.";
+    html = "<strong>You're already running the installed app.</strong><br>Look on your home screen for the DealFit icon.";
   } else if (isIOS) {
     html = '<strong>On iPhone / iPad:</strong><ol><li>Tap the <strong>Share</strong> icon at the bottom of Safari (square with arrow)</li><li>Scroll down and tap <strong>"Add to Home Screen"</strong></li><li>Tap <strong>Add</strong> in the top right</li></ol>The app will launch full-screen from your home screen.';
   } else if (isAndroid) {

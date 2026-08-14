@@ -255,7 +255,9 @@ not("ltr summary: unguarded CashFlow gone", ltrSumSrc, "'Monthly Cash Flow (est.
 not("brrr summary: unguarded Verdict gone", brrrSumSrc, "'Verdict: ' + r.verdict");
 not("brrr summary: unguarded CapRate-on-cost gone", brrrSumSrc, "'Cap Rate on cost (est.): ' + (Math.round");
 not("brrr summary: unguarded CashFlow gone", brrrSumSrc, "'Monthly Cash Flow (est.): $'");
-eq("flip+STR summaries untouched (out of scope)", (cpSrc.match(/'Verdict: ' \+ r\.verdict/g) || []).length, 2);
+// (blocker-fix F-6 verification round: the STR summary gained the combined-expense
+// gate, so only the flip summary legitimately keeps an unguarded Verdict line.)
+eq("flip summary only unguarded Verdict (STR gated by F-6)", (cpSrc.match(/'Verdict: ' \+ r\.verdict/g) || []).length, 1);
 
 // pipeline.js — saved-deal render path gated (badge, stats, LTR/BRRR details)
 has("pipeline imports readiness", plSrc, "from './insuranceReadiness.js'");

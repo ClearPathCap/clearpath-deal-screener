@@ -145,11 +145,17 @@ export function incomePresentation(taxSt, insSt) {
   const taxPend = !taxReady(taxSt);
   const insP = insurancePresentation(insSt);
   if (taxPend && insP) {
+    // Verification round: the sub-copy is state-accurate — insurance may be missing
+    // OR an entered $0 awaiting verification; "neither was entered" was false for
+    // the tax-blank + insurance-$0 corner.
+    const insZero = insSt === INS_EXPLICIT_ZERO;
     return {
       status: 'taxes_and_insurance',
       tag: 'NEEDS TAXES + INSURANCE',
       label: 'Add Taxes & Insurance for a Lender-Ready DSCR',
-      sub: 'Property taxes and insurance are required for a lender-ready calculation — neither was entered, so the DSCR and NOI shown are Pending. Add both for accurate figures; you can still explore funding in the meantime.',
+      sub: 'Property taxes and insurance are required for a lender-ready calculation — taxes weren\'t entered and insurance ' +
+        (insZero ? 'was entered as $0 (confirm before lender review)' : 'wasn\'t entered') +
+        ', so the DSCR and NOI shown are Pending. Resolve both for accurate figures; you can still explore funding in the meantime.',
       pendingText: 'Pending',
     };
   }
@@ -187,6 +193,14 @@ export function strExpensePresentation(status) {
       sub: 'Taxes + insurance (annual) wasn\'t entered, so the returns shown are Pending — a blank expense is unknown, not $0. Add the combined annual figure for an accurate read; you can still explore funding in the meantime.',
       pendingText: 'Pending',
     };
+  }
+  return null;
+}
+
+// Clipboard-summary warning for the STR combined field; null when resolved.
+export function strExpenseSummaryWarning(status) {
+  if (status === INS_MISSING) {
+    return '⚠ TAXES + INSURANCE NOT ENTERED — returns are Pending and not decision-ready until the combined annual figure is added.';
   }
   return null;
 }

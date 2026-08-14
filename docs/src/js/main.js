@@ -682,10 +682,18 @@ function validateRequiredFields(type) {
   const box = document.getElementById(CURRENCY_CONTAINERS[type] || '');
   if (box) {
     box.querySelectorAll('[data-currency]').forEach(el => {
-      if (!isMalformedCurrency(el.value)) return;
-      el.classList.add('field-error');
       const wrap = el.closest('.field');
       let msg = wrap ? wrap.querySelector('.validation-msg') : null;
+      if (!isMalformedCurrency(el.value)) {
+        // Clear a stale malformed flag once the field is corrected (required-list
+        // fields are managed by the loop above; don't fight its message).
+        if (!fields.some(f => f.id === el.id)) {
+          el.classList.remove('field-error');
+          if (msg && msg.textContent === 'Enter a valid dollar amount') msg.textContent = '';
+        }
+        return;
+      }
+      el.classList.add('field-error');
       if (!msg && wrap) {
         msg = document.createElement('div');
         msg.className = 'validation-msg';

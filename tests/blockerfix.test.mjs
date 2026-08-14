@@ -88,8 +88,11 @@ function near(label, actual, expected, tol = 2) {
 
   // Zero-refi BRRR (refiLtv 0 → refiLoan 0, dscr null): the PRE-EXISTING structural
   // guard refiLoan ≤ acqPayoff fires first (a BRRR with no refinance isn't a BRRR),
-  // so dscr-null deals stay COLD via mechanics — unchanged from baseline, and the
-  // coversDebt dscr-null arm is defensive-only in BRRR (proven unreachable here).
+  // so dscr-null deals stay COLD via mechanics — unchanged from baseline. The
+  // coversDebt dscr-null arm is defensive-only in BRRR: unreachable from the UI
+  // path (parseNumOpt turns garbage into undefined → refiLtv defaults to 75, and a
+  // real refiLoan of 0 trips the structural guard); a direct API call with a NaN
+  // refiLtv can bypass the guard — recorded in the evidence, not a UI surface.
   const acNoRefi = FIN.computeBrrr({
     price: 200000, rehab: 50000, arv: 320000, rent: 1560, contingency: 15, cc: 2,
     hold: 6, carry: 600, refiLtv: 0, vac: 5, pm: 8, maint: 5, capex: 5, tax: 9000, ins: 4000, hoa: 0,
@@ -97,6 +100,62 @@ function near(label, actual, expected, tol = 2) {
   eq("F1: zero-refi dscr null", acNoRefi.dscr, null);
   truthy("F1: zero-refi trips structural guard (refiLoan ≤ acqPayoff)", acNoRefi.refiLoan <= acNoRefi.acqPayoff);
   eq("F1: zero-refi still COLD via mechanics (baseline behavior)", FIN.brrrVerdict(acNoRefi).cls, "pass");
+
+  // ── Verification-round counterexamples (adversarial verifier, 2026-08-14):
+  // covered-debt deals with cf ≥ 0 that miss every named WARM arm must land in the
+  // WARM catch-all — never fall through to COLD. These three executed cases graded
+  // COLD before the catch-all existed (and at baseline 4097125f).
+  const ce1 = FIN.computeBrrr({ // DSCR 2.52-class: low refi LTV → low recovery, strong coverage
+    price: 300000, rehab: 100000, arv: 550000, rent: 4200, contingency: 15, cc: 2,
+    hold: 6, carry: 600, refiLtv: 30, refiRate: 7.0, refiAmort: 30, reficost: 3,
+    vac: 5, pm: 8, maint: 5, capex: 0, units: 1, tax: 6000, ins: 2400, hoa: 0,
+  });
+  truthy("F1-CE1: covered (DSCR ≥ 1.0)", ce1.dscr >= 1.0);
+  truthy("F1-CE1: cf ≥ 0", ce1.cashFlowMo >= 0);
+  truthy("F1-CE1: misses warm arms (rec < 40)", ce1.cashRecoveredPct < 40);
+  eq("F1-CE1: WARM catch-all, not COLD", FIN.brrrVerdict(ce1).cls, "warm");
+  truthy("F1-CE1: copy names trapped capital", /capital comes back/.test(FIN.brrrVerdict(ce1).vsub));
+  const ce2 = FIN.computeBrrr({ // the spec's own W4-F3b made strictly healthier (capex 0)
+    price: 300000, rehab: 100000, arv: 550000, rent: 4200, contingency: 15, cc: 2,
+    hold: 6, carry: 600, refiLtv: 75, refiRate: 7.0, refiAmort: 30, reficost: 3,
+    vac: 5, pm: 8, maint: 5, capex: 0, units: 1, tax: 6000, ins: 2400, hoa: 0,
+  });
+  truthy("F1-CE2: covered, thin DSCR, positive cf", ce2.dscr >= 1.0 && ce2.dscr < 1.1 && ce2.cashFlowMo >= 0);
+  eq("F1-CE2: healthier-than-F3b grades WARM, not COLD", FIN.brrrVerdict(ce2).cls, "warm");
+  const ce3 = FIN.computeBrrr({ // financed acquisition, solid DSCR, low recovery
+    price: 200000, rehab: 60000, arv: 330000, rent: 2600, contingency: 15, cc: 2,
+    hold: 6, carry: 600, acqLoan: 120000, acqRate: 10, acqPoints: 2,
+    refiLtv: 55, refiRate: 7.0, refiAmort: 30, reficost: 3,
+    vac: 5, pm: 8, maint: 5, capex: 5, units: 1, tax: 2600, ins: 1200, hoa: 0,
+  });
+  truthy("F1-CE3: covered with positive cf", ce3.dscr >= 1.0 && ce3.cashFlowMo >= 0);
+  truthy("F1-CE3: not COLD", FIN.brrrVerdict(ce3).cls !== "pass");
+
+  // ── Law sweep: across a broad input grid, a covered-debt deal whose BRRR
+  // mechanics are intact (refi clears the bridge, equity exists — the spec's own
+  // regression-guard carve-outs) NEVER grades COLD, and an uncovered financed deal
+  // ALWAYS does. This is the class the verification round proved untested.
+  {
+    let covered = 0, coveredCold = 0, uncovered = 0, uncoveredNotCold = 0;
+    for (const refiLtv of [30, 45, 60, 75]) {
+      for (const capex of [0, 5, 10]) {
+        for (let rent = 2600; rent <= 5000; rent += 200) {
+          const m = FIN.computeBrrr({
+            price: 300000, rehab: 100000, arv: 550000, rent, contingency: 15, cc: 2,
+            hold: 6, carry: 600, refiLtv, refiRate: 7.0, refiAmort: 30, reficost: 3,
+            vac: 5, pm: 8, maint: 5, capex, units: 1, tax: 6000, ins: 2400, hoa: 0,
+          });
+          if (m.dscr === null || m.refiLoan <= m.acqPayoff || m.equityCreated <= 0) continue;
+          const cls = FIN.brrrVerdict(m).cls;
+          if (m.dscr >= 1.0) { covered++; if (cls === "pass") coveredCold++; }
+          else { uncovered++; if (cls !== "pass") uncoveredNotCold++; }
+        }
+      }
+    }
+    truthy("F1-sweep: found both classes", covered > 50 && uncovered > 20);
+    eq("F1-sweep: covered-debt deals grading COLD", coveredCold, 0);
+    eq("F1-sweep: uncovered financed deals not grading COLD", uncoveredNotCold, 0);
+  }
   console.log("F-1 OK");
 }
 
@@ -163,6 +222,10 @@ function near(label, actual, expected, tol = 2) {
   }
   truthy("F3: mask sets aria-invalid on junk", fmtSrc.includes("el.setAttribute('aria-invalid', 'true')"));
   truthy("F3: old digits-only strip is gone", !fmtSrc.includes("replace(/[^0-9]/g, '')"));
+  // Verification-round corrective: a corrected optional money field sheds its stale
+  // 'Enter a valid dollar amount' flag on the next Analyze (required-list fields
+  // stay managed by the required loop).
+  truthy("F3: stale malformed flag cleared on corrected optional fields", mainSrc.includes("if (msg && msg.textContent === 'Enter a valid dollar amount') msg.textContent = '';"));
   console.log("F-3 OK");
 }
 
@@ -237,6 +300,12 @@ function near(label, actual, expected, tol = 2) {
   truthy("F5: summaries warn on missing taxes", cpSrc.includes("taxSummaryWarning(tStat)"));
   truthy("F5: pipeline gate widened to taxes", plSrc.includes("resultTaxStatus(data || {})"));
   truthy("F5: share gate widened to taxes", shSrc.includes("resultTaxStatus(data)"));
+  // Verification-round corrective: the combined overlay's sub-copy is state-accurate
+  // in the taxes-blank + insurance-$0 corner (names the $0, never claims "neither
+  // was entered" when insurance WAS entered).
+  truthy("F5: both-blank copy says insurance wasn't entered", /insurance wasn't entered/.test(IR.incomePresentation("missing", "missing").sub));
+  truthy("F5: tax-blank + ins-$0 copy names the $0", /entered as \$0 \(confirm before lender review\)/.test(IR.incomePresentation("missing", "explicit_zero").sub));
+  eq("F5: corner keeps the combined tag", IR.incomePresentation("missing", "explicit_zero").tag, "NEEDS TAXES + INSURANCE");
   console.log("F-5 OK");
 }
 
@@ -291,6 +360,19 @@ function near(label, actual, expected, tol = 2) {
   const plSrc6 = srcOf("docs/src/js/pipeline.js");
   truthy("F6: pipeline pends STR card stats", plSrc6.includes("if (d.type === 'rental') return [ // F-6"));
   truthy("F6: pipeline pends STR detail taxes", plSrc6.includes("v: pend ? 'Pending' : (d.tax != null ? fmt(d.tax) : '—')"));
+  // Verification-round corrective (adversarial verifier, 2026-08-14): the
+  // funding-click clipboard summary — the one STR surface the first pass missed —
+  // pends with the analyzer. No confident verdict or finite expense-dependent
+  // figure travels on a manufactured $0.
+  const cpSrc6 = srcOf("docs/src/js/clearpath.js");
+  truthy("F6: STR summary verdict gated", cpSrc6.includes("'Verdict: ' + (expOk ? r.verdict : strP.label)"));
+  truthy("F6: STR summary CoC gated", cpSrc6.includes("'Cash-on-Cash Return (est.): ' + (expOk ?"));
+  truthy("F6: STR summary cap rate gated", cpSrc6.includes("'Cap Rate (est.): ' + (expOk ?"));
+  truthy("F6: STR summary DSCR pends", cpSrc6.includes("'DSCR (est.): Pending'"));
+  truthy("F6: STR summary cash flow gated", cpSrc6.includes("'Annual Cash Flow (est.): ' + (expOk ?"));
+  truthy("F6: STR summary warning line wired", cpSrc6.includes("strExpenseSummaryWarning(tStat)"));
+  truthy("F6: expense warning copy", /TAXES \+ INSURANCE NOT ENTERED/.test(IR.strExpenseSummaryWarning("missing")));
+  eq("F6: no warning when resolved", IR.strExpenseSummaryWarning("valid"), null);
   console.log("F-6 OK");
 }
 
@@ -316,7 +398,12 @@ function near(label, actual, expected, tol = 2) {
       addr: r.addr || undefined, city: r.city, state: r.state, purpose: 'flip', exit: 'sale',
     };
   }
-  // Mirror of funding.js buildCpcUrl (fixed key map + serializer rule, unchanged).
+  // Mirror of funding.js buildCpcUrl — the FULL 28-entry key map plus the
+  // serializer rule, both pinned against source below. (Verification round: the
+  // earlier mirror omitted loanRate/amortYears/pointsPct/closingPct; behavior-
+  // neutral for flip fixtures, but the mirror now carries the complete map.)
+  // City/state arrive pre-parsed in these fixtures; parseCityState itself is
+  // orthogonal to F-10 and covered by the browser gate.
   function mirrorUrl(deal) {
     const p = new URLSearchParams();
     p.set('src', 'dealscreener'); p.set('tier', 'starter');
@@ -324,7 +411,9 @@ function near(label, actual, expected, tol = 2) {
                   addr:'addr', city:'city', state:'state', ptype:'ptype', purpose:'purpose', exit:'exit',
                   units:'units', band:'band', monthlyRent:'monthlyRent', annualTaxes:'annualTaxes',
                   annualInsurance:'annualInsurance', monthlyHoa:'monthlyHoa', vacancyPct:'vacancyPct',
-                  pmPct:'pmPct', maintPct:'maintPct', capexPct:'capexPct', screenerNoi:'screenerNoi',
+                  pmPct:'pmPct', maintPct:'maintPct', capexPct:'capexPct',
+                  loanRate:'loanRate', amortYears:'amortYears', pointsPct:'pointsPct', closingPct:'closingPct',
+                  screenerNoi:'screenerNoi',
                   screenerDscr:'screenerDscr', screenerCashFlowAnnual:'screenerCashFlowAnnual',
                   screenerCashFlowMonthly:'screenerCashFlowMonthly', screenerCapRate:'screenerCapRate',
                   screenerVerdict:'screenerVerdict' };
@@ -379,6 +468,11 @@ function near(label, actual, expected, tol = 2) {
   truthy("F10: below-min caption uses gate figure", cpSrc.includes("(deal.gateLoan !== undefined ? deal.gateLoan : deal.loan) || 0) / 1000"));
   truthy("F10: buildCpcUrl map has no gate keys (never transmitted)", !fuSrc.includes("gateLoan") && !fuSrc.includes("gateLtc"));
   truthy("F10: serializer hygiene rule unchanged", fuSrc.includes("if (v !== undefined && v !== null && v !== '') p.set(param, String(v));"));
+  // Verification-round fidelity pins: the mirror's map matches the real map's four
+  // rate/term keys, and the gate-preferred read is present at ALL FOUR consumers
+  // (qualifiesForType, belowMinimumOnly, outsideBoxHTML, below-min caption).
+  truthy("F10: real map carries loanRate/amortYears/pointsPct/closingPct", fuSrc.includes("loanRate:'loanRate', amortYears:'amortYears', pointsPct:'pointsPct', closingPct:'closingPct'"));
+  eq("F10: gate-preferred read at all four consumers", (cpSrc.match(/deal\.gateLoan !== undefined \? deal\.gateLoan : deal\.loan/g) || []).length, 4);
   truthy("F10: flip summary still carries the RAW request", cpSrc.includes("'Estimated Loan Request: $' + Math.round(r.loan).toLocaleString()"));
   console.log("F-10 OK");
 }

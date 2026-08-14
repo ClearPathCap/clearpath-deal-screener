@@ -611,43 +611,12 @@ export function brrrVerdict(m) {
   const hardFail = !coversDebt || m.refiLoan <= m.acqPayoff || m.equityCreated <= 0;
   const survives = m.marginOfSafety !== "fails"; // stress: ARV −5%, rent −5%
 
+  // hardFail is evaluated FIRST so COLD is reachable ONLY through it — mirroring
+  // ltrVerdict, whose covered deals are structurally unable to grade COLD. Every
+  // covered-debt deal that misses HOT and the named WARM arms lands in the WARM
+  // catch-all at the bottom, never in COLD.
   let cls, verdict, vsub;
-  if (!hardFail && d >= hotDscr && rec >= 75 && cf > 0 && survives) {
-    cls = "hot";
-    verdict = band === '5-8' ? "Textbook Small-Multifamily BRRR — Capital Recycled" : "Textbook BRRR — Capital Recycled";
-    const left =
-      m.capitalLeft <= 0
-        ? "You pulled out more than you put in — an infinite-return BRRR."
-        : "Only $" + Math.round(m.capitalLeft).toLocaleString() + " left in the deal.";
-    vsub =
-      "Recovered " + recText + " of your capital and the refi holds at DSCR " + dscrText +
-      ". " + left + " Survives a stress test (ARV −5%, rent −5%). Confirm ARV with comps and rent with the market before closing.";
-  } else if (!hardFail && cf < 0) {
-    // B5: DSCR ≥ 1.0 covers the refi debt, but the CapEx reserve tips monthly cash
-    // flow negative. Mirrors ltrVerdict's "Covers Debt — Thin After Reserves".
-    cls = "warm";
-    verdict = "Covers Debt — Thin After Reserves";
-    vsub =
-      "DSCR " + dscrText + " covers the refi debt (lender-fundable), but the hold runs about $" +
-      Math.abs(Math.round(cf)) + "/mo negative after the CapEx reserve. Build a cushion — push rent, " +
-      "trim the refi loan, or negotiate the basis to firm it up.";
-  } else if (
-    !hardFail &&
-    ((d >= 1.1 && cf >= 0 && rec >= 40) ||
-      (d >= hotDscr && cf > 0 && rec >= 40 && rec < 75) ||
-      (rec >= 90 && d >= 1.1 && d < hotDscr))
-  ) {
-    cls = "warm";
-    verdict = "Partial BRRR — Capital Trapped or Tight";
-    const why = !survives
-      ? "it thins under a stress test (ARV −5%, rent −5%)"
-      : m.dscr !== null && m.dscr < hotDscr
-        ? "cash flow is thin for best-pricing DSCR"
-        : "capital is partly trapped";
-    vsub =
-      "DSCR " + dscrText + " and " + recText + " recovered — the mechanics work but " +
-      why + ". Push ARV, rent, or the refi LTV to tighten it.";
-  } else {
+  if (hardFail) {
     cls = "pass";
     verdict = "BRRR Breaks — Rework the Numbers";
     if (m.refiLoan <= m.acqPayoff) {
@@ -661,11 +630,58 @@ export function brrrVerdict(m) {
         Math.round(m.arv).toLocaleString() +
         ") — no equity is created, so there's nothing to refinance. This isn't a BRRR.";
     } else {
-      // Reached only when the refi debt isn't covered (DSCR < 1.0, or all-cash NOI < 0).
+      // Debt not covered: DSCR < 1.0 (financed) or negative NOI (all-cash). This
+      // branch is honest by construction — it is inside hardFail.
       vsub = m.dscr !== null
         ? "DSCR " + dscrText + " is below 1.0 — rent doesn't cover the refi debt at this structure. Rework the basis, rent, or refi terms."
         : "Even all-cash, operating costs exceed income before any debt service — the hold is cash-flow negative on its own. Rework rent or expenses, or walk.";
     }
+  } else if (d >= hotDscr && rec >= 75 && cf > 0 && survives) {
+    cls = "hot";
+    verdict = band === '5-8' ? "Textbook Small-Multifamily BRRR — Capital Recycled" : "Textbook BRRR — Capital Recycled";
+    const left =
+      m.capitalLeft <= 0
+        ? "You pulled out more than you put in — an infinite-return BRRR."
+        : "Only $" + Math.round(m.capitalLeft).toLocaleString() + " left in the deal.";
+    vsub =
+      "Recovered " + recText + " of your capital and the refi holds at DSCR " + dscrText +
+      ". " + left + " Survives a stress test (ARV −5%, rent −5%). Confirm ARV with comps and rent with the market before closing.";
+  } else if (cf < 0) {
+    // B5: DSCR ≥ 1.0 covers the refi debt, but the CapEx reserve tips monthly cash
+    // flow negative. Mirrors ltrVerdict's "Covers Debt — Thin After Reserves".
+    cls = "warm";
+    verdict = "Covers Debt — Thin After Reserves";
+    vsub =
+      "DSCR " + dscrText + " covers the refi debt (lender-fundable), but the hold runs about $" +
+      Math.abs(Math.round(cf)) + "/mo negative after the CapEx reserve. Build a cushion — push rent, " +
+      "trim the refi loan, or negotiate the basis to firm it up.";
+  } else if (
+    (d >= 1.1 && cf >= 0 && rec >= 40) ||
+    (d >= hotDscr && cf > 0 && rec >= 40 && rec < 75) ||
+    (rec >= 90 && d >= 1.1 && d < hotDscr)
+  ) {
+    cls = "warm";
+    verdict = "Partial BRRR — Capital Trapped or Tight";
+    const why = !survives
+      ? "it thins under a stress test (ARV −5%, rent −5%)"
+      : m.dscr !== null && m.dscr < hotDscr
+        ? "cash flow is thin for best-pricing DSCR"
+        : "capital is partly trapped";
+    vsub =
+      "DSCR " + dscrText + " and " + recText + " recovered — the mechanics work but " +
+      why + ". Push ARV, rent, or the refi LTV to tighten it.";
+  } else {
+    // WARM catch-all (the ltrVerdict mirror's load-bearing piece): the refi debt is
+    // covered and cash flow is non-negative, but the deal misses every stronger arm —
+    // typically low capital recovery, or DSCR in [1.0, 1.1). Never COLD (decision B5).
+    cls = "warm";
+    verdict = "Partial BRRR — Capital Trapped or Tight";
+    const why = rec < 40
+      ? "only " + recText + " of your capital comes back — the hold works, but the recycle doesn't"
+      : "cash flow is thin for best-pricing DSCR";
+    vsub =
+      "DSCR " + dscrText + " covers the refi debt and the hold cash-flows, but " + why +
+      ". Push ARV, rent, or the refi LTV to tighten it.";
   }
   return { cls, verdict, vsub };
 }

@@ -3,7 +3,7 @@
 import { getActiveTier } from './tiers.js';
 import { getDeals } from './storage.js';
 import { buildCpcUrl, qualifiesForCpc, qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_BROKER_MIN, propertyBand, BAND_RULES } from './funding.js';
-import { resultInsuranceStatus, insuranceReady, insuranceSummaryWarning, insurancePresentation, resultTaxStatus, taxReady, incomePresentation, incomeDependentHandoff, taxSummaryWarning, INS_MISSING, INS_EXPLICIT_ZERO } from './insuranceReadiness.js';
+import { resultInsuranceStatus, insuranceReady, insuranceSummaryWarning, insurancePresentation, resultTaxStatus, taxReady, incomePresentation, incomeDependentHandoff, taxSummaryWarning, strExpensePresentation, strExpenseSummaryWarning, INS_MISSING, INS_EXPLICIT_ZERO } from './insuranceReadiness.js';
 
 const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: 'ltr-funding-btn', brrr: 'brrr-funding-btn' };
 
@@ -202,18 +202,26 @@ function buildFlipSummary(r, tag) {
 }
 
 function buildRentalSummary(r, tag) {
+  // F-6 (verification round): the clipboard summary is decision data that travels
+  // with the funding click — it pends with the analyzer when the combined
+  // taxes+insurance field is blank, exactly as the LTR/BRRR summaries do. No
+  // confident verdict or finite expense-dependent figure on a manufactured $0.
+  const tStat = resultTaxStatus(r);
+  const strP = strExpensePresentation(tStat);
+  const expOk = !strP;
   const lines = [
     'DEAL SCREENER SUMMARY — STR / Rental',
     r.addr ? 'Address: ' + r.addr : null,
-    'Verdict: ' + r.verdict,
+    'Verdict: ' + (expOk ? r.verdict : strP.label),
     tag,
+    strExpenseSummaryWarning(tStat),
     '---',
     'Purchase Price: $' + Math.round(r.price).toLocaleString(),
     'Potential Annual Revenue (100% occ.): $' + Math.round(r.rent).toLocaleString(),
-    'Cash-on-Cash Return (est.): ' + (Math.round(r.coc * 10) / 10) + '%',
-    'Cap Rate (est.): ' + (Math.round(r.capRate * 10) / 10) + '%',
-    (r.dscr ? 'DSCR (est.): ' + r.dscr.toFixed(2) : null),
-    'Annual Cash Flow (est.): $' + Math.round(r.cashflow).toLocaleString(),
+    'Cash-on-Cash Return (est.): ' + (expOk ? (Math.round(r.coc * 10) / 10) + '%' : 'Pending'),
+    'Cap Rate (est.): ' + (expOk ? (Math.round(r.capRate * 10) / 10) + '%' : 'Pending'),
+    (expOk ? (r.dscr ? 'DSCR (est.): ' + r.dscr.toFixed(2) : null) : 'DSCR (est.): Pending'),
+    'Annual Cash Flow (est.): ' + (expOk ? '$' + Math.round(r.cashflow).toLocaleString() : 'Pending'),
     'Down Payment: ' + r.down + '%',
     '---',
     'Estimate only — not a loan offer, approval, or guarantee of terms. Actual terms set by the lender.',

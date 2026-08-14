@@ -2,7 +2,7 @@
 
 import { fmt, pct } from './format.js';
 import { getDeals } from './storage.js';
-import { resultInsuranceStatus, insuranceReady, insurancePresentation } from './insuranceReadiness.js';
+import { resultInsuranceStatus, insuranceReady, resultTaxStatus, taxReady, incomePresentation } from './insuranceReadiness.js';
 
 // NOTE: Phase 1 will hard-code APP_URL to the deployed domain.
 const APP_URL = location.href.split('#')[0];
@@ -81,8 +81,9 @@ function buildDealSummaryText(d) {
   // Phase A: unresolved insurance on LTR/BRRR deals — the shared text must not
   // expose finite insurance-dependent values or the positive verdict headline.
   const insStatus     = resultInsuranceStatus(data);
-  const unresolvedIns = (d.type === 'ltr' || d.type === 'brrr') && !insuranceReady(insStatus);
-  const headline      = unresolvedIns ? insurancePresentation(insStatus).tag : d.verdict.toUpperCase();
+  const taxSt         = resultTaxStatus(data); // F-5: blank taxes pend shared text too
+  const unresolvedIns = (d.type === 'ltr' || d.type === 'brrr') && !(insuranceReady(insStatus) && taxReady(taxSt));
+  const headline      = unresolvedIns ? incomePresentation(taxSt, insStatus).tag : d.verdict.toUpperCase();
   const lines = ['🏠 ' + d.name + ' — ' + headline];
   if (data.addr) lines.push('📍 ' + data.addr);
   lines.push('');

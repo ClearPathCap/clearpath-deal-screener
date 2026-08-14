@@ -9,7 +9,7 @@ import { getLastLtrResult } from './ltr.js';
 import { getLastBrrrResult } from './brrr.js';
 import { getPipelineFundingButtonHTML } from './clearpath.js';
 import { getActiveTier } from './tiers.js';
-import { resultInsuranceStatus, insuranceReady, insurancePresentation } from './insuranceReadiness.js';
+import { resultInsuranceStatus, insuranceReady, resultTaxStatus, taxReady, incomePresentation } from './insuranceReadiness.js';
 
 // Local modal helpers — avoids circular dep with main.js
 const openModal  = id => document.getElementById(id).classList.add('active');
@@ -220,8 +220,10 @@ function buildDealStats(type, r) {
 // (resultInsuranceStatus falls back on insMissing / coerced ins:0).
 function unresolvedInsPresentation(type, data) {
   if (type !== 'ltr' && type !== 'brrr') return null;
-  const status = resultInsuranceStatus(data || {});
-  return insuranceReady(status) ? null : insurancePresentation(status);
+  const insSt = resultInsuranceStatus(data || {});
+  const tSt = resultTaxStatus(data || {}); // F-5: blank taxes pend saved cards too
+  if (insuranceReady(insSt) && taxReady(tSt)) return null;
+  return incomePresentation(tSt, insSt);
 }
 
 // Pending card stats when insurance is unresolved. Every LTR headline stat

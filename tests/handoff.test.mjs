@@ -237,7 +237,9 @@ has("brrr independent Cap Left kept finite", brrrSrc, "val: fmt(m.capitalLeft)")
 has("brrr independent Cash Recovered kept finite", brrrSrc, "val: pct(m.cashRecoveredPct)");
 
 // clearpath.js summaries — verdict + remaining values gated; unguarded gone
-eq("summaries: both Verdict lines gated", (cpSrc.match(/'Verdict: ' \+ \(insOk \? r\.verdict : insurancePresentation\(insStatus\)\.label\)/g) || []).length, 2);
+// (blocker-fix F-5: the gate widened to taxes+insurance via incomePresentation;
+// insOk now also requires taxReady — assertion updated to the new exact string.)
+eq("summaries: both Verdict lines gated", (cpSrc.match(/'Verdict: ' \+ \(insOk \? r\.verdict : incomePresentation\(tStat, insStatus\)\.label\)/g) || []).length, 2);
 has("ltr summary CapRate gated", cpSrc, "'Cap Rate (est.): ' + (insOk ?");
 has("ltr summary CashFlow gated", cpSrc, "'Monthly Cash Flow (est.): ' + (insOk ?");
 has("ltr summary CoC gated", cpSrc, "'Cash-on-Cash (est.): ' + (insOk ?");
@@ -265,12 +267,16 @@ not("pipeline: unguarded stats render gone", plSrc, "${d.stats.map(");
 
 // share.js — deal summary text gated
 has("share imports readiness", shSrc, "from './insuranceReadiness.js'");
-has("share headline gated", shSrc, "unresolvedIns ? insurancePresentation(insStatus).tag : d.verdict.toUpperCase()");
+// (blocker-fix F-5: headline overlay now sourced from incomePresentation so a
+// tax-missing/insurance-valid deal cannot dereference a null presentation.)
+has("share headline gated", shSrc, "unresolvedIns ? incomePresentation(taxSt, insStatus).tag : d.verdict.toUpperCase()");
 eq("share: three Pending value gates", (shSrc.match(/unresolvedIns \? 'Pending' :/g) || []).length, 3);
 
 // Get Funding + handoff contracts unchanged
 has("Get Funding gate unchanged", cpSrc, "result.cls === 'hot' || result.cls === 'warm'");
-eq("handoff base-dscr gates unchanged", (cpSrc.match(/insuranceDependentHandoff\(r\)\.dscr/g) || []).length, 2);
+// (blocker-fix F-5: the base-dscr gate now routes through incomeDependentHandoff,
+// which wraps the unchanged insuranceDependentHandoff and adds the tax gate.)
+eq("handoff base-dscr gates unchanged", (cpSrc.match(/incomeDependentHandoff\(r\)\.dscr/g) || []).length, 2);
 
 // Valid insurance: inventoried engine metrics remain finite and accurate
 truthy("LTR valid capRate finite>0", Number.isFinite(mL_valid.capRate) && mL_valid.capRate > 0);

@@ -9,7 +9,7 @@ import { computeLtr, ltrVerdict, mosLabel, validateInputs, plausibilityWarnings,
 import { LTR_MARKETS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
 import { buildCpcUrl } from './funding.js';
-import { insuranceStatus, insurancePresentation, INS_MISSING, INS_EXPLICIT_ZERO } from './insuranceReadiness.js';
+import { insuranceStatus, taxStatus, incomePresentation, INS_MISSING, INS_EXPLICIT_ZERO } from './insuranceReadiness.js';
 
 // Regional rent/vacancy fallback when a slug has no city-level LTR row.
 const LTR_REGIONAL_DEFAULTS = {
@@ -119,8 +119,11 @@ export function analyzeLtr() {
   // Phase A three-state insurance model ('missing' | 'explicit_zero' | 'valid'):
   // both unresolved states are NOT lender-ready and present Pending, with distinct
   // borrower-facing language. Shared decisions live in insuranceReadiness.js.
+  // F-5 widens the gate to property taxes: blank taxes pend (unknown, not $0);
+  // an explicit $0 tax entry computes normally per the ruled spec.
   const insStatus = insuranceStatus(input.ins);
-  const insP = insurancePresentation(insStatus); // null when valid → normal verdict
+  const tStat = taxStatus(input.tax);
+  const insP = incomePresentation(tStat, insStatus); // null when income-ready → normal verdict
 
   elv('ltr-verdict').className = 'verdict ' + (insP ? 'warm' : cls);
   elv('lvtag').textContent   = insP ? insP.tag : cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
@@ -144,7 +147,7 @@ export function analyzeLtr() {
     { l: 'Effective gross income (' + vacPct + '% vacancy)',                     v: fmt(m.EGI) },
     { l: 'Property management' + (pm > 0 ? ' (' + pm + '%)' : ' (self)'),        v: pm > 0 ? '–' + fmt(m.EGI * (pm / 100)) : '$0' },
     { l: 'Maintenance reserve (' + maintPct + '%)', v: '–' + fmt(m.rentYr * (maintPct / 100)) },
-    { l: 'Property taxes',                                                       v: '–' + fmt(input.tax || 0) },
+    { l: 'Property taxes' + (tStat === INS_MISSING ? ' (not entered)' : ''),     v: tStat === INS_MISSING ? '— pending' : '–' + fmt(input.tax || 0) },
     { l: 'Insurance' + (insStatus === INS_MISSING ? ' (not entered)' : insStatus === INS_EXPLICIT_ZERO ? ' (entered $0 — confirm)' : ''), v: insStatus === INS_MISSING ? '— pending' : '–' + fmt(input.ins || 0) },
     ...((input.hoa || 0) > 0 ? [{ l: 'HOA', v: '–' + fmt((input.hoa || 0) * 12) }] : []),
     { l: 'Net operating income',                                                 v: insP ? insP.pendingText : fmt(m.NOI) },
@@ -165,7 +168,7 @@ export function analyzeLtr() {
     type: 'ltr', addr: input.addr, price: m.price,
     units: units || null, band,
     down: input.down == null ? BAND_RULES[band].down : input.down,
-    rent, vac: vacPct, tax: input.tax || 0, ins: input.ins || 0, insStatus, hoa: input.hoa || 0,
+    rent, vac: vacPct, tax: input.tax || 0, taxStatus: tStat, ins: input.ins || 0, insStatus, hoa: input.hoa || 0,
     maint: maintPct, pm, capex: capexPct,
     rate: input.rate == null ? 7.25 : input.rate, amort: input.amort == null ? 30 : input.amort,
     points: input.points == null ? 1 : input.points, cc: input.cc == null ? 2 : input.cc,

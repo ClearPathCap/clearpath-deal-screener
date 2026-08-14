@@ -166,6 +166,80 @@ function near(label, actual, expected, tol = 2) {
   console.log("F-3 OK");
 }
 
+// ═══ F-5 — blank taxes must not become a trustworthy $0 (LTR / BRRR) ═════════
+{
+  const IR = await load("docs/src/js/insuranceReadiness.js");
+
+  // Three-state classifier: blank is UNKNOWN and pends; an explicit 0 is a real,
+  // ruled-valid value (differs from insurance's explicit_zero — spec v1.1).
+  eq("F5: blank taxes -> missing", IR.taxStatus(undefined), "missing");
+  eq("F5: explicit 0 taxes -> explicit_zero", IR.taxStatus(0), "explicit_zero");
+  eq("F5: 11000 taxes -> valid", IR.taxStatus(11000), "valid");
+  eq("F5: missing not ready", IR.taxReady("missing"), false);
+  eq("F5: explicit 0 IS ready (computes as a real value)", IR.taxReady("explicit_zero"), true);
+  eq("F5: valid ready", IR.taxReady("valid"), true);
+
+  // Overlay matrix: taxes join the banked insurance mechanism, not a second one.
+  const pTax = IR.incomePresentation("missing", "valid");
+  eq("F5: tax-missing overlay tag", pTax.tag, "NEEDS PROPERTY TAXES");
+  truthy("F5: tax-missing overlay pends", pTax.pendingText === "Pending");
+  const pBoth = IR.incomePresentation("missing", "missing");
+  eq("F5: both-missing overlay tag", pBoth.tag, "NEEDS TAXES + INSURANCE");
+  eq("F5: tax explicit-0 + valid ins -> no overlay (computes normally)", IR.incomePresentation("explicit_zero", "valid"), null);
+  eq("F5: tax valid + ins missing -> banked insurance overlay", IR.incomePresentation("valid", "missing").tag, "NEEDS INSURANCE");
+  eq("F5: tax valid + ins valid -> null", IR.incomePresentation("valid", "valid"), null);
+
+  // Acceptance: W4-F2 economics, taxes blank — pending signal, no confident HOT,
+  // no fabricated $0 anywhere in the handoff (annualTaxes + all screener metrics gone).
+  const mkResult = (taxRaw) => ({
+    type: "ltr", tax: taxRaw || 0, taxStatus: IR.taxStatus(taxRaw),
+    ins: 14000, insStatus: "valid",
+    NOI: 70048, dscr: 1.6456, cashFlowYr: 22380, cashFlowMo: 1865, capRate: 10.8,
+    verdict: "Strong Rental — Lender-Ready", rent: 8500, hoa: 0,
+  });
+  const hBlank = IR.incomeDependentHandoff(mkResult(undefined));
+  eq("F5: blank taxes omit annualTaxes", hBlank.annualTaxes, undefined);
+  for (const k of ["screenerNoi", "screenerDscr", "screenerCashFlowAnnual", "screenerCashFlowMonthly", "screenerCapRate", "screenerVerdict", "dscr"]) {
+    eq(`F5: blank taxes omit ${k}`, hBlank[k], undefined);
+  }
+  eq("F5: blank taxes keep valid insurance value", hBlank.annualInsurance, 14000);
+  truthy("F5: blank-tax overlay suppresses confident verdict", IR.incomePresentation(IR.taxStatus(undefined), "valid") !== null);
+
+  // Explicit 0: computes and transfers as a real value.
+  const hZero = IR.incomeDependentHandoff(mkResult(0));
+  eq("F5: explicit-0 taxes transfer as 0", hZero.annualTaxes, 0);
+  truthy("F5: explicit-0 keeps screener metrics", hZero.screenerDscr !== undefined && hZero.screenerNoi !== undefined);
+
+  // Populated: regression — identical to the banked insurance-only behavior.
+  const hFull = IR.incomeDependentHandoff(mkResult(11000));
+  eq("F5: populated taxes transfer", hFull.annualTaxes, 11000);
+  const hInsOnly = IR.insuranceDependentHandoff(mkResult(11000));
+  for (const k of ["annualInsurance", "screenerNoi", "screenerDscr", "screenerCashFlowAnnual", "screenerCashFlowMonthly", "screenerCapRate", "screenerVerdict", "dscr"]) {
+    eq(`F5: populated == banked insurance behavior for ${k}`, hFull[k], hInsOnly[k]);
+  }
+
+  // Legacy saved results (coerced tax:0, no taxStatus) compute — bounded disclosed gap.
+  eq("F5: legacy tax:0 -> explicit_zero (computes)", IR.resultTaxStatus({ tax: 0 }), "explicit_zero");
+  eq("F5: taxStatus field wins over value", IR.resultTaxStatus({ taxStatus: "missing", tax: 0 }), "missing");
+
+  // Wiring (static, banked §8 pattern): glue carries taxStatus; rows/summaries gated.
+  const ltrSrc = srcOf("docs/src/js/ltr.js");
+  const brrrSrc = srcOf("docs/src/js/brrr.js");
+  const cpSrc = srcOf("docs/src/js/clearpath.js");
+  const plSrc = srcOf("docs/src/js/pipeline.js");
+  const shSrc = srcOf("docs/src/js/share.js");
+  truthy("F5: ltr.js gates via incomePresentation", ltrSrc.includes("incomePresentation(tStat, insStatus)"));
+  truthy("F5: ltr.js taxes row pends", ltrSrc.includes("tStat === INS_MISSING ? '— pending'"));
+  truthy("F5: ltr.js stores taxStatus", ltrSrc.includes("taxStatus: tStat"));
+  truthy("F5: brrr.js gates via incomePresentation", brrrSrc.includes("incomePresentation(tStat, insStatus)"));
+  truthy("F5: brrr.js stores taxStatus", brrrSrc.includes("taxStatus: tStat"));
+  truthy("F5: summaries gate taxes line", cpSrc.includes("tStat === INS_MISSING ? 'Pending' : '$' + Math.round(r.tax)"));
+  truthy("F5: summaries warn on missing taxes", cpSrc.includes("taxSummaryWarning(tStat)"));
+  truthy("F5: pipeline gate widened to taxes", plSrc.includes("resultTaxStatus(data || {})"));
+  truthy("F5: share gate widened to taxes", shSrc.includes("taxReady(taxSt)"));
+  console.log("F-5 OK");
+}
+
 // ═══ Report ══════════════════════════════════════════════════════════════════
 console.log(`\nblockerfix: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach((f) => console.log("  ✗ " + f)); process.exit(1); }

@@ -114,3 +114,83 @@ export function insuranceDependentHandoff(r) {
     dscr: dscr2,
   };
 }
+
+// ─── F-5: property-tax readiness (LTR / BRRR) ─────────────────────────────────
+// Same three-state classifier as insurance, with ONE ruled difference (blocker-fix
+// spec v1.1): an explicit $0 tax entry is a real value and computes normally —
+// explicit_zero pends for insurance but NOT for taxes. Blank stays unknown and
+// pends. Reuses the insurance mechanism rather than building a second one.
+export function taxStatus(tax) { return insuranceStatus(tax); }
+export function taxReady(status) { return status !== INS_MISSING; }
+
+// Status for an analyzer RESULT object. New results carry taxStatus; legacy saved
+// results coerced blank taxes to 0 at save time, so a legacy 0 is indistinguishable
+// from an explicit entry and computes (bounded, disclosed legacy gap — the safe
+// direction differs from insurance because explicit-zero taxes are ruled valid).
+export function resultTaxStatus(r) {
+  if (!r) return INS_MISSING;
+  if (r.taxStatus === INS_MISSING || r.taxStatus === INS_EXPLICIT_ZERO || r.taxStatus === INS_VALID) {
+    return r.taxStatus;
+  }
+  return insuranceStatus(r.tax);
+}
+
+// Combined income-expense readiness for LTR/BRRR surfaces.
+export function incomeReady(taxSt, insSt) { return taxReady(taxSt) && insuranceReady(insSt); }
+
+// Borrower-facing overlay for unresolved taxes and/or insurance; null when both
+// are resolved (normal verdict). Insurance-only cases return the exact banked
+// insurance presentations unchanged.
+export function incomePresentation(taxSt, insSt) {
+  const taxPend = !taxReady(taxSt);
+  const insP = insurancePresentation(insSt);
+  if (taxPend && insP) {
+    return {
+      status: 'taxes_and_insurance',
+      tag: 'NEEDS TAXES + INSURANCE',
+      label: 'Add Taxes & Insurance for a Lender-Ready DSCR',
+      sub: 'Property taxes and insurance are required for a lender-ready calculation — neither was entered, so the DSCR and NOI shown are Pending. Add both for accurate figures; you can still explore funding in the meantime.',
+      pendingText: 'Pending',
+    };
+  }
+  if (taxPend) {
+    return {
+      status: 'taxes_missing',
+      tag: 'NEEDS PROPERTY TAXES',
+      label: 'Add Property Taxes for a Lender-Ready DSCR',
+      sub: 'Property taxes are required for a lender-ready calculation — annual taxes weren\'t entered, so the DSCR and NOI shown are Pending. Add taxes for an accurate figure; you can still explore funding in the meantime.',
+      pendingText: 'Pending',
+    };
+  }
+  return insP;
+}
+
+// Clipboard-summary warning for missing taxes; composes with insuranceSummaryWarning.
+export function taxSummaryWarning(status) {
+  if (status === INS_MISSING) {
+    return '⚠ PROPERTY TAXES NOT ENTERED — NOI/DSCR are Pending and not lender-ready until taxes are added.';
+  }
+  return null;
+}
+
+// F-5 handoff gating: unresolved taxes contaminate the same screener metrics as
+// unresolved insurance, and additionally omit annualTaxes itself (a blank field
+// must never ship a fabricated $0). Wraps the banked insuranceDependentHandoff
+// (unchanged) so both gates stay a single decision each.
+export function incomeDependentHandoff(r) {
+  const ins = insuranceDependentHandoff(r);
+  if (taxReady(resultTaxStatus(r))) {
+    return { annualTaxes: r.tax == null ? undefined : Math.round(r.tax), ...ins };
+  }
+  return {
+    annualTaxes: undefined,
+    annualInsurance: ins.annualInsurance,
+    screenerNoi: undefined,
+    screenerDscr: undefined,
+    screenerCashFlowAnnual: undefined,
+    screenerCashFlowMonthly: undefined,
+    screenerCapRate: undefined,
+    screenerVerdict: undefined,
+    dscr: undefined,
+  };
+}

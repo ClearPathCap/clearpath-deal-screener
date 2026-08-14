@@ -9,7 +9,7 @@ import { computeBrrr, brrrVerdict, mosLabel, validateInputs, plausibilityWarning
 import { FLIP_MARKETS, LTR_MARKETS, BRRR_ASSUMPTIONS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
 import { buildCpcUrl } from './funding.js';
-import { insuranceStatus, insurancePresentation } from './insuranceReadiness.js';
+import { insuranceStatus, taxStatus, incomePresentation } from './insuranceReadiness.js';
 
 const elv = id => document.getElementById(id);
 function numOpt(id) { const el = elv(id); return el ? parseNumOpt(el.value) : undefined; }
@@ -120,8 +120,11 @@ export function analyzeBrrr() {
   // Phase A three-state insurance model ('missing' | 'explicit_zero' | 'valid'):
   // both unresolved states are NOT lender-ready and present Pending, with distinct
   // borrower-facing language. Shared decisions live in insuranceReadiness.js.
+  // F-5 widens the gate to property taxes: blank taxes pend (unknown, not $0);
+  // an explicit $0 tax entry computes normally per the ruled spec.
   const insStatus = insuranceStatus(input.ins);
-  const insP = insurancePresentation(insStatus); // null when valid → normal verdict
+  const tStat = taxStatus(input.tax);
+  const insP = incomePresentation(tStat, insStatus); // null when income-ready → normal verdict
 
   elv('brrr-verdict').className = 'verdict ' + (insP ? 'warm' : cls);
   elv('bvtag').textContent   = insP ? insP.tag : cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
@@ -179,7 +182,7 @@ export function analyzeBrrr() {
     acqRate: input.acqRate == null ? 10 : input.acqRate, acqPoints: input.acqPoints == null ? 2 : input.acqPoints,
     refiLtv: refiLtvPct, refiRate: input.refiRate == null ? 7.0 : input.refiRate, refiAmort: input.refiAmort == null ? 30 : input.refiAmort,
     reficost: input.reficost == null ? 3 : input.reficost, season: input.season == null ? 6 : input.season,
-    rent, vac: input.vac == null ? BAND_RULES[band].vac : input.vac, tax: input.tax || 0, ins: input.ins || 0, insStatus, hoa: input.hoa || 0,
+    rent, vac: input.vac == null ? BAND_RULES[band].vac : input.vac, tax: input.tax || 0, taxStatus: tStat, ins: input.ins || 0, insStatus, hoa: input.hoa || 0,
     maint: input.maint == null ? BAND_RULES[band].maint : input.maint, pm: selfManage ? 0 : (input.pm == null ? BAND_RULES[band].pm : input.pm),
     capex: capexPct, ptype: input.ptype,
     rehabTotal: m.rehabTotal, allInCost: m.allInCost, cashInvested: m.cashInvested,

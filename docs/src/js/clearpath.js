@@ -3,7 +3,7 @@
 import { getActiveTier } from './tiers.js';
 import { getDeals } from './storage.js';
 import { buildCpcUrl, qualifiesForCpc, qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_BROKER_MIN, propertyBand, BAND_RULES } from './funding.js';
-import { resultInsuranceStatus, insuranceReady, insuranceDependentHandoff, insuranceSummaryWarning, insurancePresentation, INS_MISSING, INS_EXPLICIT_ZERO } from './insuranceReadiness.js';
+import { resultInsuranceStatus, insuranceReady, insuranceSummaryWarning, insurancePresentation, resultTaxStatus, taxReady, incomePresentation, incomeDependentHandoff, taxSummaryWarning, INS_MISSING, INS_EXPLICIT_ZERO } from './insuranceReadiness.js';
 
 const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: 'ltr-funding-btn', brrr: 'brrr-funding-btn' };
 
@@ -34,22 +34,24 @@ function econHandoff(r) {
   // existing missing-data guard (gated on screenerDscr > 0, page.tsx) fires and shows
   // "Pending — incomplete". Raw rent/taxes/HOA and the % assumptions still travel
   // (not insurance-contaminated); src/tier attribution is in buildCpcUrl, untouched.
-  const insFields = insuranceDependentHandoff(r);
+  // F-5: the tax gate joins the insurance gate — blank taxes omit annualTaxes AND
+  // the same screener-metric set (a blank field never ships a fabricated $0).
+  const incomeFields = incomeDependentHandoff(r);
   return {
     monthlyRent: n(r.rent, true),
-    annualTaxes: n(r.tax, true),
-    annualInsurance: insFields.annualInsurance,
+    annualTaxes: incomeFields.annualTaxes,
+    annualInsurance: incomeFields.annualInsurance,
     monthlyHoa: n(r.hoa, true),
     vacancyPct: n(r.vac),
     pmPct: n(r.pm),
     maintPct: n(r.maint),
     capexPct: n(r.capex),
-    screenerNoi: insFields.screenerNoi,
-    screenerDscr: insFields.screenerDscr,
-    screenerCashFlowAnnual: insFields.screenerCashFlowAnnual,
-    screenerCashFlowMonthly: insFields.screenerCashFlowMonthly,
-    screenerCapRate: insFields.screenerCapRate,
-    screenerVerdict: insFields.screenerVerdict,
+    screenerNoi: incomeFields.screenerNoi,
+    screenerDscr: incomeFields.screenerDscr,
+    screenerCashFlowAnnual: incomeFields.screenerCashFlowAnnual,
+    screenerCashFlowMonthly: incomeFields.screenerCashFlowMonthly,
+    screenerCapRate: incomeFields.screenerCapRate,
+    screenerVerdict: incomeFields.screenerVerdict,
   };
 }
 
@@ -83,7 +85,7 @@ function buildDealParams(r) {
       pp:      Math.round(r.price || 0),
       loan,
       ltv:     r.price ? loan / r.price : undefined,
-      dscr:    insuranceDependentHandoff(r).dscr,  // Phase A: unresolved insurance (missing OR explicit_zero) omits the base dscr (mirrors econHandoff's screenerDscr gate)
+      dscr:    incomeDependentHandoff(r).dscr,  // Phase A + F-5: unresolved insurance OR blank taxes omit the base dscr (mirrors econHandoff's screenerDscr gate)
       ptype:   r.ptype || 'SFR',
       units:   r.units || undefined,
       band:    r.band || propertyBand(r.units),
@@ -103,7 +105,7 @@ function buildDealParams(r) {
       arv:     Math.round(r.arv || 0),
       loan:    Math.round(r.refiLoan || 0),     // DSCR cash-out takeout
       ltv:     r.arv ? (r.refiLoan || 0) / r.arv : undefined,
-      dscr:    insuranceDependentHandoff(r).dscr,  // Phase A: unresolved insurance (missing OR explicit_zero) omits the base dscr (mirrors econHandoff's screenerDscr gate)
+      dscr:    incomeDependentHandoff(r).dscr,  // Phase A + F-5: unresolved insurance OR blank taxes omit the base dscr (mirrors econHandoff's screenerDscr gate)
       ptype:   r.ptype || 'SFR',
       units:   r.units || undefined,
       band:    r.band || propertyBand(r.units),
@@ -201,12 +203,14 @@ function buildRentalSummary(r, tag) {
 
 function buildLtrSummary(r, tag) {
   const insStatus = resultInsuranceStatus(r);
-  const insOk = insuranceReady(insStatus);
+  const tStat = resultTaxStatus(r);
+  const insOk = insuranceReady(insStatus) && taxReady(tStat); // F-5: taxes join the gate
   const lines = [
     'DEAL SCREENER SUMMARY — Long-Term Rental (DSCR)',
     r.addr ? 'Address: ' + r.addr : null,
-    'Verdict: ' + (insOk ? r.verdict : insurancePresentation(insStatus).label),
+    'Verdict: ' + (insOk ? r.verdict : incomePresentation(tStat, insStatus).label),
     tag,
+    taxSummaryWarning(tStat),
     insuranceSummaryWarning(insStatus),
     '---',
     'Property Type: ' + (r.ptype || 'SFR'),
@@ -224,7 +228,7 @@ function buildLtrSummary(r, tag) {
     'Down Payment: ' + r.down + '%   |   LTV (est.): ' + (Math.round(r.ltv * 10) / 10) + '%',
     'Estimated Loan Request: $' + Math.round(r.loan).toLocaleString(),
     'Assumed Rate / Amortization: ' + r.rate + '% / ' + r.amort + ' yr',
-    'Property Taxes (annual): $' + Math.round(r.tax).toLocaleString() + '   Insurance (annual): ' + (insStatus === INS_MISSING ? 'Pending' : insStatus === INS_EXPLICIT_ZERO ? '$0 — confirm' : '$' + Math.round(r.ins).toLocaleString()),
+    'Property Taxes (annual): ' + (tStat === INS_MISSING ? 'Pending' : '$' + Math.round(r.tax).toLocaleString()) + '   Insurance (annual): ' + (insStatus === INS_MISSING ? 'Pending' : insStatus === INS_EXPLICIT_ZERO ? '$0 — confirm' : '$' + Math.round(r.ins).toLocaleString()),
     '---',
     'Estimate only — not a loan offer, approval, or guarantee of terms. DSCR and final terms are set by the lender. Clear Path Capital is a broker.',
     'Generated by DealFit — Clear Path Capital',
@@ -236,13 +240,15 @@ function buildBrrrSummary(r, tag) {
   const { city, state } = parseCityState(r.addr);
   const cs = [city, state].filter(Boolean).join(', ');
   const insStatus = resultInsuranceStatus(r);
-  const insOk = insuranceReady(insStatus);
+  const tStat = resultTaxStatus(r);
+  const insOk = insuranceReady(insStatus) && taxReady(tStat); // F-5: taxes join the gate
   const lines = [
     'DEAL SCREENER SUMMARY — BRRR (Bridge → DSCR Cash-Out Refi)',
     r.addr ? 'Address: ' + r.addr : null,
     cs ? 'City/State: ' + cs : null,
-    'Verdict: ' + (insOk ? r.verdict : insurancePresentation(insStatus).label),
+    'Verdict: ' + (insOk ? r.verdict : incomePresentation(tStat, insStatus).label),
     tag,
+    taxSummaryWarning(tStat),
     insuranceSummaryWarning(insStatus),
     '--- ACQUISITION (bridge / hard money) ---',
     'Property Type: ' + (r.ptype || 'SFR'),

@@ -173,6 +173,32 @@ export function taxSummaryWarning(status) {
   return null;
 }
 
+// ─── F-6: STR combined taxes+insurance readiness ──────────────────────────────
+// rental.js has a single combined "Taxes + insurance" field, so a blank pends as
+// ONE combined expense state — the field cannot distinguish missing taxes from
+// missing insurance, and no meaning is silently picked. An explicit $0 computes
+// as a real value (same ruled semantics as F-5 taxes).
+export function strExpensePresentation(status) {
+  if (status === INS_MISSING) {
+    return {
+      status: 'str_expenses_missing',
+      tag: 'NEEDS TAXES + INSURANCE',
+      label: 'Add Taxes & Insurance to Complete the Analysis',
+      sub: 'Taxes + insurance (annual) wasn\'t entered, so the returns shown are Pending — a blank expense is unknown, not $0. Add the combined annual figure for an accurate read; you can still explore funding in the meantime.',
+      pendingText: 'Pending',
+    };
+  }
+  return null;
+}
+
+// Shared render-time pending decision for saved/shared surfaces, all analyzer
+// types (flip has no expense-readiness concept and always returns null).
+export function pendingPresentationFor(type, taxSt, insSt) {
+  if (type === 'rental') return strExpensePresentation(taxSt);
+  if (type !== 'ltr' && type !== 'brrr') return null;
+  return incomeReady(taxSt, insSt) ? null : incomePresentation(taxSt, insSt);
+}
+
 // F-5 handoff gating: unresolved taxes contaminate the same screener metrics as
 // unresolved insurance, and additionally omit annualTaxes itself (a blank field
 // must never ship a fabricated $0). Wraps the banked insuranceDependentHandoff

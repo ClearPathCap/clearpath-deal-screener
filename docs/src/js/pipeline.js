@@ -9,7 +9,7 @@ import { getLastLtrResult } from './ltr.js';
 import { getLastBrrrResult } from './brrr.js';
 import { getPipelineFundingButtonHTML } from './clearpath.js';
 import { getActiveTier } from './tiers.js';
-import { resultInsuranceStatus, insuranceReady, resultTaxStatus, taxReady, incomePresentation } from './insuranceReadiness.js';
+import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
 
 // Local modal helpers — avoids circular dep with main.js
 const openModal  = id => document.getElementById(id).classList.add('active');
@@ -219,11 +219,9 @@ function buildDealStats(type, r) {
 // time, so gating must happen at render — this also covers legacy saved deals
 // (resultInsuranceStatus falls back on insMissing / coerced ins:0).
 function unresolvedInsPresentation(type, data) {
-  if (type !== 'ltr' && type !== 'brrr') return null;
   const insSt = resultInsuranceStatus(data || {});
-  const tSt = resultTaxStatus(data || {}); // F-5: blank taxes pend saved cards too
-  if (insuranceReady(insSt) && taxReady(tSt)) return null;
-  return incomePresentation(tSt, insSt);
+  const tSt = resultTaxStatus(data || {}); // F-5/F-6: blank expenses pend saved cards too
+  return pendingPresentationFor(type, tSt, insSt);
 }
 
 // Pending card stats when insurance is unresolved. Every LTR headline stat
@@ -232,6 +230,9 @@ function unresolvedInsPresentation(type, data) {
 function pendingDealStats(d) {
   if (d.type === 'ltr') return [
     { l: 'DSCR', v: 'Pending' }, { l: 'CoC', v: 'Pending' }, { l: 'Cash Flow', v: 'Pending' },
+  ];
+  if (d.type === 'rental') return [ // F-6: CoC/Cap/Cash Flow are all expense-dependent
+    { l: 'CoC', v: 'Pending' }, { l: 'Cap', v: 'Pending' }, { l: 'Cash Flow', v: 'Pending' },
   ];
   return [
     { l: 'DSCR', v: 'Pending' },
@@ -366,6 +367,7 @@ function buildFlipDetail(d) {
 }
 
 function buildRentalDetail(d) {
+  const pend = unresolvedInsPresentation('rental', d) != null; // F-6: blank taxes+insurance pends
   const rows = [
     { l: 'Purchase price',         v: d.price   != null ? fmt(d.price)  : '—' },
     { l: 'Down payment',           v: d.down    ? d.down + '%'          : '—' },
@@ -373,16 +375,16 @@ function buildRentalDetail(d) {
     { l: 'Occupancy',              v: d.occ     != null ? d.occ + '%'   : '—' },
     { l: 'Platform fee (Airbnb/VRBO)', v: d.mgmt  != null ? d.mgmt + '%'  : '—' },
     { l: 'Property manager',       v: d.pm      != null ? d.pm + '%'    : '—' },
-    { l: 'Taxes + insurance',      v: d.tax     != null ? fmt(d.tax)    : '—' },
+    { l: 'Taxes + insurance',      v: pend ? 'Pending' : (d.tax != null ? fmt(d.tax) : '—') },
     { l: 'Maintenance',            v: d.maint   != null ? fmt(d.maint)  : '—' },
     { l: 'Furnishing (one-time)',  v: d.furnish != null ? fmt(d.furnish): '—' },
   ];
   const metrics = [
-    { l: 'NOI',                    v: d.noi      != null ? fmt(d.noi)      : '—' },
-    { l: 'Cap rate',               v: d.capRate  != null ? pct(d.capRate)  : '—' },
+    { l: 'NOI',                    v: pend ? 'Pending' : (d.noi      != null ? fmt(d.noi)      : '—') },
+    { l: 'Cap rate',               v: pend ? 'Pending' : (d.capRate  != null ? pct(d.capRate)  : '—') },
     { l: 'Annual debt service',    v: d.debt     != null ? fmt(d.debt)     : '—' },
-    { l: 'Annual cash flow',       v: d.cashflow != null ? fmt(d.cashflow) : '—' },
-    { l: 'Cash-on-cash',           v: d.coc      != null ? pct(d.coc)      : '—' },
+    { l: 'Annual cash flow',       v: pend ? 'Pending' : (d.cashflow != null ? fmt(d.cashflow) : '—') },
+    { l: 'Cash-on-cash',           v: pend ? 'Pending' : (d.coc      != null ? pct(d.coc)      : '—') },
     { l: 'Total cash in',          v: d.downAmt  != null ? fmt(d.downAmt)  : '—' },
     { l: 'Gross rent multiplier',  v: d.grm      != null ? d.grm + 'x'    : '—' },
   ];

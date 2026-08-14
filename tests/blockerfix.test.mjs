@@ -236,8 +236,62 @@ function near(label, actual, expected, tol = 2) {
   truthy("F5: summaries gate taxes line", cpSrc.includes("tStat === INS_MISSING ? 'Pending' : '$' + Math.round(r.tax)"));
   truthy("F5: summaries warn on missing taxes", cpSrc.includes("taxSummaryWarning(tStat)"));
   truthy("F5: pipeline gate widened to taxes", plSrc.includes("resultTaxStatus(data || {})"));
-  truthy("F5: share gate widened to taxes", shSrc.includes("taxReady(taxSt)"));
+  truthy("F5: share gate widened to taxes", shSrc.includes("resultTaxStatus(data)"));
   console.log("F-5 OK");
+}
+
+// ═══ F-6 — STR blank taxes + insurance must not become $0 ════════════════════
+{
+  const IR = await load("docs/src/js/insuranceReadiness.js");
+  const STR = await load("docs/src/js/strFinance.js");
+
+  // Extraction fidelity: the pure module reproduces the Pass-0 goldens exactly
+  // (W4-F4 COLD and W4-F4b WARM) — zero behavior change from the verbatim move.
+  const f4 = STR.computeStr({ price: 420000, rent: 55000, down: 0.20, occ: 0.65, mgmt: 0.03, pm: 0.08, tax: 5500, maint: 3000, furnish: 15000, tgtCoc: 6, interestRate: 0.0675 });
+  near("F6: W4-F4 NOI", f4.noi, 23317.5, 0.5);
+  near("F6: W4-F4 DSCR", f4.dscr, 0.891632, 0.0001);
+  near("F6: W4-F4 CoC", f4.coc, -2.8626, 0.001);
+  eq("F6: W4-F4 verdict COLD", f4.cls, "pass");
+  eq("F6: W4-F4 verdict copy", f4.verdict, "Thin Margins — Walk Away");
+  const f4b = STR.computeStr({ price: 420000, rent: 70000, down: 0.20, occ: 0.65, mgmt: 0.03, pm: 0.08, tax: 5500, maint: 3000, furnish: 15000, tgtCoc: 6, interestRate: 0.0675 });
+  near("F6: W4-F4b NOI", f4b.noi, 31995, 0.5);
+  near("F6: W4-F4b CoC", f4b.coc, 5.9026, 0.001);
+  eq("F6: W4-F4b verdict WARM", f4b.cls, "warm");
+  truthy("F6: W4-F4b no bridge suffix (DSCR 1.22 < 1.25)", !/Lender-fundable/.test(f4b.vsub));
+
+  // Blank combined field pends; explicit 0 computes; populated computes.
+  const pend = IR.strExpensePresentation(IR.taxStatus(undefined));
+  truthy("F6: blank combined field pends", pend !== null);
+  eq("F6: pending tag", pend.tag, "NEEDS TAXES + INSURANCE");
+  truthy("F6: pending copy names the ambiguity rule (blank is unknown, not $0)", /unknown, not \$0/.test(pend.sub));
+  eq("F6: explicit 0 computes (no overlay)", IR.strExpensePresentation(IR.taxStatus(0)), null);
+  eq("F6: populated computes (no overlay)", IR.strExpensePresentation(IR.taxStatus(5500)), null);
+
+  // Shared render-time decision covers STR everywhere saved deals render.
+  truthy("F6: pendingPresentationFor rental blank -> overlay", IR.pendingPresentationFor("rental", "missing", "valid") !== null);
+  eq("F6: pendingPresentationFor rental explicit-0 -> null", IR.pendingPresentationFor("rental", "explicit_zero", "valid"), null);
+  eq("F6: pendingPresentationFor flip -> always null", IR.pendingPresentationFor("flip", "missing", "missing"), null);
+
+  // Wiring — tests live against rental.js directly (static, banked §8 pattern):
+  // the analyzer consumes the tested module, reads the field blank-aware, gates
+  // every expense-dependent tile/row, and stores taxStatus. The old inline math
+  // is gone from the DOM file.
+  const rSrc = srcOf("docs/src/js/rental.js");
+  truthy("F6: rental.js imports computeStr", rSrc.includes("import { computeStr } from './strFinance.js'"));
+  truthy("F6: rental.js reads tax blank-aware", rSrc.includes("parseNumOpt(document.getElementById('v-tax').value)"));
+  truthy("F6: rental.js validates the RAW tax (blank stays absent)", rSrc.includes("tax: taxRaw, maint, furnish"));
+  truthy("F6: rental.js gates verdict tag", rSrc.includes("strP ? strP.tag"));
+  truthy("F6: rental.js gates CoC tile", rSrc.includes("val: strP ? strP.pendingText : pct(coc)"));
+  truthy("F6: rental.js gates DSCR tile", rSrc.includes("val: strP ? strP.pendingText : (debt > 0 ? dscr.toFixed(2) : 'n/a')"));
+  truthy("F6: rental.js pends taxes row", rSrc.includes("strP ? '— pending' : '–' + fmt(tax)"));
+  truthy("F6: rental.js pends NOI row", rSrc.includes("v: strP ? strP.pendingText : fmt(noi)"));
+  truthy("F6: rental.js stores taxStatus", rSrc.includes("taxStatus: tStat"));
+  truthy("F6: old inline NOI math gone from rental.js", !rSrc.includes("const noi         = effRent - totalExp"));
+  truthy("F6: old inline verdict gone from rental.js", !rSrc.includes("verdict = 'Strong STR Play'"));
+  const plSrc6 = srcOf("docs/src/js/pipeline.js");
+  truthy("F6: pipeline pends STR card stats", plSrc6.includes("if (d.type === 'rental') return [ // F-6"));
+  truthy("F6: pipeline pends STR detail taxes", plSrc6.includes("v: pend ? 'Pending' : (d.tax != null ? fmt(d.tax) : '—')"));
+  console.log("F-6 OK");
 }
 
 // ═══ Report ══════════════════════════════════════════════════════════════════

@@ -1,9 +1,11 @@
 // ─── STR / Rental analyzer ────────────────────────────────────────────────────
 
-import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, renderInputIssues } from './format.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, parseNumOpt, renderInputIssues } from './format.js';
 import { STR_MARKETS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
 import { validateInputs, plausibilityWarnings } from './finance.js';
+import { computeStr } from './strFinance.js';
+import { taxStatus, strExpensePresentation } from './insuranceReadiness.js';
 
 // ─── Regional STR fallback defaults (Task 3) ──────────────────────────────────
 const STR_REGIONAL_DEFAULTS = {
@@ -55,7 +57,8 @@ export function analyzeRental() {
   const mgmt    = (+document.getElementById('v-mgmt').value || 3) / 100;
   const selfManage = document.getElementById('self-manage-toggle')?.checked;
   const pm      = selfManage ? 0 : (+document.getElementById('v-pm').value || 8) / 100;
-  const tax     = parseComma(document.getElementById('v-tax').value);
+  const taxRaw  = parseNumOpt(document.getElementById('v-tax').value); // F-6: blank ≠ 0
+  const tax     = taxRaw ?? 0;
   const maint   = parseComma(document.getElementById('v-maint').value);
   const furnish = parseComma(document.getElementById('v-furnish').value);
   const tgtCoc  = +document.getElementById('v-target').value || 6;
@@ -73,7 +76,7 @@ export function analyzeRental() {
     mgmt:  +document.getElementById('v-mgmt').value,
     pm:    selfManage ? 0 : +document.getElementById('v-pm').value,
     rate:  +(document.getElementById('v-interest-rate')?.value),
-    tax, maint, furnish,
+    tax: taxRaw, maint, furnish,
   };
   const { errors: strErrors } = validateInputs('str', strRaw);
   if (renderInputIssues('rental', strErrors, [])) {
@@ -82,54 +85,28 @@ export function analyzeRental() {
     return;
   }
 
-  const effRent     = rent * occ;
-  const platformFee = effRent * mgmt;
-  const pmFee       = effRent * pm;
-  const totalExp    = platformFee + pmFee + tax + maint;
-  const noi         = effRent - totalExp;
-  const capRate     = (noi / price) * 100;
-  const downAmt     = price * down + furnish;
-  const loan        = price - (price * down);
-  const monthlyRate = interestRate / 12;
-  const n           = 360;
-  const mo          = loan > 0 ? loan * monthlyRate * Math.pow(1 + monthlyRate, n) / (Math.pow(1 + monthlyRate, n) - 1) : 0;
-  const debt        = mo * 12;
-  const cashflow    = noi - debt;
-  const dscr        = debt > 0 ? noi / debt : 0;   // the metric a rental lender underwrites to
-  const coc         = (cashflow / downAmt) * 100;
-  const grm         = Math.round((price / rent) * 10) / 10;
+  // F-6: the combined "Taxes + insurance" field follows the blank-is-unknown rule.
+  // One field cannot distinguish missing taxes from missing insurance, so a blank
+  // pends as ONE combined expense state (no meaning silently picked); an explicit
+  // $0 computes as a real value. Math + verdict live in strFinance.js (pure,
+  // unit-tested) — extracted verbatim, zero behavior change.
+  const tStat = taxStatus(taxRaw);
+  const strP = strExpensePresentation(tStat); // non-null → Pending overlay
+
+  const { effRent, platformFee, pmFee, noi, capRate, downAmt, loan, debt, cashflow, dscr, coc, grm, verdict, vsub, cls } =
+    computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate });
   const rateDisplay = (interestRate * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
 
-  let verdict, vsub, cls;
-  if (coc >= tgtCoc && capRate >= 6) {
-    verdict = 'Strong STR Play'; cls = 'hot';
-    vsub = 'Cash-on-cash return of ' + (Math.round(coc * 10) / 10) + '% clears your ' + tgtCoc + '% target. ' +
-      'Cap Rate (' + (Math.round(capRate * 10) / 10) + '%) measures return as if you paid cash. Verify occupancy with AirDNA before closing.';
-  } else if (coc >= tgtCoc * 0.75 && capRate >= 4.5) {
-    verdict = 'Dig Deeper & Negotiate'; cls = 'warm';
-    vsub = 'Cash-on-cash of ' + (Math.round(coc * 10) / 10) + '% is close to your ' + tgtCoc + '% target. ' +
-      'A few more booked nights/month changes the math. Verify occupancy in AirDNA and negotiate on price.';
-  } else {
-    verdict = 'Thin Margins — Walk Away'; cls = 'pass';
-    vsub = 'Cash-on-cash of ' + (Math.round(coc * 10) / 10) + '% misses your ' + tgtCoc + '% target. ' +
-      'Negotiate price down significantly or find a property with stronger revenue potential.';
-  }
-
-  // DSCR bridge: a warm cash-on-cash deal that still clears lender DSCR is fundable.
-  if (cls === 'warm' && dscr >= 1.25) {
-    vsub += ' Lender-fundable: DSCR ' + dscr.toFixed(2) + ' clears typical 1.20–1.25 underwriting even though cash-on-cash trails your target — a finance-and-hold candidate.';
-  }
-
-  document.getElementById('rental-verdict').className = 'verdict ' + cls;
-  document.getElementById('rvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
-  document.getElementById('rvlabel').textContent = verdict;
-  document.getElementById('rvsub').textContent   = vsub;
+  document.getElementById('rental-verdict').className = 'verdict ' + (strP ? 'warm' : cls);
+  document.getElementById('rvtag').textContent   = strP ? strP.tag : cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
+  document.getElementById('rvlabel').textContent = strP ? strP.label : verdict;
+  document.getElementById('rvsub').textContent   = strP ? strP.sub : vsub;
 
   document.getElementById('rental-metrics').innerHTML = buildMetrics([
-    { label: 'Cash-on-Cash',     val: pct(coc),       cls: cClass(coc, tgtCoc, tgtCoc * 0.75) },
-    { label: 'Cap Rate',         val: pct(capRate),   cls: cClass(capRate, 6, 4.5) },
-    { label: 'Annual Cash Flow', val: fmt(cashflow),  cls: cClass(cashflow, 6000, 0) },
-    { label: 'DSCR',             val: (debt > 0 ? dscr.toFixed(2) : 'n/a'), cls: dscr >= 1.25 ? 'good' : dscr >= 1.0 ? 'warn' : 'bad' },
+    { label: 'Cash-on-Cash',     val: strP ? strP.pendingText : pct(coc),       cls: strP ? 'warn' : cClass(coc, tgtCoc, tgtCoc * 0.75) },
+    { label: 'Cap Rate',         val: strP ? strP.pendingText : pct(capRate),   cls: strP ? 'warn' : cClass(capRate, 6, 4.5) },
+    { label: 'Annual Cash Flow', val: strP ? strP.pendingText : fmt(cashflow),  cls: strP ? 'warn' : cClass(cashflow, 6000, 0) },
+    { label: 'DSCR',             val: strP ? strP.pendingText : (debt > 0 ? dscr.toFixed(2) : 'n/a'), cls: strP ? 'warn' : dscr >= 1.25 ? 'good' : dscr >= 1.0 ? 'warn' : 'bad' },
   ]);
 
   const breakdownRows = [
@@ -137,13 +114,13 @@ export function analyzeRental() {
     { l: 'Effective revenue (' + Math.round(occ * 100) + '% occ.)',        v: fmt(effRent) },
     { l: 'Platform fees (Airbnb/VRBO)',                                     v: '–' + fmt(platformFee) },
     { l: 'Property manager' + (pm > 0 ? ' (' + Math.round(pm * 100) + '%)' : ' (self)'), v: pm > 0 ? '–' + fmt(pmFee) : '$0' },
-    { l: 'Taxes + insurance',                                              v: '–' + fmt(tax) },
+    { l: 'Taxes + insurance' + (strP ? ' (not entered)' : ''),             v: strP ? '— pending' : '–' + fmt(tax) },
     { l: 'Maintenance',                                                    v: '–' + fmt(maint) },
-    { l: 'Net operating income',                                           v: fmt(noi) },
+    { l: 'Net operating income',                                           v: strP ? strP.pendingText : fmt(noi) },
     { l: 'Annual debt service (' + rateDisplay + ')',                      v: '–' + fmt(debt) },
-    { l: 'Net cash flow (annual)', v: fmt(cashflow), tot: true, color: cashflow >= 0 ? 'var(--accent)' : 'var(--danger)' },
-    { l: 'Net cash flow (monthly)',                                        v: fmt(cashflow / 12) },
-    { l: 'DSCR (NOI ÷ debt service)',                                      v: (debt > 0 ? dscr.toFixed(2) : 'n/a') },
+    { l: 'Net cash flow (annual)', v: strP ? strP.pendingText : fmt(cashflow), tot: true, color: strP ? '' : (cashflow >= 0 ? 'var(--accent)' : 'var(--danger)') },
+    { l: 'Net cash flow (monthly)',                                        v: strP ? strP.pendingText : fmt(cashflow / 12) },
+    { l: 'DSCR (NOI ÷ debt service)',                                      v: strP ? strP.pendingText : (debt > 0 ? dscr.toFixed(2) : 'n/a') },
     { l: 'Gross rent multiplier (price ÷ rent)',                           v: grm + 'x' },
     ...(furnish > 0 ? [{ l: 'Furnishing / setup (one-time cash — not in NOI)', v: '–' + fmt(furnish) }] : []),
   ];
@@ -156,7 +133,7 @@ export function analyzeRental() {
     occ:          +document.getElementById('v-occ').value,
     mgmt:         +document.getElementById('v-mgmt').value,
     pm:           selfManage ? 0 : +document.getElementById('v-pm').value,
-    tax, maint, furnish, tgtCoc, interestRate,
+    tax, taxStatus: tStat, maint, furnish, tgtCoc, interestRate,
     cashflow, coc, capRate, noi, debt, downAmt, grm, dscr,
     verdict, cls,
     hot: cls === 'hot',

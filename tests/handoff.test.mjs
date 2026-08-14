@@ -267,9 +267,10 @@ not("pipeline: unguarded stats render gone", plSrc, "${d.stats.map(");
 
 // share.js — deal summary text gated
 has("share imports readiness", shSrc, "from './insuranceReadiness.js'");
-// (blocker-fix F-5: headline overlay now sourced from incomePresentation so a
+// (blocker-fix F-5/F-6: headline overlay sourced from the shared
+// pendingPresentationFor decision — taxes join the gate, STR pends too, and a
 // tax-missing/insurance-valid deal cannot dereference a null presentation.)
-has("share headline gated", shSrc, "unresolvedIns ? incomePresentation(taxSt, insStatus).tag : d.verdict.toUpperCase()");
+has("share headline gated", shSrc, "headline      = pendP ? pendP.tag : d.verdict.toUpperCase()");
 eq("share: three Pending value gates", (shSrc.match(/unresolvedIns \? 'Pending' :/g) || []).length, 3);
 
 // Get Funding + handoff contracts unchanged

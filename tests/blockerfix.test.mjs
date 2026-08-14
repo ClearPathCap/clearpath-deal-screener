@@ -100,6 +100,72 @@ function near(label, actual, expected, tol = 2) {
   console.log("F-1 OK");
 }
 
+// ═══ F-3 — currency parser must not silently multiply by 100 ═════════════════
+{
+  const FMT = await load("docs/src/js/format.js");
+  const { currencyMaskValue: cmv, isMalformedCurrency, parseComma, parseNumOpt } = FMT;
+
+  // The headline bug is dead: a decimal separator in ordinary currency syntax is
+  // never deleted. "1,200.00" is $1,200 — not $120,000.
+  eq("F3: 1,200.00 value is 1200 (not 120000)", cmv("1,200.00").value, 1200);
+  eq("F3: 1,200.00 display keeps the separator", cmv("1,200.00").display, "1,200.00");
+
+  // Required parser contract — mask canonicalization (the browser event path's core).
+  eq("F3: mask 1200", cmv("1200").display, "1,200");
+  eq("F3: mask 1,200", cmv("1,200").display, "1,200");
+  eq("F3: mask $1,200", cmv("$1,200").display, "1,200");
+  eq("F3: mask 1 200", cmv("1 200").display, "1,200");
+  eq("F3: value 1200", cmv("1200").value, 1200);
+  eq("F3: value $1,200", cmv("$1,200").value, 1200);
+  eq("F3: value 1 200", cmv("1 200").value, 1200);
+  // Decimal-preserving by design (fields are NOT integer-only; engines take floats,
+  // displays round at render): 1200.50 parses to 1200.50.
+  eq("F3: mask 1200.50 display", cmv("1200.50").display, "1,200.50");
+  eq("F3: value 1200.50", cmv("1200.50").value, 1200.5);
+  eq("F3: cents capped at two digits", cmv("1200.509").display, "1,200.50");
+  eq("F3: leading-dot normalizes to 0.x", cmv(".5").display, "0.5");
+  eq("F3: blank is not malformed", cmv("").malformed, false);
+  eq("F3: blank display empty", cmv("").display, "");
+
+  // Malformed input: rejected and visibly flagged — never reshaped into a plausible
+  // number. The raw junk stays in the field exactly as typed.
+  for (const junk of ["abc12.3.4", "1.2.3", "1–200", "1-200", "12abc", "."]) {
+    eq(`F3: malformed detected: ${junk}`, isMalformedCurrency(junk), true);
+    eq(`F3: not reshaped: ${junk}`, cmv(junk).display, junk);
+    eq(`F3: no value from junk: ${junk}`, cmv(junk).value, null);
+  }
+  eq("F3: valid not flagged: $1,200.00", isMalformedCurrency("$1,200.00"), false);
+
+  // Per-analyzer read paths at unit level. Flip + STR read money via parseComma;
+  // LTR + BRRR read money via parseNumOpt. Both must agree with the mask's value
+  // for every valid contract row (mask display → parse round-trip).
+  for (const [raw, want] of [["1200", 1200], ["1,200", 1200], ["$1,200", 1200], ["1 200", 1200], ["1,200.00", 1200], ["1200.50", 1200.5]]) {
+    eq(`F3 flip/STR parseComma(${raw})`, parseComma(raw), want);
+    eq(`F3 LTR/BRRR parseNumOpt(${raw})`, parseNumOpt(raw), want);
+    eq(`F3 round-trip parseComma(mask(${raw}))`, parseComma(cmv(raw).display), want);
+    eq(`F3 round-trip parseNumOpt(mask(${raw}))`, parseNumOpt(cmv(raw).display), want);
+  }
+  // Junk through the low-level readers stays non-credible (0/undefined feed the
+  // required-field and malformed blocks; they can never grade a deal).
+  eq("F3: parseComma junk -> 0 (blocked upstream)", parseComma("abc12.3.4"), 0);
+  eq("F3: parseNumOpt junk -> undefined (blocked upstream)", parseNumOpt("abc12.3.4"), undefined);
+
+  // Wiring: the analyze wrapper blocks malformed money fields for all four analyzers,
+  // and the DOM mask flags instead of rewriting (static source assertions — banked
+  // handoff.test.mjs §8 pattern; rendered proof belongs to the browser gate).
+  const mainSrc = srcOf("docs/src/js/main.js");
+  const fmtSrc = srcOf("docs/src/js/format.js");
+  truthy("F3: main.js imports isMalformedCurrency", mainSrc.includes("isMalformedCurrency"));
+  truthy("F3: wrapper sweeps [data-currency]", mainSrc.includes("querySelectorAll('[data-currency]')"));
+  truthy("F3: wrapper blocks with visible message", mainSrc.includes("'Enter a valid dollar amount'"));
+  for (const t of ["flip: 'page-flip'", "rental: 'rental-view-str'", "ltr: 'rental-view-ltr'", "brrr: 'rental-view-brrr'"]) {
+    truthy(`F3: wrapper covers ${t}`, mainSrc.includes(t));
+  }
+  truthy("F3: mask sets aria-invalid on junk", fmtSrc.includes("el.setAttribute('aria-invalid', 'true')"));
+  truthy("F3: old digits-only strip is gone", !fmtSrc.includes("replace(/[^0-9]/g, '')"));
+  console.log("F-3 OK");
+}
+
 // ═══ Report ══════════════════════════════════════════════════════════════════
 console.log(`\nblockerfix: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach((f) => console.log("  ✗ " + f)); process.exit(1); }

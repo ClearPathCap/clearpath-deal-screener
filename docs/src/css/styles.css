@@ -345,6 +345,9 @@ body.beginner-mode span.beginner-only{display:inline}
 /* VALIDATION */
 input.field-error{border-color:var(--danger)!important}
 .validation-msg{font-size:11px;color:var(--danger);margin-top:3px}
+/* F-3: malformed currency input — flagged in place, never reshaped */
+input.input-invalid{border-color:var(--danger)!important}
+.currency-msg{font-size:11px;color:var(--danger);margin-top:3px}
 
 /* SELF-MANAGE TOGGLE (STR) */
 .self-manage-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0 4px;gap:8px}

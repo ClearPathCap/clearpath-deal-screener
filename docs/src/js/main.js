@@ -12,7 +12,7 @@ import { saveDeal as _saveDeal, renderPipeline,
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
-import { initCurrencyInputs, parseComma, parseNumOpt }              from './format.js';
+import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency } from './format.js';
 import { propertyBand, BAND_RULES }                                 from './finance.js';
 import { handlePipelineFundingClick }                               from './clearpath.js';
 import {
@@ -675,6 +675,26 @@ function validateRequiredFields(type) {
       if (msg) msg.textContent = '';
     }
   });
+
+  // F-3: malformed money input blocks the analysis with a visible message — it is
+  // never silently normalized into a plausible number (required OR optional field).
+  const CURRENCY_CONTAINERS = { flip: 'page-flip', rental: 'rental-view-str', ltr: 'rental-view-ltr', brrr: 'rental-view-brrr' };
+  const box = document.getElementById(CURRENCY_CONTAINERS[type] || '');
+  if (box) {
+    box.querySelectorAll('[data-currency]').forEach(el => {
+      if (!isMalformedCurrency(el.value)) return;
+      el.classList.add('field-error');
+      const wrap = el.closest('.field');
+      let msg = wrap ? wrap.querySelector('.validation-msg') : null;
+      if (!msg && wrap) {
+        msg = document.createElement('div');
+        msg.className = 'validation-msg';
+        wrap.appendChild(msg);
+      }
+      if (msg) msg.textContent = 'Enter a valid dollar amount';
+      valid = false;
+    });
+  }
   return valid;
 }
 

@@ -33,11 +33,59 @@ export function parseNumOpt(v) {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// ─── F-3: decimal-aware currency mask ────────────────────────────────────────
+// Money fields accept ordinary currency syntax: optional $, commas and spaces as
+// grouping, ONE decimal point, cents capped at two digits. The mask never deletes
+// a decimal separator ("1,200.00" can no longer collapse into "120,000"), and
+// malformed input (letters, dashes, a second dot) is flagged in place — never
+// reshaped into a plausible number. Values are decimal-preserving by design:
+// parseComma/parseNumOpt already read "1,200.50" as 1200.5 (shipblocker B3) and
+// every engine consumes floats; displays round at the render layer only.
+function stripCurrencyNoise(v) {
+  return String(v ?? '').replace(/[$,\s ]/g, '');
+}
+
+export function isMalformedCurrency(v) {
+  const s = stripCurrencyNoise(v);
+  if (s === '') return false;                 // blank is not malformed — required/optional rules decide
+  return s === '.' || !/^\d*\.?\d*$/.test(s); // digits with at most one decimal point
+}
+
+// Canonical {display, value, malformed} for a currency field. Pure — unit-tested
+// in Node; fmtCurrencyInput is the thin DOM wrapper around it.
+export function currencyMaskValue(raw) {
+  const s = stripCurrencyNoise(raw);
+  if (s === '') return { display: '', value: null, malformed: false };
+  if (isMalformedCurrency(s)) return { display: String(raw), value: null, malformed: true };
+  const dot = s.indexOf('.');
+  const int = dot === -1 ? s : s.slice(0, dot);
+  const dec = dot === -1 ? undefined : s.slice(dot + 1, dot + 3); // cents cap: 2 digits
+  const intFmt = (int === '' ? 0 : parseInt(int, 10)).toLocaleString();
+  const display = dec === undefined ? intFmt : intFmt + '.' + dec;
+  const value = parseFloat((int === '' ? '0' : int) + (dec ? '.' + dec : ''));
+  return { display, value, malformed: false };
+}
+
 export function fmtCurrencyInput(el) {
-  const raw = el.value.replace(/[^0-9]/g, '');
-  if (!raw) { el.value = ''; return; }
-  const n = parseInt(raw, 10);
-  el.value = n.toLocaleString();
+  const r = currencyMaskValue(el.value);
+  const wrap = el.closest ? el.closest('.field') : null;
+  let msg = wrap ? wrap.querySelector('.currency-msg') : null;
+  if (r.malformed) {
+    // Junk stays visible and flagged — it must never become credible decision data.
+    el.classList.add('input-invalid');
+    el.setAttribute('aria-invalid', 'true');
+    if (!msg && wrap) {
+      msg = document.createElement('div');
+      msg.className = 'currency-msg';
+      wrap.appendChild(msg);
+    }
+    if (msg) msg.textContent = 'Not a valid dollar amount';
+    return;
+  }
+  el.classList.remove('input-invalid');
+  el.removeAttribute('aria-invalid');
+  if (msg) msg.textContent = '';
+  el.value = r.display;
 }
 
 export function initCurrencyInputs() {

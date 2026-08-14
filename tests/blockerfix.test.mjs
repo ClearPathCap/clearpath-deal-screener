@@ -294,6 +294,95 @@ function near(label, actual, expected, tol = 2) {
   console.log("F-6 OK");
 }
 
+// ═══ F-10 — preserve the user's raw requested Flip loan in the handoff ═══════
+{
+  // clearpath.js is import-coupled (tiers/storage → DOM), so this section uses the
+  // banked handoff.test.mjs mirror pattern: the flip branch of buildDealParams and
+  // buildCpcUrl's serializer rule are REPLICATED verbatim below and pinned against
+  // the source with static assertions. The browser gate provides the DOM proof.
+  const cpSrc = srcOf("docs/src/js/clearpath.js");
+  const fuSrc = srcOf("docs/src/js/funding.js");
+
+  // Mirror of clearpath.js buildDealParams flip branch @ w4/blocker-fix.
+  function mirrorFlipParams(r) {
+    const cost = (r.ask || 0) + (r.rep || 0);
+    const maxBox = Math.round(Math.min(0.90 * cost, r.arv ? 0.70 * r.arv : Infinity));
+    const rawLoan = (r.loan && r.loan > 0) ? Math.round(r.loan) : undefined;
+    const gateLoan = rawLoan !== undefined ? Math.min(rawLoan, maxBox) : maxBox;
+    return {
+      pp: Math.round(r.ask || 0), rehab: Math.round(r.rep || 0), arv: Math.round(r.arv || 0),
+      loan: rawLoan, ltc: rawLoan !== undefined && cost ? rawLoan / cost : undefined,
+      gateLoan, gateLtc: cost ? gateLoan / cost : undefined,
+      addr: r.addr || undefined, city: r.city, state: r.state, purpose: 'flip', exit: 'sale',
+    };
+  }
+  // Mirror of funding.js buildCpcUrl (fixed key map + serializer rule, unchanged).
+  function mirrorUrl(deal) {
+    const p = new URLSearchParams();
+    p.set('src', 'dealscreener'); p.set('tier', 'starter');
+    const map = { pp:'pp', rehab:'rehab', arv:'arv', loan:'loan', ltv:'ltv', dscr:'dscr',
+                  addr:'addr', city:'city', state:'state', ptype:'ptype', purpose:'purpose', exit:'exit',
+                  units:'units', band:'band', monthlyRent:'monthlyRent', annualTaxes:'annualTaxes',
+                  annualInsurance:'annualInsurance', monthlyHoa:'monthlyHoa', vacancyPct:'vacancyPct',
+                  pmPct:'pmPct', maintPct:'maintPct', capexPct:'capexPct', screenerNoi:'screenerNoi',
+                  screenerDscr:'screenerDscr', screenerCashFlowAnnual:'screenerCashFlowAnnual',
+                  screenerCashFlowMonthly:'screenerCashFlowMonthly', screenerCapRate:'screenerCapRate',
+                  screenerVerdict:'screenerVerdict' };
+    for (const [k, param] of Object.entries(map)) {
+      const v = deal[k];
+      if (v !== undefined && v !== null && v !== '') p.set(param, String(v));
+    }
+    return p;
+  }
+  const base = { type: 'flip', ask: 225000, rep: 75000, arv: 425000, addr: '412 Oak St, Charlotte NC', city: 'Charlotte', state: 'NC' };
+
+  // Spec row 1: loan 9,000,000 → handoff carries 9000000, uncapped. (UI note: B2
+  // validation bounds an ENTERABLE loan at ask+rep, so 9M is reachable only at
+  // this unit level — disclosed, not smoothed.) Eligibility still judged at the
+  // box-eligible size, so the on-screen funding area is unchanged.
+  const big = mirrorFlipParams({ ...base, loan: 9000000 });
+  eq("F10: 9M handoff loan is raw", mirrorUrl(big).get('loan'), "9000000");
+  eq("F10: 9M gate figure is the box max (unchanged on-screen)", big.gateLoan, 270000);
+  // Spec row 2: loan 250,000 (inside the box) → unchanged.
+  const mid = mirrorFlipParams({ ...base, loan: 250000 });
+  eq("F10: 250K handoff loan", mirrorUrl(mid).get('loan'), "250000");
+  eq("F10: 250K gate == raw (cap never bound inside the box)", mid.gateLoan, 250000);
+  // Spec row 3: blank loan → CPC receives NO fabricated requested-loan value.
+  // Representation: the loan key is OMITTED (not empty) — CPC's traced prefill
+  // (page.tsx: `if (value) setter(...)`) treats omitted and empty identically as
+  // "no requested loan", and omission also preserves the banked serializer-hygiene
+  // rule (no ''-valued params). Note: ltc has NEVER been a serialized key —
+  // buildCpcUrl's map carries ltv, not ltc; the flip ltc field is gate-input only.
+  // Contract-shape delta: −1 key (loan) in the blank-loan case only.
+  const blank = mirrorFlipParams({ ...base, loan: 0 });
+  const pBlank = mirrorUrl(blank);
+  eq("F10: blank loan key omitted", pBlank.has('loan'), false);
+  eq("F10: ltc was never a URL key (map has ltv only)", mirrorUrl(mid).has('ltc'), false);
+  eq("F10: blank still gate-eligible at box max (button unchanged)", blank.gateLoan, 270000);
+  // Spec row 4: key shape. Entered-loan handoff keeps the banked ELEVEN-key set
+  // exactly (src,tier,pp,rehab,arv,loan,addr,city,state,purpose,exit — the Run 4
+  // 11-key contract); blank-loan drops exactly {loan} and nothing else.
+  const keys = (p) => [...p.keys()].sort().join(',');
+  eq("F10: entered-loan key set (banked 11-key contract preserved)", keys(mirrorUrl(mid)), "addr,arv,city,exit,loan,pp,purpose,rehab,src,state,tier");
+  eq("F10: entered-loan key count is 11", [...mirrorUrl(mid).keys()].length, 11);
+  eq("F10: blank-loan key set (−loan only)", keys(pBlank), "addr,arv,city,exit,pp,purpose,rehab,src,state,tier");
+  // Gate-only fields never serialize (not in buildCpcUrl's map).
+  eq("F10: gateLoan never serialized", mirrorUrl(big).has('gateLoan'), false);
+  eq("F10: gateLtc never serialized", mirrorUrl(big).has('gateLtc'), false);
+
+  // Static pins: source matches the mirror; the cap on the TRANSMITTED loan is gone.
+  truthy("F10: transmitted loan is rawLoan", cpSrc.includes("loan:    rawLoan,"));
+  truthy("F10: old Math.min-on-transmitted-loan gone", !cpSrc.includes("Math.min(Math.round(r.loan), maxBox) : maxBox"));
+  truthy("F10: gate fields exist", cpSrc.includes("gateLoan,") && cpSrc.includes("gateLtc: cost ? gateLoan / cost : undefined"));
+  truthy("F10: qualifiesForType judges at gate size", cpSrc.includes("loan: deal.gateLoan !== undefined ? deal.gateLoan : deal.loan"));
+  truthy("F10: belowMinimumOnly judges at gate size", cpSrc.includes("const loan = deal.gateLoan !== undefined ? deal.gateLoan : deal.loan"));
+  truthy("F10: below-min caption uses gate figure", cpSrc.includes("(deal.gateLoan !== undefined ? deal.gateLoan : deal.loan) || 0) / 1000"));
+  truthy("F10: buildCpcUrl map has no gate keys (never transmitted)", !fuSrc.includes("gateLoan") && !fuSrc.includes("gateLtc"));
+  truthy("F10: serializer hygiene rule unchanged", fuSrc.includes("if (v !== undefined && v !== null && v !== '') p.set(param, String(v));"));
+  truthy("F10: flip summary still carries the RAW request", cpSrc.includes("'Estimated Loan Request: $' + Math.round(r.loan).toLocaleString()"));
+  console.log("F-10 OK");
+}
+
 // ═══ Report ══════════════════════════════════════════════════════════════════
 console.log(`\nblockerfix: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach((f) => console.log("  ✗ " + f)); process.exit(1); }

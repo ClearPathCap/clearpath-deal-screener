@@ -61,16 +61,31 @@ function buildDealParams(r) {
   const { city, state } = parseCityState(r.addr);
   if (r.type === 'flip') {
     const cost = (r.ask || 0) + (r.rep || 0);
-    // Prefer the investor's actual requested loan, capped to the CPC box (90% of
-    // cost, ≤70% of ARV). Fall back to the box max when no loan was entered.
+    // F-10 (A-Aron ruled — subtraction, not addition): the handoff carries the
+    // user's RAW requested loan, uncapped. CPC recomputes LTC/LTV from raw inputs
+    // and adopts no DS result (Run 4 proved the derived keys absent from the
+    // contract by design); CPC's own ratified behavior preserves an oversized
+    // request while its Estimated Max Loan governs sizing. A BLANK loan stays the
+    // semantic fact "no user-requested loan supplied": the loan key is OMITTED
+    // from the URL (CPC's prefill skips falsy param values and sizingLoan falls
+    // back to CPC's own estimated max) — never a fabricated maxBox or 0. The ltc
+    // field below has never been a serialized key (buildCpcUrl's map carries ltv,
+    // not ltc) — it is gate input only. Box ELIGIBILITY is still judged at the
+    // box-eligible size via the gate-only fields below, so the on-screen funding
+    // area is unchanged; gateLoan/gateLtc are likewise never serialized. Net
+    // contract delta: entered-loan handoffs keep the banked 11-key shape exactly;
+    // blank-loan handoffs drop exactly one key (loan).
     const maxBox = Math.round(Math.min(0.90 * cost, r.arv ? 0.70 * r.arv : Infinity));
-    const loan = (r.loan && r.loan > 0) ? Math.min(Math.round(r.loan), maxBox) : maxBox;
+    const rawLoan = (r.loan && r.loan > 0) ? Math.round(r.loan) : undefined;
+    const gateLoan = rawLoan !== undefined ? Math.min(rawLoan, maxBox) : maxBox;
     return {
       pp:      Math.round(r.ask || 0),
       rehab:   Math.round(r.rep || 0),
       arv:     Math.round(r.arv || 0),
-      loan,
-      ltc:     cost ? loan / cost : undefined,
+      loan:    rawLoan,
+      ltc:     rawLoan !== undefined && cost ? rawLoan / cost : undefined,
+      gateLoan,
+      gateLtc: cost ? gateLoan / cost : undefined,
       addr:    r.addr || undefined,
       city, state,
       purpose: 'flip',
@@ -132,10 +147,16 @@ function buildDealParams(r) {
 }
 
 // Route to the right CPC box by deal type (flip/str = LTC box; ltr/brrr = DSCR box).
+// F-10: flip eligibility is judged at the box-eligible size (gate-only fields) so
+// the on-screen funding area is unchanged; only the transmitted URL carries raw.
 function qualifiesForType(type, deal) {
   if (type === 'ltr') return qualifiesForCpcLtr(deal);
   if (type === 'brrr') return qualifiesForCpcBrrr(deal);
-  return qualifiesForCpc(deal);
+  return qualifiesForCpc({
+    loan: deal.gateLoan !== undefined ? deal.gateLoan : deal.loan,
+    ltc:  deal.gateLtc  !== undefined ? deal.gateLtc  : deal.ltc,
+    arv:  deal.arv,
+  });
 }
 
 // ─── Tier-aware button config ─────────────────────────────────────────────────
@@ -297,9 +318,11 @@ function shouldShowFunding(result) {
 // referral-floor caption (the deal is fully analyzed; only the handoff is
 // unavailable), while every other miss keeps its specific outsideBoxHTML reason.
 function belowMinimumOnly(type, deal) {
-  const { loan } = deal;
   const band = deal.band || '1-4';
   if (band === '9plus') return false;                  // 9+ is a manual-review case, not below-min
+  // F-10: judge at the box-eligible size (gate fields; LTR/BRRR carry none and
+  // fall through to their derived loan unchanged).
+  const loan = deal.gateLoan !== undefined ? deal.gateLoan : deal.loan;
   if (!loan || loan >= CPC_BROKER_MIN) return false;   // must be genuinely under the minimum
   if (type === 'ltr' || type === 'brrr') {           // DSCR box: band LTV ceiling, DSCR ≥ 1.0
     const maxLtv = (BAND_RULES[band] || BAND_RULES['1-4']).maxLtv;
@@ -307,7 +330,8 @@ function belowMinimumOnly(type, deal) {
     if (deal.dscr !== undefined && deal.dscr < 1.0) return false;
     return true;
   }
-  if (deal.ltc !== undefined && deal.ltc > 0.90) return false;   // flip/bridge box
+  const ltc = deal.gateLtc !== undefined ? deal.gateLtc : deal.ltc;
+  if (ltc !== undefined && ltc > 0.90) return false;   // flip/bridge box
   if (deal.arv && loan / deal.arv > 0.70) return false;
   return true;
 }
@@ -319,7 +343,9 @@ function fundingNote(msg) {
 // Always returns a specific reason — never ''. Covers every way a hot/warm deal can
 // miss the CPC box, so the funding area is never blank on a hot/warm verdict (B1).
 function outsideBoxHTML(type, deal) {
-  const { loan, ltv, dscr } = deal;
+  const { ltv, dscr } = deal;
+  // F-10: reasons are judged at the box-eligible size, same as the gate.
+  const loan = deal.gateLoan !== undefined ? deal.gateLoan : deal.loan;
   const band = deal.band || '1-4';
 
   // 9+ units = commercial: never auto-rejected — routed to manual CPC review.
@@ -336,8 +362,9 @@ function outsideBoxHTML(type, deal) {
     if (dscr !== undefined && dscr < 1.0)
       return fundingNote(`DSCR ${(+dscr).toFixed(2)} is below 1.0 — rent doesn't cover the debt at this structure. Raise rent or lower the loan to fit the box.`);
   } else {
-    if (deal.ltc !== undefined && deal.ltc > 0.90)
-      return fundingNote(`Estimated LTC ${Math.round(deal.ltc * 100)}% exceeds the 90% loan-to-cost ceiling — lower the loan to fit the box.`);
+    const ltcEff = deal.gateLtc !== undefined ? deal.gateLtc : deal.ltc;
+    if (ltcEff !== undefined && ltcEff > 0.90)
+      return fundingNote(`Estimated LTC ${Math.round(ltcEff * 100)}% exceeds the 90% loan-to-cost ceiling — lower the loan to fit the box.`);
     if (deal.arv && loan / deal.arv > 0.70)
       return fundingNote(`Estimated loan is over 70% of ARV — lower the loan to fit the box.`);
   }
@@ -360,7 +387,9 @@ function outsideBoxHTML(type, deal) {
 // loan size.
 function renderBelowMinFundingHTML(type, cfg, cls, deal) {
   const btnLabel = getFundingLabel(type, cfg, cls, deal.band);
-  const k = Math.round((deal.loan || 0) / 1000);
+  // F-10: the caption names the box-eligible (estimated) loan — with a blank loan
+  // field there is no raw request to name, exactly as before this fix.
+  const k = Math.round(((deal.gateLoan !== undefined ? deal.gateLoan : deal.loan) || 0) / 1000);
   return `
     <button class="btn-get-funding" disabled aria-disabled="true" title="Clear Path Capital brokers loans from $100K">
       <img src="icons/clearpath-mark.png" class="funding-icon" alt="">

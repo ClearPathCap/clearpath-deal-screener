@@ -602,8 +602,13 @@ export function brrrVerdict(m) {
   const dscrText = m.dscr === null ? "n/a" : m.dscr.toFixed(2);
   const recText = (Math.round(rec * 10) / 10) + "%";
 
-  // Hard fails first feed COLD; otherwise evaluate HOT → WARM.
-  const hardFail = d < 1.0 || cf < 0 || m.refiLoan <= m.acqPayoff || m.equityCreated <= 0;
+  // COLD only when the refi debt itself isn't covered — DSCR < 1.0, equivalently
+  // NOI < annual refi debt service (all-cash: NOI < 0) — or when the BRRR mechanics
+  // break (refi can't pay off the bridge, or no equity is created). The CapEx
+  // reserve alone never flips a covered deal COLD (decision B5, mirroring ltrVerdict);
+  // the reserve-tipped negative-cash-flow case grades WARM below.
+  const coversDebt = (m.dscr === null) ? (m.NOI >= 0) : (m.NOI >= m.refiDebtYr);
+  const hardFail = !coversDebt || m.refiLoan <= m.acqPayoff || m.equityCreated <= 0;
   const survives = m.marginOfSafety !== "fails"; // stress: ARV −5%, rent −5%
 
   let cls, verdict, vsub;
@@ -617,6 +622,15 @@ export function brrrVerdict(m) {
     vsub =
       "Recovered " + recText + " of your capital and the refi holds at DSCR " + dscrText +
       ". " + left + " Survives a stress test (ARV −5%, rent −5%). Confirm ARV with comps and rent with the market before closing.";
+  } else if (!hardFail && cf < 0) {
+    // B5: DSCR ≥ 1.0 covers the refi debt, but the CapEx reserve tips monthly cash
+    // flow negative. Mirrors ltrVerdict's "Covers Debt — Thin After Reserves".
+    cls = "warm";
+    verdict = "Covers Debt — Thin After Reserves";
+    vsub =
+      "DSCR " + dscrText + " covers the refi debt (lender-fundable), but the hold runs about $" +
+      Math.abs(Math.round(cf)) + "/mo negative after the CapEx reserve. Build a cushion — push rent, " +
+      "trim the refi loan, or negotiate the basis to firm it up.";
   } else if (
     !hardFail &&
     ((d >= 1.1 && cf >= 0 && rec >= 40) ||
@@ -647,8 +661,10 @@ export function brrrVerdict(m) {
         Math.round(m.arv).toLocaleString() +
         ") — no equity is created, so there's nothing to refinance. This isn't a BRRR.";
     } else {
-      vsub =
-        "DSCR " + dscrText + " or cash flow won't support the refinanced hold. Rework the basis, rent, or refi terms.";
+      // Reached only when the refi debt isn't covered (DSCR < 1.0, or all-cash NOI < 0).
+      vsub = m.dscr !== null
+        ? "DSCR " + dscrText + " is below 1.0 — rent doesn't cover the refi debt at this structure. Rework the basis, rent, or refi terms."
+        : "Even all-cash, operating costs exceed income before any debt service — the hold is cash-flow negative on its own. Rework rent or expenses, or walk.";
     }
   }
   return { cls, verdict, vsub };

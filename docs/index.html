@@ -18,8 +18,11 @@
 </head>
 <body>
 
-<!-- Dev mode banner — shown only when cpcDevUnlock is set (dev code), not for comp tiers -->
-<div id="dev-mode-banner" class="dev-mode-banner" style="display:none"></div>
+<!-- Dev mode banner — shown only when cpcDevUnlock is set (dev code), not for comp
+     tiers. Hidden via the `hidden` ATTRIBUTE (nav-lock invariant): the CSS offset
+     .dev-mode-banner:not([hidden])+.nav is gated on it — an inline display:none
+     here would re-pin the nav 26px below the viewport top for everyone. -->
+<div id="dev-mode-banner" class="dev-mode-banner" hidden></div>
 
 <div class="nav">
   <button class="nav-btn active" data-tab="flip" onclick="showPage('flip',this)">Fix &amp; Flip</button>

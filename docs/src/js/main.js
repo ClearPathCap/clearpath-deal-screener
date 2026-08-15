@@ -988,9 +988,9 @@ function updateDevModeIndicator() {
   if (!banner) return;
   if (isDevMode()) {
     banner.textContent = 'DEV MODE — ' + getActiveTier().toUpperCase();
-    banner.style.display = 'block';
+    banner.hidden = false;   // nav-lock invariant: toggle `hidden`, never style.display
   } else {
-    banner.style.display = 'none';
+    banner.hidden = true;
   }
 }
 

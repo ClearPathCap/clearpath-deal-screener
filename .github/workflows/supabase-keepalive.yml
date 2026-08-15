@@ -6,6 +6,14 @@ name: supabase-keepalive
 # docs/src/js/supabaseClient.js already ships to every browser
 # (SUPABASE_PUBLISHABLE_KEY). No secret / service_role key. Touches no
 # application source and no deployed assets.
+#
+# 2026-08-15 (A-Aron-authorized, after the Aug-4→14 pause incident): the ping
+# now CLASSIFIES its failures and ALERTS. A paused project surfaces as curl
+# exit 6 (Supabase removes a paused project's DNS) and no ping can fix it —
+# only a dashboard Resume can. The Aug-4 pause failed silently for 30
+# consecutive runs because nothing watched the failures: the first failing
+# run now opens ONE repo issue (no 3x/day spam), and the next green run
+# closes it automatically.
 
 on:
   schedule:
@@ -14,7 +22,10 @@ on:
     - cron: '17 22 * * *'     # daily 22:17 UTC  (max gap 8 h << 7-day pause)
   workflow_dispatch: {}       # manual run from the Actions tab
 
-permissions: {}               # least privilege — no repo scopes needed
+# Least privilege: issues:write is the single scope the alerting needs
+# (everything else remains none; the job never checks out the repo).
+permissions:
+  issues: write
 
 concurrency:
   group: supabase-keepalive
@@ -29,25 +40,82 @@ jobs:
       # PUBLIC publishable key — same value as SUPABASE_PUBLISHABLE_KEY in
       # docs/src/js/supabaseClient.js. NEVER a secret / service_role key.
       SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+      ALERT_TITLE: 'Supabase keep-alive failing — action needed'
     steps:
       - name: Keep Supabase awake (read-only data-API query)
+        id: ping
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           # Real DB query (aggregate count under anon RLS -> 0 rows, no data)
           # = unambiguous project activity. The publishable key is rejected by
           # /rest/v1/ root but accepted for a concrete table path with
           # apikey + Authorization: Bearer (verified 2026-07-24).
           url="${SUPABASE_URL}/rest/v1/entitlements?select=count"
           echo "GET ${url}"
+          set +e
           code="$(curl -sS -o /tmp/ka_body -m 30 \
             -w '%{http_code}' \
             -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
             "${url}")"
-          echo "HTTP ${code}"
-          if [ "${code}" -lt 200 ] || [ "${code}" -ge 300 ]; then
-            echo "::error title=Supabase keep-alive failed::Ping returned HTTP ${code}; project qbddbblhduzwcfwslbac may pause within 7 days — investigate endpoint/key."
+          curl_rc=$?
+          set -e
+          fail() {  # $1 = class, $2 = detail — never echoes key material
+            echo "class=$1" >> "${GITHUB_OUTPUT}"
+            echo "detail=$2" >> "${GITHUB_OUTPUT}"
+            echo "::error title=Supabase keep-alive: $1::$2"
             exit 1
+          }
+          if [ "${curl_rc}" -ne 0 ]; then
+            case "${curl_rc}" in
+              6|7) fail "PAUSED_OR_UNREACHABLE" "curl exit ${curl_rc}: ${SUPABASE_URL#https://} is unresolvable/unreachable — the PAUSED-project signature (Supabase drops a paused project's DNS; Aug 2026 incident showed exit 6 for 10 days). Pings cannot fix this: the project needs a dashboard Resume." ;;
+              28)  fail "TIMEOUT" "curl exit 28: no response within 30s." ;;
+              *)   fail "NETWORK_ERROR" "curl exit ${curl_rc}." ;;
+            esac
+          fi
+          if [ "${code}" -lt 200 ] || [ "${code}" -ge 300 ]; then
+            case "${code}" in
+              401|403) fail "KEY_REJECTED" "HTTP ${code}: publishable key rejected — likely rotated/revoked. Compare the SUPABASE_PUBLISHABLE_KEY repository variable with docs/src/js/supabaseClient.js." ;;
+              404)     fail "API_PATH_GONE" "HTTP 404: /rest/v1/entitlements is missing — table renamed or API surface changed." ;;
+              *)       fail "HTTP_${code}" "HTTP ${code} from the data API — project degraded or pausing." ;;
+            esac
           fi
           echo "Keep-alive OK (HTTP ${code})."
+
+      - name: Open alert issue on first failure (no 3x/day spam)
+        if: ${{ failure() }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KLASS: ${{ steps.ping.outputs.class }}
+          DETAIL: ${{ steps.ping.outputs.detail }}
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open \
+            --search "\"${ALERT_TITLE}\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "${existing}" ]; then
+            echo "Alert issue #${existing} already open — not creating another."
+            exit 0
+          fi
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue create --repo "${GITHUB_REPOSITORY}" \
+            --title "${ALERT_TITLE}" \
+            --body "$(printf 'The Supabase keep-alive ping failed.\n\n- Class: **%s**\n- Detail: %s\n- Run: %s\n\nIf the class is PAUSED_OR_UNREACHABLE, no ping can fix it — the project needs a dashboard **Resume** (the free-tier pause removes DNS; see the Aug 2026 incident). This issue closes automatically on the next green run.' "${KLASS:-UNKNOWN}" "${DETAIL:-see run log}" "${run_url}")"
+
+      - name: Close alert issue on recovery
+        if: ${{ success() }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open \
+            --search "\"${ALERT_TITLE}\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -z "${existing}" ]; then
+            echo "No open alert issue — nothing to close."
+            exit 0
+          fi
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue close "${existing}" --repo "${GITHUB_REPOSITORY}" \
+            --comment "Keep-alive recovered (HTTP 2xx): ${run_url}"

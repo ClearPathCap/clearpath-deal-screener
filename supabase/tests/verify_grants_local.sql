@@ -37,6 +37,10 @@ begin
   insert into auth.users (id, email) values (u1, 'w5-local-a@example.test');
   insert into auth.users (id, email) values (u2, 'w5-local-b@example.test');
 
+  -- Zero-grant baseline (pins the Phase-5-caught empty-aggregate defect: a
+  -- user with NO grants must be starter, never investor).
+  assert public.effective_tier_for(u1) = 'starter', 'baseline: zero grants = starter';
+
   -- ── §5.1 cases A–G via the resolver core ───────────────────────────────────
   -- Case A: Investor comp + Stripe Pro → pro
   insert into public.entitlement_grants (user_id, tier, source, purpose, status)
@@ -167,8 +171,12 @@ begin
   v_out := public.claim_stripe_event('evt_1', 'customer.subscription.updated', false);
   assert v_out = 'claimed', 'events: failed is retryable';
   -- Mode-mismatch anomaly fails closed.
+  -- Phase 4.1 #3 re-pin (stale Phase-4 assert corrected): identity is
+  -- mode-scoped, so the same textual id in the OTHER mode legitimately claims
+  -- its own independent ledger row — the old fail-closed anomaly branch is
+  -- structurally impossible and removed.
   v_out := public.claim_stripe_event('evt_1', 'customer.subscription.updated', true);
-  assert v_out = 'busy', 'events: livemode mismatch fails closed';
+  assert v_out = 'claimed', 'events: same id in the other mode claims independently';
   -- apply_stripe_grant: grant + terminal state in one transaction.
   perform public.claim_stripe_event('evt_2', 'customer.subscription.updated', false);
   perform public.apply_stripe_grant('evt_2', u1, 'sub_F', 'cus_F', 'investor', 'active', 'active',
@@ -210,6 +218,10 @@ begin
   assert (v_j->>'attempt_id')::uuid <> v_grant, 'attempts: new logical attempt = new id (new idempotency key)';
 
   -- ── Phase 4.1 corrections ──────────────────────────────────────────────────
+  -- Harness hygiene: end every still-valid u2 grant from the sections above so
+  -- the fail-closed asserts below start from a provably grantless state.
+  update public.entitlement_grants set status = 'ended' where user_id = u2 and status in ('active','grace');
+  assert public.effective_tier_for(u2) = 'starter', '4.1 baseline: u2 grantless before fail-closed checks';
   -- (#2) NULL Stripe period must FAIL CLOSED — never perpetual Stripe access.
   insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status)
   values (u2, 'pro', 'stripe', 'business', 'active', false, 'sub_NULLP', 'active');

@@ -200,6 +200,12 @@ as $$
                and g.livemode = (cfg.mode = 'live'))
         )
         and (g.purpose = 'business' or cfg.mode = 'test')
+     -- Phase 5 fix (caught by the LOCAL suite, first zero-valid-grant assert):
+     -- an aggregate over ZERO rows still returns one row (bool_or = NULL), and
+     -- CASE WHEN NULL falls to the ELSE — which resolved EVERY grantless user
+     -- as 'investor'. HAVING count(*) > 0 returns zero rows instead, so the
+     -- outer coalesce lands on 'starter'.
+     having count(*) > 0
      ),
     'starter');
 $$;

@@ -41,8 +41,8 @@ begin
   -- Case A: Investor comp + Stripe Pro → pro
   insert into public.entitlement_grants (user_id, tier, source, purpose, status)
   values (u1, 'investor', 'comp', 'business', 'active');
-  insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status)
-  values (u1, 'pro', 'stripe', 'business', 'active', false, 'sub_A', 'active');
+  insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status, current_period_end)
+  values (u1, 'pro', 'stripe', 'business', 'active', false, 'sub_A', 'active', now() + interval '30 days');
   assert public.effective_tier_for(u1) = 'pro', 'A: investor comp + stripe pro should resolve pro';
 
   -- Case E: Stripe cancellation while comp remains → investor (not starter)
@@ -51,8 +51,8 @@ begin
   assert public.effective_tier_for(u1) = 'investor', 'E: ending stripe must reveal the comp, not starter';
 
   -- Case G: resubscription (new sub id) → pro again; comp untouched
-  insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status)
-  values (u1, 'pro', 'stripe', 'business', 'active', false, 'sub_B', 'active');
+  insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status, current_period_end)
+  values (u1, 'pro', 'stripe', 'business', 'active', false, 'sub_B', 'active', now() + interval '30 days');
   assert public.effective_tier_for(u1) = 'pro', 'G: resubscribe restores pro';
   assert (select count(*) from public.entitlement_grants where user_id = u1 and source = 'comp' and status = 'active') = 1,
     'G: comp row untouched by stripe lifecycle';
@@ -65,8 +65,8 @@ begin
   -- Case B: Pro comp + Stripe Investor → pro
   insert into public.entitlement_grants (user_id, tier, source, purpose, status)
   values (u2, 'pro', 'comp', 'business', 'active');
-  insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status)
-  values (u2, 'investor', 'stripe', 'business', 'active', false, 'sub_C', 'active');
+  insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status, current_period_end)
+  values (u2, 'investor', 'stripe', 'business', 'active', false, 'sub_C', 'active', now() + interval '30 days');
   assert public.effective_tier_for(u2) = 'pro', 'B: pro comp outranks stripe investor';
 
   -- Case C/D analogue: second, lower comp grant coexists; pro still wins; ending
@@ -99,8 +99,8 @@ begin
   update public.entitlement_grants set status = 'ended' where stripe_subscription_id = 'sub_D';
 
   -- ── mode isolation (C-8): a test-mode grant cannot entitle live mode ────────
-  insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status)
-  values (u2, 'pro', 'stripe', 'business', 'active', false, 'sub_E', 'active');
+  insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status, current_period_end)
+  values (u2, 'pro', 'stripe', 'business', 'active', false, 'sub_E', 'active', now() + interval '30 days');
   assert public.effective_tier_for(u2) = 'pro', 'mode: test grant entitles in test mode';
   update public.payment_config set mode = 'live' where id = 1;
   assert public.effective_tier_for(u2) = 'starter', 'mode: test grant is INERT in live mode';
@@ -209,6 +209,65 @@ begin
   assert v_j->>'outcome' = 'claimed', 'attempts: expired attempt yields a NEW attempt';
   assert (v_j->>'attempt_id')::uuid <> v_grant, 'attempts: new logical attempt = new id (new idempotency key)';
 
+  -- ── Phase 4.1 corrections ──────────────────────────────────────────────────
+  -- (#2) NULL Stripe period must FAIL CLOSED — never perpetual Stripe access.
+  insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status)
+  values (u2, 'pro', 'stripe', 'business', 'active', false, 'sub_NULLP', 'active');
+  -- The shape check permits NULL period (historical/ended rows) — the RESOLVER must not honor it.
+  assert public.effective_tier_for(u2) = 'starter', '4.1#2: active stripe with NULL period is NOT entitled';
+  update public.entitlement_grants set status = 'ended' where stripe_subscription_id = 'sub_NULLP';
+  -- (#2) grace with NULL grace_until is not entitled.
+  insert into public.entitlement_grants (user_id, tier, source, purpose, status, livemode, stripe_subscription_id, provider_status, current_period_end)
+  values (u2, 'pro', 'stripe', 'business', 'grace', false, 'sub_NULLG', 'past_due', now() + interval '5 days');
+  assert public.effective_tier_for(u2) = 'starter', '4.1#2: grace with NULL grace_until is NOT entitled';
+  update public.entitlement_grants set status = 'ended' where stripe_subscription_id = 'sub_NULLG';
+  -- (#2) shape constraints: stripe without identity/mode is unrepresentable;
+  -- comp cannot masquerade as stripe.
+  begin
+    insert into public.entitlement_grants (user_id, tier, source, purpose, status)
+    values (u2, 'pro', 'stripe', 'business', 'active');
+    raise exception '4.1#2: eg_stripe_shape did not enforce';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.entitlement_grants (user_id, tier, source, purpose, status, stripe_subscription_id, livemode)
+    values (u2, 'pro', 'comp', 'business', 'active', 'sub_MASQ', false);
+    raise exception '4.1#2: eg_comp_shape did not enforce';
+  exception when check_violation then null;
+  end;
+  -- (#3) mode-scoped EVENT identity: same textual id coexists across modes.
+  v_out := public.claim_stripe_event('evt_X', 'customer.subscription.updated', false);
+  assert v_out = 'claimed', '4.1#3: test-mode evt_X claims';
+  v_out := public.claim_stripe_event('evt_X', 'customer.subscription.updated', true);
+  assert v_out = 'claimed', '4.1#3: live-mode evt_X claims independently (two ledger rows)';
+  assert (select count(*) from public.stripe_events where event_id = 'evt_X') = 2,
+    '4.1#3: test/live event rows coexist';
+  -- (#3) mode-scoped SUBSCRIPTION grants: same sub id in both modes = two rows.
+  perform public.apply_stripe_grant(null, u2, 'sub_MODE', 'cus_T', 'investor', 'active', 'active',
+                                    now() + interval '30 days', false, 28);
+  perform public.apply_stripe_grant(null, u2, 'sub_MODE', 'cus_L', 'investor', 'active', 'active',
+                                    now() + interval '30 days', true, 28);
+  assert (select count(*) from public.entitlement_grants where stripe_subscription_id = 'sub_MODE') = 2,
+    '4.1#3: test/live subscription grants do not collide';
+  update public.entitlement_grants set status = 'ended' where stripe_subscription_id = 'sub_MODE';
+  -- (#3) cross-mode attempts: an open TEST attempt must not block a LIVE attempt.
+  update public.payment_config set checkout_enabled = false, allowlist = array[u2] where id = 1;
+  update public.entitlement_grants set status = 'ended' where user_id = u2 and status in ('active','grace');
+  v_j := public.begin_checkout_attempt(u2, 'pro');
+  assert v_j->>'outcome' = 'claimed', '4.1#3: test-mode attempt claims';
+  update public.payment_config set mode = 'live' where id = 1;
+  v_j := public.begin_checkout_attempt(u2, 'pro');
+  assert v_j->>'outcome' = 'claimed', '4.1#3: live-mode attempt claims DESPITE the open test attempt';
+  v_j := public.begin_checkout_attempt(u2, 'pro');
+  assert v_j->>'outcome' = 'busy', '4.1#3: same-mode race still converges (busy on fresh creating)';
+  update public.payment_config set mode = 'test' where id = 1;
+  -- Redemption-created comp rows always carry the credential hash (the
+  -- grandfather clause is for the legacy copy only).
+  assert not exists (select 1 from public.redemptions_v2 r
+                      join public.entitlement_grants g on g.id = r.grant_id
+                     where g.comp_code_hash is null),
+    '4.1: every redemption-created grant carries its code hash';
+
   -- ── privilege posture (pin 4) ──────────────────────────────────────────────
   assert not has_function_privilege('anon', 'public.issue_comp_code(text,timestamptz,text)', 'execute'),
     'priv: anon cannot issue';
@@ -222,6 +281,31 @@ begin
     'priv: authenticated CAN redeem';
   assert not has_function_privilege('anon', 'public.redeem_comp_code(text)', 'execute'),
     'priv: anon cannot redeem';
+  -- Phase 4.1 (#1): service_role matrix — Edge-called helpers YES, owner-only NO.
+  assert has_function_privilege('service_role', 'public.claim_stripe_event(text,text,boolean)', 'execute'),
+    '4.1#1: service_role CAN claim events';
+  assert has_function_privilege('service_role', 'public.apply_stripe_grant(text,uuid,text,text,text,text,text,timestamptz,boolean,integer)', 'execute'),
+    '4.1#1: service_role CAN apply grants';
+  assert has_function_privilege('service_role', 'public.fail_stripe_event(text,text)', 'execute'),
+    '4.1#1: service_role CAN fail events';
+  assert has_function_privilege('service_role', 'public.begin_checkout_attempt(uuid,text)', 'execute'),
+    '4.1#1: service_role CAN begin attempts';
+  assert has_function_privilege('service_role', 'public.finalize_checkout_attempt(uuid,text)', 'execute'),
+    '4.1#1: service_role CAN finalize attempts';
+  assert has_function_privilege('service_role', 'public.expire_checkout_attempt(uuid,text)', 'execute'),
+    '4.1#1: service_role CAN expire attempts';
+  assert has_function_privilege('service_role', 'public.upsert_stripe_customer(uuid,text,text)', 'execute'),
+    '4.1#1: service_role CAN upsert customer mapping';
+  assert not has_function_privilege('service_role', 'public.issue_comp_code(text,timestamptz,text)', 'execute'),
+    '4.1#1: service_role can NOT issue business codes';
+  assert not has_function_privilege('service_role', 'public.rotate_comp_code(text,integer)', 'execute'),
+    '4.1#1: service_role can NOT rotate codes';
+  assert not has_function_privilege('service_role', 'public.revoke_grant(uuid)', 'execute'),
+    '4.1#1: service_role can NOT revoke grants';
+  assert not has_function_privilege('service_role', 'public.comp_code_status()', 'execute'),
+    '4.1#1: service_role can NOT read campaign reporting';
+  assert not has_function_privilege('service_role', 'public.effective_tier_for(uuid)', 'execute'),
+    '4.1#1: service_role can NOT call the resolver directly';
   assert has_function_privilege('authenticated', 'public.current_tier()', 'execute'),
     'priv: authenticated CAN read current_tier';
   assert not has_function_privilege('anon', 'public.current_tier()', 'execute'),

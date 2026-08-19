@@ -88,11 +88,30 @@ create table if not exists public.entitlement_grants (
   comp_code_hash         text references public.comp_codes_v2(code_hash),
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now(),
-  revoked_at             timestamptz
+  revoked_at             timestamptz,
+  -- Phase 4.1 (#2) — source/field integrity, fail-closed by shape:
+  -- A stripe grant must carry its Stripe identity + mode and can never carry a
+  -- comp credential; a comp grant can never masquerade as Stripe (no Stripe
+  -- identity, no provider_status, no mode). comp_code_hash stays NULLABLE on
+  -- comp rows ONLY for the legacy data-copy below (pre-v2 grants have no v2
+  -- credential) — every redemption-created row sets it, and the local suite
+  -- pins that; constraining the grandfathered rows is the over-constraint the
+  -- correction dispatch prohibits.
+  constraint eg_stripe_shape check (
+    source <> 'stripe'
+    or (stripe_subscription_id is not null and livemode is not null and comp_code_hash is null)
+  ),
+  constraint eg_comp_shape check (
+    source <> 'comp'
+    or (stripe_subscription_id is null and stripe_customer_id is null
+        and provider_status is null and livemode is null and grace_until is null)
+  )
 );
 
+-- Phase 4.1 (#3): subscription-grant identity is MODE-SCOPED — a test and a
+-- live subscription with the same textual id can never share a row.
 create unique index if not exists eg_one_stripe_sub
-  on public.entitlement_grants (stripe_subscription_id) where source = 'stripe';
+  on public.entitlement_grants (livemode, stripe_subscription_id) where source = 'stripe';
 create unique index if not exists eg_one_comp_per_code
   on public.entitlement_grants (user_id, comp_code_hash) where source = 'comp';
 
@@ -150,13 +169,15 @@ set search_path = ''
 as $$
   select encode(extensions.digest(convert_to(upper(trim(p_code)), 'UTF8'), 'sha256'), 'hex');
 $$;
-revoke all on function public.hash_comp_code(text) from public, anon, authenticated;
+revoke all on function public.hash_comp_code(text) from public, anon, authenticated, service_role;
 
 -- ── effective tier resolution ────────────────────────────────────────────────
--- The single authoritative resolver (spec §5). Used by current_tier() for the
--- signed-in caller and by the trusted server functions for any user.
---   valid grant := (active + period ok) OR (grace + before grace_until)
---   stripe rows count only in their matching payment_config mode
+-- The single authoritative resolver (spec v1.1 §5, corrected Phase 4.1 #2):
+-- validity is SOURCE-SPECIFIC.
+--   comp/active:    period NULL (perpetual) or future — NULL is legal ONLY here
+--   stripe/active:  period NOT NULL AND future AND mode matches — a Stripe
+--                   grant with no billing period FAILS CLOSED (never perpetual)
+--   stripe/grace:   grace_until NOT NULL AND future AND mode matches
 --   qa-purpose rows count only while mode='test'
 create or replace function public.effective_tier_for(p_user uuid)
 returns text language sql stable security definer
@@ -169,17 +190,24 @@ as $$
       where g.user_id = p_user
         and g.tier in ('investor','pro')
         and (
-              (g.status = 'active'
+              (g.source = 'comp' and g.status = 'active'
                and (g.current_period_end is null or g.current_period_end > now()))
-           or (g.status = 'grace'
-               and g.grace_until is not null and now() < g.grace_until)
+           or (g.source = 'stripe' and g.status = 'active'
+               and g.current_period_end is not null and g.current_period_end > now()
+               and g.livemode = (cfg.mode = 'live'))
+           or (g.source = 'stripe' and g.status = 'grace'
+               and g.grace_until is not null and now() < g.grace_until
+               and g.livemode = (cfg.mode = 'live'))
         )
-        and (g.source <> 'stripe' or g.livemode = (cfg.mode = 'live'))
         and (g.purpose = 'business' or cfg.mode = 'test')
      ),
     'starter');
 $$;
-revoke all on function public.effective_tier_for(uuid) from public, anon, authenticated;
+-- Owner-only posture (Phase 4.1 #1): Supabase default privileges grant new
+-- functions to anon/authenticated/service_role — revoke ALL of them. This
+-- resolver is called only from inside other definer functions (owner-executed
+-- context); no API role, including service_role, may call it directly.
+revoke all on function public.effective_tier_for(uuid) from public, anon, authenticated, service_role;
 
 -- Contract-preserving rewrite: same name, signature, return type, and grant as
 -- 0005's version — the client chain (syncEntitlement → setCachedTier) needs no
@@ -256,7 +284,7 @@ begin
   return query select v_plain, p_pool, v_slot, v_tier, v_expires;
 end;
 $$;
-revoke all on function public.issue_comp_code(text, timestamptz, text) from public, anon, authenticated;
+revoke all on function public.issue_comp_code(text, timestamptz, text) from public, anon, authenticated, service_role;
 
 -- Rotate the credential on an ISSUED, UNREDEEMED business slot (lost code).
 -- Consumes nothing: same slot, new code value; old code is deactivated.
@@ -297,7 +325,7 @@ begin
   return query select v_plain;
 end;
 $$;
-revoke all on function public.rotate_comp_code(text, integer) from public, anon, authenticated;
+revoke all on function public.rotate_comp_code(text, integer) from public, anon, authenticated, service_role;
 
 -- Code deactivation vs grant revocation are DISTINCT operations (spec §9).
 create or replace function public.deactivate_comp_code(p_pool text, p_slot integer)
@@ -312,7 +340,7 @@ begin
   update public.comp_codes_v2 set active = false where code_hash = v_hash;
 end;
 $$;
-revoke all on function public.deactivate_comp_code(text, integer) from public, anon, authenticated;
+revoke all on function public.deactivate_comp_code(text, integer) from public, anon, authenticated, service_role;
 
 create or replace function public.revoke_grant(p_grant uuid)
 returns void language plpgsql security definer
@@ -325,7 +353,7 @@ begin
   if not found then raise exception 'grant % not found or already revoked', p_grant; end if;
 end;
 $$;
-revoke all on function public.revoke_grant(uuid) from public, anon, authenticated;
+revoke all on function public.revoke_grant(uuid) from public, anon, authenticated, service_role;
 
 -- Owner reporting: campaign counts and states, zero live values, zero hashes
 -- needed by the reader.
@@ -340,7 +368,7 @@ as $$
     left join public.comp_codes_v2 c on c.code_hash = s.current_code_hash
    order by s.pool, s.slot_no;
 $$;
-revoke all on function public.comp_code_status() from public, anon, authenticated;
+revoke all on function public.comp_code_status() from public, anon, authenticated, service_role;
 
 -- ── redemption (the only comp function an API role may call) ─────────────────
 -- Atomic one-time claim: the guarded UPDATE takes a row lock; two concurrent
@@ -413,9 +441,13 @@ grant execute on function public.redeem_comp_code(text) to authenticated;
 -- (not dropped, not renamed, RLS/grants untouched — keepalive contract).
 insert into public.entitlement_grants
       (user_id, tier, source, purpose, status, current_period_end, created_at)
-select e.user_id, e.tier, e.source, 'business', 'active', e.current_period_end, e.updated_at
+select e.user_id, e.tier, 'comp', 'business', 'active', e.current_period_end, e.updated_at
   from public.entitlements e
  where e.status = 'active'
+   and e.source = 'comp'   -- Phase 4.1: only comp rows are copyable — a legacy
+                           -- 'stripe' row (none exists per owner-verified state)
+                           -- would lack the required Stripe identity/mode and
+                           -- must fail closed into reconciliation, not be copied
    and e.tier in ('investor','pro')
    and (e.current_period_end is null or e.current_period_end > now())
 on conflict do nothing;

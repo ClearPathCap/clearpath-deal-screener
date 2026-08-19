@@ -14,27 +14,33 @@
 --     with ONE live attempt per user (pin 1) — a fresh 'creating' row is
 --     authoritative and may not be superseded merely because the Stripe call
 --     is still in flight; idempotency key = attempt id.
---   · mode isolation (C-8 / pin 5): livemode recorded everywhere; customer
---     mapping keyed (user_id, mode); a same-event-id/different-mode conflict
---     fails closed.
---   · Helpers are executable by NO API role. The Edge runtime's service-role
---     connection is the only caller (it authenticates the end user's JWT
---     itself before acting on their behalf).
+--   · mode isolation (C-8 / pin 5, completed Phase 4.1 #3): every provider
+--     identity is MODE-SCOPED in the database itself — events PK
+--     (livemode, event_id); subscription grants UNIQUE (livemode, sub_id);
+--     attempts UNIQUE (user_id, livemode) while live; customers PK (user, mode).
+--   · Privileges (corrected Phase 4.1 #1): RLS bypass and EXECUTE privilege
+--     are different controls. Edge-called helpers REVOKE public/anon/
+--     authenticated and GRANT EXECUTE to service_role explicitly; owner-only
+--     helpers (0008) are revoked from service_role as well.
 --
 -- SECURITY DEFINER posture: SET search_path = '' + fully-qualified names.
 -- HOW TO RUN (when separately authorized): SQL Editor, after 0008.
 -- ───────────────────────────────────────────────────────────────────────────
 
+-- Phase 4.1 (#3): the event ledger identity is MODE-SCOPED — a same textual
+-- event id in test and live is two independent ledger rows by construction,
+-- so the old MODE_MISMATCH anomaly branch is structurally impossible and gone.
 create table if not exists public.stripe_events (
-  event_id     text primary key,
-  type         text not null,
+  event_id     text not null,
   livemode     boolean not null,
+  type         text not null,
   state        text not null default 'processing'
                check (state in ('processing','processed','failed')),
   attempts     integer not null default 1,
   claimed_at   timestamptz not null default now(),
   processed_at timestamptz,
-  last_error   text
+  last_error   text,
+  primary key (livemode, event_id)
 );
 
 create table if not exists public.stripe_customers (
@@ -58,8 +64,11 @@ create table if not exists public.checkout_attempts (
   created_at        timestamptz not null default now(),
   expires_at        timestamptz not null
 );
+-- Phase 4.1 (#3): live-attempt exclusivity is MODE-AWARE — a leftover
+-- test-mode creating/open attempt must never block a live-mode smoke attempt
+-- after payment_config.mode flips. Within one mode, races still converge.
 create unique index if not exists ca_one_live_attempt
-  on public.checkout_attempts (user_id) where state in ('creating','open');
+  on public.checkout_attempts (user_id, livemode) where state in ('creating','open');
 
 alter table public.stripe_events     enable row level security;
 alter table public.stripe_customers  enable row level security;
@@ -77,26 +86,17 @@ as $$
 declare
   v_row public.stripe_events%rowtype;
 begin
-  insert into public.stripe_events (event_id, type, livemode)
-  values (p_event_id, p_type, p_livemode)
-  on conflict (event_id) do nothing
+  insert into public.stripe_events (event_id, livemode, type)
+  values (p_event_id, p_livemode, p_type)
+  on conflict (livemode, event_id) do nothing
   returning * into v_row;
   if found then
     return 'claimed';
   end if;
 
   select * into v_row from public.stripe_events
-   where event_id = p_event_id for update;
-
-  -- Same event id arriving with a different mode is an anomaly: fail closed.
-  if v_row.livemode <> p_livemode then
-    update public.stripe_events
-       set state = 'failed',
-           last_error = 'MODE_MISMATCH: event re-presented with different livemode',
-           attempts = attempts + 1
-     where event_id = p_event_id;
-    return 'busy';
-  end if;
+   where event_id = p_event_id and livemode = p_livemode
+   for update;
 
   if v_row.state = 'processed' then
     return 'already_processed';
@@ -107,7 +107,7 @@ begin
          and v_row.claimed_at < now() - interval '10 minutes') then
     update public.stripe_events
        set state = 'processing', attempts = attempts + 1, claimed_at = now()
-     where event_id = p_event_id;
+     where event_id = p_event_id and livemode = p_livemode;
     return 'claimed';
   end if;
 
@@ -116,6 +116,9 @@ begin
 end;
 $$;
 revoke all on function public.claim_stripe_event(text, text, boolean) from public, anon, authenticated;
+-- Phase 4.1 (#1): the Edge runtime invokes this via RPC as service_role —
+-- RLS bypass does NOT imply EXECUTE privilege; grant it explicitly.
+grant execute on function public.claim_stripe_event(text, text, boolean) to service_role;
 
 -- ── atomic grant + terminal state ────────────────────────────────────────────
 -- One transaction: upsert the subscription's grant row AND mark the event
@@ -142,8 +145,11 @@ begin
     raise exception 'apply_stripe_grant: unexpected normalized state %', p_normalized;
   end if;
 
+  -- Phase 4.1 (#3): the subscription lookup is mode-scoped, matching the
+  -- eg_one_stripe_sub identity.
   select * into v_existing from public.entitlement_grants
-   where stripe_subscription_id = p_subscription_id and source = 'stripe'
+   where stripe_subscription_id = p_subscription_id
+     and livemode = p_livemode and source = 'stripe'
    for update;
 
   if found then
@@ -180,17 +186,23 @@ begin
   if p_event_id is not null then
     update public.stripe_events
        set state = 'processed', processed_at = now(), last_error = null
-     where event_id = p_event_id;
+     where event_id = p_event_id and livemode = p_livemode;
   end if;
 
-  -- Mark the completed checkout attempt, if one is live for this user/tier.
+  -- Mark the completed checkout attempt, if one is live for this user/tier —
+  -- in the SAME mode only (a test completion never closes a live attempt).
   update public.checkout_attempts
      set state = 'completed'
-   where user_id = p_user_id and tier = p_tier and state in ('creating','open');
+   where user_id = p_user_id and tier = p_tier and livemode = p_livemode
+     and state in ('creating','open');
 end;
 $$;
 revoke all on function public.apply_stripe_grant(text, uuid, text, text, text, text, text, timestamptz, boolean, integer)
   from public, anon, authenticated;
+-- Phase 4.1 (#1): the Edge runtime invokes this via RPC as service_role —
+-- RLS bypass does NOT imply EXECUTE privilege; grant it explicitly.
+grant execute on function public.apply_stripe_grant(text, uuid, text, text, text, text, text, timestamptz, boolean, integer)
+  to service_role;
 
 create or replace function public.fail_stripe_event(p_event_id text, p_error text)
 returns void language plpgsql security definer
@@ -203,6 +215,9 @@ begin
 end;
 $$;
 revoke all on function public.fail_stripe_event(text, text) from public, anon, authenticated;
+-- Phase 4.1 (#1): the Edge runtime invokes this via RPC as service_role —
+-- RLS bypass does NOT imply EXECUTE privilege; grant it explicitly.
+grant execute on function public.fail_stripe_event(text, text) to service_role;
 
 -- ── checkout attempt lifecycle ───────────────────────────────────────────────
 -- begin_checkout_attempt enforces, server-side and in order:
@@ -241,16 +256,19 @@ begin
   end if;
 
   -- Reclaim stale rows first (creating > 10 min = past any legitimate in-flight
-  -- create; open past expires_at = abandoned).
+  -- create; open past expires_at = abandoned). Mode-scoped (Phase 4.1 #3):
+  -- attempts in the OTHER mode are ignored entirely — a leftover test attempt
+  -- neither blocks nor gets expired by a live-mode request.
   update public.checkout_attempts
      set state = 'expired'
    where user_id = p_user
+     and livemode = (v_cfg.mode = 'live')
      and ((state = 'creating' and created_at < now() - interval '10 minutes')
        or (state = 'open'     and expires_at < now()));
 
   insert into public.checkout_attempts (user_id, tier, livemode, expires_at)
   values (p_user, p_tier, v_cfg.mode = 'live', now() + interval '30 minutes')
-  on conflict (user_id) where state in ('creating','open') do nothing
+  on conflict (user_id, livemode) where state in ('creating','open') do nothing
   returning id into v_id;
 
   if v_id is not null then
@@ -258,7 +276,8 @@ begin
   end if;
 
   select * into v_live from public.checkout_attempts
-   where user_id = p_user and state in ('creating','open')
+   where user_id = p_user and livemode = (v_cfg.mode = 'live')
+     and state in ('creating','open')
    limit 1;
 
   if v_live.state = 'open' and v_live.stripe_session_id is not null then
@@ -275,6 +294,9 @@ begin
 end;
 $$;
 revoke all on function public.begin_checkout_attempt(uuid, text) from public, anon, authenticated;
+-- Phase 4.1 (#1): the Edge runtime invokes this via RPC as service_role —
+-- RLS bypass does NOT imply EXECUTE privilege; grant it explicitly.
+grant execute on function public.begin_checkout_attempt(uuid, text) to service_role;
 
 create or replace function public.finalize_checkout_attempt(
   p_attempt uuid, p_session_id text)
@@ -291,6 +313,9 @@ begin
 end;
 $$;
 revoke all on function public.finalize_checkout_attempt(uuid, text) from public, anon, authenticated;
+-- Phase 4.1 (#1): the Edge runtime invokes this via RPC as service_role —
+-- RLS bypass does NOT imply EXECUTE privilege; grant it explicitly.
+grant execute on function public.finalize_checkout_attempt(uuid, text) to service_role;
 
 create or replace function public.expire_checkout_attempt(p_attempt uuid, p_reason text)
 returns void language plpgsql security definer
@@ -303,6 +328,9 @@ begin
 end;
 $$;
 revoke all on function public.expire_checkout_attempt(uuid, text) from public, anon, authenticated;
+-- Phase 4.1 (#1): the Edge runtime invokes this via RPC as service_role —
+-- RLS bypass does NOT imply EXECUTE privilege; grant it explicitly.
+grant execute on function public.expire_checkout_attempt(uuid, text) to service_role;
 
 -- ── customer mapping ─────────────────────────────────────────────────────────
 create or replace function public.upsert_stripe_customer(
@@ -317,3 +345,6 @@ begin
 end;
 $$;
 revoke all on function public.upsert_stripe_customer(uuid, text, text) from public, anon, authenticated;
+-- Phase 4.1 (#1): the Edge runtime invokes this via RPC as service_role —
+-- RLS bypass does NOT imply EXECUTE privilege; grant it explicitly.
+grant execute on function public.upsert_stripe_customer(uuid, text, text) to service_role;

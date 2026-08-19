@@ -228,14 +228,35 @@ globalThis.__lastResults.ltr = null;
 r = await pipeline.saveDeal('ltr');
 ok(r.status === 'refused-result', 'B3 no analyzed result -> refused-result');
 
-// B4 refused-cap (starter + cache at FREE_DEAL_CAP) — cache currently holds 1 ({id:8})
+// B4 — RE-PINNED in the Wave 5 commit (same-commit law): capacity is now a
+// UNIFORM allowance (storage.PIPELINE_ALLOWANCE, every tier — §18-1: capacity
+// is not a tier differentiator). The old pin proved starter refused at 2 while
+// paid tiers were unlimited; the new pins prove BOTH halves of the new law:
+// a starter under the allowance saves freely, and EVERY tier is refused at the
+// allowance — including pro, which the old law exempted.
 okRpc();
 await storage.saveDeals([{ id: 8, name: 'a', type: 'ltr', verdict: 'x', cls: 'warm', data: {}, stats: [], date: '', notes: '' },
                          { id: 9, name: 'b', type: 'ltr', verdict: 'x', cls: 'warm', data: {}, stats: [], date: '', notes: '' }]);
 globalThis.__tier = 'starter';
 globalThis.__lastResults.ltr = fakeLtr;
 r = await pipeline.saveDeal('ltr');
-ok(r.status === 'refused-cap', 'B4 starter at cap -> refused-cap');
+ok(r.status === 'saved', 'B4a starter under the uniform allowance -> saved (old 2-deal starter cap gone)');
+{ // Fill to the allowance and prove the refusal is tier-blind (pro refused too).
+  const filler = [];
+  for (let i = 0; i < storage.PIPELINE_ALLOWANCE; i++) {
+    filler.push({ id: 100 + i, name: 'f' + i, type: 'ltr', verdict: 'x', cls: 'warm', data: {}, stats: [], date: '', notes: '' });
+  }
+  await storage.saveDeals(filler);
+}
+globalThis.__tier = 'pro';
+r = await pipeline.saveDeal('ltr');
+ok(r.status === 'refused-cap', 'B4b at the allowance every tier is refused — pro included');
+globalThis.__tier = 'starter';
+r = await pipeline.saveDeal('ltr');
+ok(r.status === 'refused-cap', 'B4c starter refused at the same uniform bound');
+// Restore the 2-deal cache the B5 sequence depends on.
+await storage.saveDeals([{ id: 8, name: 'a', type: 'ltr', verdict: 'x', cls: 'warm', data: {}, stats: [], date: '', notes: '' },
+                         { id: 9, name: 'b', type: 'ltr', verdict: 'x', cls: 'warm', data: {}, stats: [], date: '', notes: '' }]);
 
 // B5 saved — toast + commit only AFTER resolution (gates 1-2)
 globalThis.__tier = 'pro'; toasts = [];

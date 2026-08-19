@@ -162,10 +162,11 @@ function qualifiesForType(type, deal) {
 // ─── Tier-aware button config ─────────────────────────────────────────────────
 
 function getTierConfig() {
-  // B6b — neutral funding CTA across ALL tiers: the user-facing label/toast carry no
-  // loan-priority/term claims ("Priority Review"/"Dedicated Broker" removed). The tier
-  // still flows internally for tracking — via the per-tier tag (clipboard summary) and
-  // the `tier` query param in buildCpcUrl (→ HubSpot).
+  // B6b — neutral funding CTA across ALL tiers: the user-facing label/toast make
+  // no tier-conditioned claims about loan treatment (the old paid-benefit button
+  // copy was removed then; the Wave 5 tier/funding-law suite now pins the whole
+  // app). The tier still flows internally for tracking — via the per-tier tag
+  // (clipboard summary) and the `tier` query param in buildCpcUrl (→ HubSpot).
   const tier = getActiveTier();
   const tagByTier = { pro: '[Pro Submission]', investor: '[Investor Submission]' };
   return {

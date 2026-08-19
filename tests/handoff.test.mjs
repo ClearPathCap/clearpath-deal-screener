@@ -273,7 +273,14 @@ has("share imports readiness", shSrc, "from './insuranceReadiness.js'");
 // pendingPresentationFor decision — taxes join the gate, STR pends too, and a
 // tax-missing/insurance-valid deal cannot dereference a null presentation.)
 has("share headline gated", shSrc, "headline      = pendP ? pendP.tag : d.verdict.toUpperCase()");
-eq("share: three Pending value gates", (shSrc.match(/unresolvedIns \? 'Pending' :/g) || []).length, 3);
+// Wave 5 re-pin (same commit, SR-7): the three inline `unresolvedIns ? 'Pending'`
+// gates became ONE shared helper — `pend(s, v)` — applied at every
+// insurance-dependent value across all four type branches (STR: cashflow, coc,
+// capRate; LTR: dscr, coc, cashFlowMo; BRRR: dscr). The invariant protected is
+// unchanged: unresolved insurance pends every dependent value. Pin the helper
+// definition and that the branches actually route through it.
+has("share: shared Pending gate helper", shSrc, "unresolvedIns ? 'Pending' : s(v)");
+eq("share: insurance-dependent values route through pend()", (shSrc.match(/pend\((money|perc|dscrS),/g) || []).length, 7);
 
 // Get Funding + handoff contracts unchanged
 has("Get Funding gate unchanged", cpSrc, "result.cls === 'hot' || result.cls === 'warm'");

@@ -45,22 +45,13 @@ export function getActiveTier() {
   return localStorage.getItem('tier') || 'starter';
 }
 
-// Dev Mode = the owner-only testing state (dev tools + banner). Tied to the dev
-// code's cpcDevUnlock flag ONLY — a comp tier code (which sets `tier`) must NOT
-// turn this on. The DEV MODE banner renders iff this is true, independent of tier.
-export function isDevMode() {
-  return localStorage.getItem('cpcDevUnlock') === '1';
-}
-
-// Writes tier to storage; does NOT reload — caller must update UI
-export function setDevTier(tier) {
-  if (!['starter', 'investor', 'pro'].includes(tier)) {
-    console.warn('Deal Screener: invalid tier. Use: starter, investor, or pro');
-    return;
-  }
-  if (tier === 'starter') localStorage.removeItem('tier');
-  else localStorage.setItem('tier', tier);
-}
+// Wave 5 (SR-3 / plan v1.1 C-2): the tier-mutating Dev Mode is GONE from the
+// production bundle. The dev flag, the URL param, the client "unlock code",
+// and the dev tier panel all shipped to every visitor — public client
+// material, not owner-only security — and together they suppressed entitlement
+// sync and spoofed paid display state. Tier preview now happens through real
+// synthetic accounts with comp grants, or local tooling outside docs/. The
+// server entitlement sync runs unconditionally (auth.js).
 
 // Caches the tier the SERVER reported (auth.js) for snappy UI. This is the ONLY
 // sanctioned writer of the `tier` cache now — it is overwritten on every load
@@ -71,36 +62,14 @@ export function setCachedTier(tier) {
   else localStorage.setItem('tier', tier);
 }
 
-// ─── Tier redemption codes + Dev Mode gating ─────────────────────────────────
-// Tier comp codes (CPC-INVESTOR-…, CPC-PRO-…) are now validated SERVER-SIDE in
-// Supabase (see auth.js → redeemServerCode and the `comp_codes` table), so they
-// can't be self-granted by editing localStorage. The only code still handled
-// here client-side is the owner-only DEV unlock, which just reveals the hidden
-// Dev Mode panel and never grants paid data.
-const DEV_UNLOCK_CODE = 'CPC-DEV-Z7Q2P'; // owner-only: reveals the Dev Mode panel
-
-// Handle a redeemed code CLIENT-SIDE. Only the dev code is handled here; every
-// other code returns { deferToServer: true } so the caller runs the server flow.
-// Returns { ok, msg, dev? } or { ok:false, deferToServer:true }.
+// ─── Tier redemption codes ────────────────────────────────────────────────────
+// ALL codes are validated SERVER-SIDE in Supabase (auth.js → redeemServerCode →
+// redeem_comp_code). Wave 5 removed the client-side unlock code entirely — no
+// code is handled in the browser anymore (SR-3 / C-2).
 export function redeemCode(raw) {
   const code = (raw || '').trim().toUpperCase();
   if (!code) return { ok: false, msg: 'Enter a code first.' };
-  if (code === DEV_UNLOCK_CODE) {
-    localStorage.setItem('cpcDevUnlock', '1');
-    return { ok: true, dev: true, msg: 'Developer tools unlocked.' };
-  }
   return { ok: false, deferToServer: true };
-}
-
-// Dev Mode is hidden from the public build; revealed only for the owner via the
-// dev code (persisted in cpcDevUnlock) or a ?dev=1 URL param (ephemeral).
-export function devModeVisible() {
-  try {
-    const flag = new URLSearchParams(location.search).get('dev');
-    return localStorage.getItem('cpcDevUnlock') === '1' || flag === '1';
-  } catch {
-    return false;
-  }
 }
 
 // ─── Market slot storage ──────────────────────────────────────────────────────

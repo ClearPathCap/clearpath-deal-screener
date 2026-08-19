@@ -18,12 +18,9 @@
 </head>
 <body>
 
-<!-- Dev mode banner — shown only when cpcDevUnlock is set (dev code), not for comp
-     tiers. Hidden via the `hidden` ATTRIBUTE (nav-lock invariant): the CSS offset
-     .dev-mode-banner:not([hidden])+.nav is gated on it — an inline display:none
-     here would re-pin the nav 26px below the viewport top for everyone. -->
-<div id="dev-mode-banner" class="dev-mode-banner" hidden></div>
-
+<!-- Wave 5 (SR-3): the dev banner is gone with the tier-mutating dev tooling.
+     The nav is unconditionally the first sticky element at top:0 — the nav-lock
+     invariants live in tests/layout.test.mjs and were re-pinned in this commit. -->
 <div class="nav">
   <button class="nav-btn active" data-tab="flip" onclick="showPage('flip',this)">Fix &amp; Flip</button>
   <button class="nav-btn" data-tab="rental" onclick="showPage('rental',this)">Rentals</button>
@@ -109,19 +106,19 @@
   <div class="repair-card">
     <div class="repair-title">Repair Cost Estimator</div>
     <div class="repair-tiers">
-      <div class="tier" onclick="setTier('light',this)">
+      <div class="tier" onclick="setRepairTier('light',this)">
         <div class="tier-name">Light</div>
         <div class="tier-range">$12–22/sf</div>
         <div class="tier-desc">Paint, flooring, fixtures, landscaping</div>
         <div class="tier-desc-long">Interior paint throughout, LVP or carpet flooring, light fixture replacements, vanity/toilet/mirror swaps, kitchen hardware, door hardware, minor drywall patches, basic landscaping and curb appeal.</div>
       </div>
-      <div class="tier active" onclick="setTier('mid',this)">
+      <div class="tier active" onclick="setRepairTier('mid',this)">
         <div class="tier-name">Mid</div>
         <div class="tier-range">$28–48/sf</div>
         <div class="tier-desc">Kitchen, baths, HVAC, windows</div>
         <div class="tier-desc-long">Full kitchen cabinet and countertop replacement, bathroom tile and tub/shower overhaul, HVAC system replacement, window replacement throughout, electrical panel update, plumbing fixture upgrades — plus everything in Light.</div>
       </div>
-      <div class="tier" onclick="setTier('full',this)">
+      <div class="tier" onclick="setRepairTier('full',this)">
         <div class="tier-name">Full Gut</div>
         <div class="tier-range">$60–95/sf</div>
         <div class="tier-desc">Full buildout, structural, systems</div>
@@ -976,7 +973,7 @@
           <li>Export a clean deal summary to send a partner or lender</li>
           <li>Saved pipeline + market intel on every deal you track</li>
         </ul>
-        <button class="btn-upgrade btn-upgrade-investor" onclick="upgradeToInvestor()">Get notified at launch</button>
+        <button class="btn-upgrade btn-upgrade-investor" onclick="startCheckout('investor')">Subscribe to Investor</button>
       </div>
       <div class="tier-card tier-card-featured" id="upgrade-col-pro">
         <div class="tc-badge">BEST VALUE</div>
@@ -990,7 +987,7 @@
           <li>Your full deal history + clean exports, organized for any broker or lender you choose</li>
           <li>Unlimited exports + shareable lender-ready summaries</li>
         </ul>
-        <button class="btn-upgrade btn-upgrade-pro" onclick="upgradeToPro()">Get notified at launch</button>
+        <button class="btn-upgrade btn-upgrade-pro" onclick="startCheckout('pro')">Subscribe to Pro</button>
       </div>
     </div>
     <p id="upgrade-toptier-note" style="display:none;font-size:13px;color:var(--accent);text-align:center;padding:8px 0">You're on Pro — every feature is unlocked.</p>
@@ -1061,22 +1058,10 @@
   </div>
 </div>
 
-<!-- Dev tier switcher (hidden — accessed by 5 taps on STARTER badge) -->
-<div class="modal-backdrop" id="modal-dev">
-  <div class="modal">
-    <h3>🛠 Dev Mode</h3>
-    <p>Owner-only tier override for testing (cached in localStorage as <code>tier</code>). While Dev Mode is on, the app ignores the server entitlement. Reloads on change.</p>
-    <div class="dev-tier-options">
-      <button class="dev-tier-btn" onclick="setTier('starter')">STARTER</button>
-      <button class="dev-tier-btn" onclick="setTier('investor')">INVESTOR</button>
-      <button class="dev-tier-btn dev-tier-btn-pro" onclick="setTier('pro')">PRO</button>
-    </div>
-    <button onclick="exitDevMode()" style="margin-top:14px;width:100%;padding:12px;border-radius:10px;border:1px solid rgba(239,68,68,0.5);background:rgba(239,68,68,0.12);color:#fca5a5;font-weight:700;cursor:pointer">Exit Dev Mode — return to real tier</button>
-    <div class="modal-actions" style="margin-top:12px">
-      <button class="btn-cancel" onclick="closeModal('modal-dev')">Close</button>
-    </div>
-  </div>
-</div>
+<!-- Wave 5 (SR-3): the dev tier switcher is gone — no production surface may
+     mutate paid display state. Tier preview happens through real synthetic
+     accounts with comp grants, or local tooling outside docs/. -->
+
 
 <div class="toast" id="toast"></div>
 

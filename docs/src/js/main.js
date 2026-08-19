@@ -16,7 +16,7 @@ import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency } from
 import { propertyBand, BAND_RULES }                                 from './finance.js';
 import { handlePipelineFundingClick }                               from './clearpath.js';
 import {
-  getActiveTier, isDevMode, setDevTier,
+  getActiveTier,
   hasSelectedMarkets, getMarketSlots,
   getMarketForSlot, setMarketSlot,
   getPrimaryMarket, getMarket2,
@@ -24,13 +24,14 @@ import {
   isSlotLocked, slotLockedUntilDate, slotWillLockUntilDate,
   getUnlockedSlotCount, isMarketUnlocked, getMarketLabel,
   migrateMarketStorage,
-  redeemCode, devModeVisible,
+  redeemCode,
 } from './tiers.js';
 import {
-  initAuthAndEntitlement, onAuthChange,
+  initAuthAndEntitlement, onAuthChange, syncEntitlement,
   sendOtpCode, verifyOtpCode, signOutAccount, redeemServerCode,
   isSignedIn, getUserEmail,
 } from './auth.js';
+import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache } from './storage.js';
 
@@ -774,20 +775,16 @@ function configureUpgradeModal(trigger) {
   const proFeat   = document.getElementById('upgrade-pro-features');
   const topNote   = document.getElementById('upgrade-toptier-note');
 
-  // Context-aware headline by trigger
+  // Context-aware headline by trigger. Wave 5: the 'cap' trigger is gone —
+  // pipeline capacity is a uniform allowance on every tier (§18-1), never a
+  // reason to upsell.
   const headlines = {
     region: 'Analyze deals in 4 markets, not 2',
     save:   'Never lose a deal you\'ve already found',
-    cap:    'You\'ve saved your 2 free deals',
     general:'Upgrade Your Plan',
   };
   if (title)   title.textContent = headlines[trigger] || headlines.general;
-  // Cap hit gets its own subhead so the modal explains WHY it opened; others share
-  // the default value line.
-  const subheads = {
-    cap: 'Free accounts keep 2 deals in your pipeline. Upgrade to Investor for unlimited saves — keep every deal you analyze.',
-  };
-  if (subhead) subhead.textContent = subheads[trigger] ||
+  if (subhead) subhead.textContent =
     'Paid plans unlock real market data for the markets you invest in — funding stays free on every tier.';
 
   // Reset visibility defaults
@@ -806,26 +803,70 @@ function configureUpgradeModal(trigger) {
   }
 
   if (tier === 'investor') {
-    // Delta framing — show only the Pro column
+    // Delta framing — show only the Pro column. Wave 5 (SR-1): the Pro delta is
+    // DealFit app features ONLY — funding treatment is identical on every tier.
     if (colInv) colInv.style.display = 'none';
-    if (title)  title.textContent = 'You have 4 regions. Pro adds 2 more, plus a dedicated broker.';
+    if (title)  title.textContent = 'You have 4 regions. Pro adds 2 more, plus full analyst depth.';
     if (proFeat) proFeat.innerHTML = [
       '2 more markets — 6 regions total',
-      'A dedicated Clear Path broker who already knows your file before you call',
-      'Highest-priority funding across dozens of lenders',
-      'Everything in Investor, with no caps',
+      'Full analyst notes &amp; sources for every market you track',
+      'Everything in Investor',
     ].map(t => `<li>${t}</li>`).join('');
   }
 }
 
-function recordUpgradeInterest(tierName) {
-  try { localStorage.setItem('upgradeInterest', tierName); } catch {}
-  closeModal('modal-upgrade');
-  showToast('Thanks — we\'ll email you when ' + (tierName === 'pro' ? 'Pro' : 'Investor') + ' launches.');
+// ─── Checkout — trusted server path (Wave 5) ─────────────────────────────────
+// The client names an abstract tier and receives a Stripe-hosted URL — or a
+// refusal. Nothing here grants entitlement: paid state exists only when the
+// server writes a grant and current_tier() reports it after a sync. While the
+// payment gate is closed (pre-launch), the server refuses and the UI says so.
+async function startCheckout(tierName) {
+  if (!isSignedIn()) { openUpgrade('general'); showToast('Sign in first — your plan attaches to your account.'); return; }
+  showToast('Opening secure checkout…');
+  try {
+    const { data, error } = await supabase.functions.invoke('checkout', { body: { tier: tierName } });
+    if (error || !data) {
+      // Refusals are server-truth; render them honestly.
+      const ctx = error?.context;
+      if (ctx?.status === 403) { showToast('Checkout isn\'t open yet — paid plans are coming soon.'); return; }
+      if (ctx?.status === 409) { showToast('You already have this tier on your account.'); return; }
+      if (ctx?.status === 429) { showToast('One moment — a checkout is already starting.'); return; }
+      showToast('Checkout is unavailable right now. Nothing was charged.');
+      return;
+    }
+    if (data.url) { location.href = data.url; return; }
+    showToast('Checkout is unavailable right now. Nothing was charged.');
+  } catch {
+    showToast('Checkout is unavailable right now. Nothing was charged.');
+  }
 }
 
-function upgradeToInvestor() { recordUpgradeInterest('investor'); }
-function upgradeToPro()      { recordUpgradeInterest('pro'); }
+// Stripe-hosted Customer Portal (subject to owner decision #7).
+async function manageSubscription() {
+  try {
+    const { data, error } = await supabase.functions.invoke('portal', { body: {} });
+    if (!error && data?.url) { location.href = data.url; return; }
+  } catch { /* fall through */ }
+  showToast('Subscription management isn\'t available yet.');
+}
+
+// Checkout return (success/cancel redirect): a TRIGGER only, never proof of
+// payment — reconcile reads authoritative Stripe state server-side and repairs
+// the grant if the webhook write was lost; the UI then re-syncs from the server.
+function handleCheckoutReturn() {
+  let flag = null;
+  try { flag = new URLSearchParams(location.search).get('checkout'); } catch { return; }
+  if (!flag) return;
+  try { history.replaceState(null, '', location.pathname); } catch {}
+  if (flag === 'cancel') { showToast('Checkout canceled — nothing was charged.'); return; }
+  if (flag !== 'success') return;
+  showToast('Finalizing your plan…');
+  supabase.functions.invoke('reconcile', { body: {} })
+    .catch(() => {})
+    .then(() => syncEntitlement())
+    .then(() => { refreshTierUI(); showToast('Your plan is active on this account.'); })
+    .catch(() => { showToast('Payment received — your plan will appear after the next sign-in.'); });
+}
 
 // ─── Header tier badge — tappable, 5-tap dev trigger (items 3, 7) ────────────
 
@@ -839,23 +880,10 @@ function initTierBadge() {
     badge.textContent = tier === 'pro' ? 'PRO' : tier === 'investor' ? 'INVESTOR' : 'STARTER';
 
     badge.addEventListener('click', () => {
-      tapCount++;
-      clearTimeout(tapTimer);
-
-      if (tapCount === 1) {
-        configureUpgradeModal('general');
-        openModal('modal-upgrade');
-      }
-
-      tapTimer = setTimeout(() => {
-        // Dev Mode is owner-gated: 5 taps only reveal it when unlocked
-        // (cpcDevUnlock or ?dev=1). The public never sees it.
-        if (tapCount >= 5 && devModeVisible()) {
-          closeModal('modal-upgrade');
-          openModal('modal-dev');
-        }
-        tapCount = 0;
-      }, 2000);
+      // Wave 5 (SR-3): the 5-tap dev panel is gone — the badge just opens the
+      // upgrade/account modal.
+      configureUpgradeModal('general');
+      openModal('modal-upgrade');
     });
   });
 }
@@ -973,7 +1001,6 @@ function refreshTierUI() {
   const t = getActiveTier();
   const label = t === 'pro' ? 'PRO' : t === 'investor' ? 'INVESTOR' : 'STARTER';
   document.querySelectorAll('.tier-badge').forEach(b => { b.textContent = label; });
-  updateDevModeIndicator();
   applyTierToUI();
   renderAllSlots();
   renderGuideMarketIntel();
@@ -981,18 +1008,10 @@ function refreshTierUI() {
   renderAuthChip();
 }
 
-// ─── Dev mode indicator ───────────────────────────────────────────────────────
-
-function updateDevModeIndicator() {
-  const banner = document.getElementById('dev-mode-banner');
-  if (!banner) return;
-  if (isDevMode()) {
-    banner.textContent = 'DEV MODE — ' + getActiveTier().toUpperCase();
-    banner.hidden = false;   // nav-lock invariant: toggle `hidden`, never style.display
-  } else {
-    banner.hidden = true;
-  }
-}
+// Wave 5 (SR-3): the dev-mode banner and its indicator are gone with Dev Mode
+// itself. The nav-lock invariants (tests/layout.test.mjs) are re-pinned in the
+// same commit: the .dev-mode-banner element, its CSS offset rule, and the JS
+// toggle no longer exist — the nav is unconditionally top:0.
 
 // ─── Apply tier to UI ─────────────────────────────────────────────────────────
 
@@ -1080,8 +1099,12 @@ function buildRegionIntel(slug, tier, intel) {
     </div>`;
 }
 
-// Funding-priority ladder — sells priority, not access. Visible to every tier
-// so the value is legible; current tier is highlighted. Relative language only.
+// Wave 5 (SR-1, launch-blocking compliance): the old ladder sold preferential
+// funding treatment as a paid benefit. That violates the product law — paid
+// tiers buy DealFit APPLICATION FEATURES ONLY; Starter, Investor, and Pro
+// receive identical CPC Get Funding pathway, routing, and review treatment.
+// The replacement states that law to every tier; tests/tierlaw.test.mjs pins
+// the prohibited-claim sweep across the whole shipped bundle.
 function buildFundingLadderHTML(tier) {
   const rung = (key, name, lines) => {
     const active = key === tier;
@@ -1092,25 +1115,23 @@ function buildFundingLadderHTML(tier) {
   };
   return `
     <div class="guide-section">
-      <h3>How Funding Priority Works</h3>
-      <p class="gi-note" style="margin-bottom:10px">Funding is free on every tier — paid tiers move you toward the front of the queue and add hands-on help. The free funnel stays fast.</p>
-      ${rung('starter', 'Starter — Free', 'Submit your deal and get a standard review and funding decision — at no cost.')}
-      ${rung('investor', 'Investor', 'Everything in Starter, plus a <strong>first look</strong> — your deal moves toward the front of the queue — and a one-tap deal-summary export to send partners or lenders.')}
-      ${rung('pro', 'Pro', 'Highest priority, plus a Clear Path broker <strong>pre-reviews your file before the call</strong> and packages it hands-on. Cross-device cloud sync coming.')}
+      <h3>How Funding Works</h3>
+      <p class="gi-note" style="margin-bottom:10px">Get Funding works the same on every tier — free, Investor, and Pro all reach Clear Path Capital the same way, with the same review. Paid tiers add DealFit app features, never funding treatment.</p>
+      ${rung('starter', 'Starter — Free', 'Analyze deals, save your pipeline, and submit to Clear Path Capital — at no cost.')}
+      ${rung('investor', 'Investor', 'Everything in Starter, plus server-verified quantitative market intel for your regions and one-tap deal-summary sharing.')}
+      ${rung('pro', 'Pro', 'Everything in Investor, plus the full analyst layer — notes and sources for every market you track.')}
     </div>`;
 }
 
-// Investor-only "Upgrade to Pro" card — makes the Pro delta legible in the Guide.
+// Investor-only "Upgrade to Pro" card — the Pro delta is app features only (SR-1).
 function buildInvestorUpgradeCTA() {
   return `
     <div class="guide-pro-cta">
       <div class="gpc-eyebrow">You're on Investor</div>
-      <div class="gpc-title">Pro adds the hands-on layer</div>
+      <div class="gpc-title">Pro adds the full analyst layer</div>
       <ul class="gpc-list">
         <li>All 6 of your markets (vs 4)</li>
         <li>Full analyst notes &amp; sources for every market — not just the numbers</li>
-        <li>Highest-priority funding + a broker who pre-reviews your file before the call</li>
-        <li>Cross-device cloud sync (coming)</li>
       </ul>
       <button class="btn-redeem gpc-btn" onclick="openUpgrade('general')">See Pro</button>
     </div>`;
@@ -1181,22 +1202,13 @@ Object.assign(window, {
   analyzeBrrr: analyzeBrrrValidated,
   setBrrrPreset,
   resetBrrr,
-  // dev tier switch (console: setTier('investor'))
-  setTier(name, el) {
-    if (name === 'starter' || name === 'investor' || name === 'pro') {
-      setDevTier(name);  // writes localStorage.tier
-      location.reload(); // reload so all tier-gated UI rebuilds cleanly
-    } else {
-      setRepairTier(name, el);
-    }
-  },
-  // Exit Dev Mode: clear the owner dev flag + cached tier, then reload so the
-  // app re-syncs the real (server) entitlement instead of the dev override.
-  exitDevMode() {
-    localStorage.removeItem('cpcDevUnlock');
-    localStorage.removeItem('tier');
-    location.reload();
-  },
+  // Wave 5 (SR-3): the subscription-tier branch of setTier is GONE — no
+  // window-exposed control may mutate paid display state. Rehab-cost tiers
+  // (Light/Mid/Full, repair.js) are unrelated to subscriptions and keep their
+  // setter under an unambiguous name.
+  setRepairTier,
+  startCheckout,
+  manageSubscription,
   calcRepair,
   useRepairEstimate,
   updateSelfReno,
@@ -1230,9 +1242,7 @@ Object.assign(window, {
   pickerSelectMarket,
   pickerBack,
   confirmMarketChange,
-  // upgrade
-  upgradeToInvestor,
-  upgradeToPro,
+  // upgrade — Wave 5: real checkout via the trusted server path (SR-4)
   redeemTierCode,
   sendSignInCode,
   verifySignInCode,
@@ -1255,8 +1265,8 @@ migrateGuideMode();       // "beginner"/"pro" → "on"/"off"
 initInstallHint();
 initGuideMode();
 initCurrencyInputs();
-updateDevModeIndicator();
 initTierBadge();
+handleCheckoutReturn();   // Wave 5: checkout return is a sync TRIGGER, never entitlement
 applyTierToUI();
 renderAllSlots();
 renderGuideMarketIntel();   // item 4: build region intel from selected markets

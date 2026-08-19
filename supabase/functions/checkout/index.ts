@@ -1,0 +1,103 @@
+// ─── Wave 5 · Edge Function: checkout ─────────────────────────────────────────
+// Authenticated Checkout session creation. AUTHOR-ONLY in Phase 4 — not
+// deployed. Trust chain: verified Supabase JWT → server-side refusals
+// (payment gate → same-tier law → one-live-attempt) → Stripe hosted Checkout.
+// The client supplies ONLY an abstract tier name; prices are server-selected;
+// no client value is entitlement authority.
+import Stripe from 'npm:stripe';
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { loadConfig } from '../_shared/stripe_config.mjs';
+
+const CORS = {
+  'Access-Control-Allow-Origin': 'https://dealfit.clearpathcapfunding.com',
+  'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+const json = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json' } });
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  if (req.method !== 'POST') return json(405, { error: 'method' });
+
+  const cfg = loadConfig(Deno.env.toObject());
+  const stripe = new Stripe(cfg.stripeSecretKey, { apiVersion: cfg.apiVersion });
+  const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+  // 1. Authenticate the caller with their own JWT.
+  const authHeader = req.headers.get('authorization') ?? '';
+  const userClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: userData, error: userErr } = await userClient.auth.getUser();
+  if (userErr || !userData?.user) return json(401, { error: 'sign_in_required' });
+  const user = userData.user;
+
+  const { tier } = await req.json().catch(() => ({}));
+  if (tier !== 'investor' && tier !== 'pro') return json(400, { error: 'bad_tier' });
+
+  // 2. Server-side refusals + logical-attempt claim (single definer call:
+  //    gate → same-tier law → one live attempt per user).
+  const { data: begin, error: beginErr } = await service.rpc('begin_checkout_attempt', {
+    p_user: user.id, p_tier: tier,
+  });
+  if (beginErr) return json(500, { error: 'attempt_begin_failed' });
+
+  switch (begin.outcome) {
+    case 'refused_gate':
+      return json(403, { error: 'checkout_not_open' });
+    case 'refused_same_tier':
+      return json(409, { error: 'already_entitled', effective_tier: begin.effective_tier });
+    case 'reuse':
+      { // Converge on the existing open session.
+        const existing = await stripe.checkout.sessions.retrieve(begin.session_id);
+        if (existing?.url && existing.status === 'open') return json(200, { url: existing.url });
+        // Stale on Stripe's side: expire our attempt; caller retries fresh.
+        await service.rpc('expire_checkout_attempt', { p_attempt: begin.attempt_id, p_reason: 'expired' });
+        return json(409, { error: 'retry' });
+      }
+    case 'busy':
+      return json(429, { error: 'attempt_in_flight' }); // NEVER supersede a fresh creating row (pin 1)
+    case 'claimed':
+      break;
+    default:
+      return json(500, { error: 'unexpected_outcome' });
+  }
+
+  try {
+    // 3. Customer mapping (per mode) — reuse, else create.
+    const { data: cfgRow } = await service.from('payment_config').select('mode').eq('id', 1).single();
+    const mode = cfgRow?.mode === 'live' ? 'live' : 'test';
+    const { data: mapped } = await service.from('stripe_customers')
+      .select('stripe_customer_id').eq('user_id', user.id).eq('mode', mode).maybeSingle();
+    let customerId = mapped?.stripe_customer_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create(
+        { email: user.email ?? undefined, metadata: { dealfit_user_id: user.id } },
+        { idempotencyKey: `cust-${mode}-${user.id}` },
+      );
+      customerId = customer.id;
+      await service.rpc('upsert_stripe_customer', { p_user: user.id, p_mode: mode, p_customer_id: customerId });
+    }
+
+    // 4. Server-selected price; idempotency key = the logical attempt id.
+    const price = tier === 'pro' ? cfg.priceProMonthly : cfg.priceInvestorMonthly;
+    if (!price) throw new Error('price_not_configured');
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: customerId,
+      client_reference_id: user.id,
+      line_items: [{ price, quantity: 1 }],       // exactly ONE recurring item (period-contract invariant)
+      success_url: 'https://dealfit.clearpathcapfunding.com/?checkout=success',
+      cancel_url: 'https://dealfit.clearpathcapfunding.com/?checkout=cancel',
+      subscription_data: { metadata: { dealfit_user_id: user.id } },
+      // NO trial configuration at launch (pin 7); no pause feature (pin 8).
+    }, { idempotencyKey: begin.attempt_id });
+
+    await service.rpc('finalize_checkout_attempt', { p_attempt: begin.attempt_id, p_session_id: session.id });
+    return json(200, { url: session.url });
+  } catch (e) {
+    await service.rpc('expire_checkout_attempt', { p_attempt: begin.attempt_id, p_reason: 'expired' });
+    return json(502, { error: 'stripe_create_failed', detail: String(e).slice(0, 200) });
+  }
+});

@@ -5,7 +5,9 @@ import { getDeals } from './storage.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
 
 // NOTE: Phase 1 will hard-code APP_URL to the deployed domain.
-const APP_URL = location.href.split('#')[0];
+// Wave 5 (SR-7 testability): guard the top-level `location` read so the pure
+// summary builder below is importable by the Node test suite.
+const APP_URL = (typeof location !== 'undefined' ? location.href : '').split('#')[0];
 
 // Local modal helpers
 const openModal  = id => document.getElementById(id).classList.add('active');
@@ -76,7 +78,12 @@ export function shareDeal(id) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildDealSummaryText(d) {
+// Wave 5 · SR-7: every analyzer type gets its own honest branch. The baseline
+// version branched only `flip` vs everything-else-as-STR, so LTR and BRRR deals
+// shared as "SHORT-TERM RENTAL ANALYSIS" with `undefined% occ.` — reachable by
+// any Investor/Pro sharing a saved LTR/BRRR deal. Exported for the Node suite
+// (tests/share.test.mjs); pure — no DOM/location access.
+export function buildDealSummaryText(d) {
   const data  = d.data || {};
   // Phase A: unresolved insurance on LTR/BRRR deals — the shared text must not
   // expose finite insurance-dependent values or the positive verdict headline.
@@ -85,21 +92,41 @@ function buildDealSummaryText(d) {
   const pendP         = pendingPresentationFor(d.type, taxSt, insStatus);
   const unresolvedIns = !!pendP;
   const headline      = pendP ? pendP.tag : d.verdict.toUpperCase();
+  // Never let a missing field print as "undefined" in someone's message thread.
+  const money = (v) => (v == null ? 'n/a' : fmt(v));
+  const perc  = (v) => (v == null ? 'n/a' : pct(v));
+  const dscrS = (v) => (v == null ? 'n/a' : Number(v).toFixed(2));
+  const pend  = (s, v) => (unresolvedIns ? 'Pending' : s(v));
   const lines = ['🏠 ' + d.name + ' — ' + headline];
   if (data.addr) lines.push('📍 ' + data.addr);
   lines.push('');
   if (d.type === 'flip') {
     lines.push('FIX & FLIP ANALYSIS');
-    lines.push('Asking: ' + fmt(data.ask) + '  |  ARV: ' + fmt(data.arv));
-    lines.push('Repairs: ' + fmt(data.rep) + (data.self ? ' (self-perform)' : ''));
-    lines.push('Profit: ' + fmt(data.profit) + '  |  ROI: ' + pct(data.roi));
-    lines.push('Max offer: ' + fmt(data.maxOffer));
+    lines.push('Asking: ' + money(data.ask) + '  |  ARV: ' + money(data.arv));
+    lines.push('Repairs: ' + money(data.rep) + (data.self ? ' (self-perform)' : ''));
+    lines.push('Profit: ' + money(data.profit) + '  |  ROI: ' + perc(data.roi));
+    lines.push('Max offer: ' + money(data.maxOffer));
+  } else if (d.type === 'ltr') {
+    // Every LTR headline stat is insurance-dependent (matches pendingDealStats).
+    lines.push('LONG-TERM RENTAL (DSCR) ANALYSIS');
+    if (data.price != null) lines.push('Price: ' + money(data.price));
+    lines.push('DSCR: ' + pend(dscrS, data.dscr));
+    lines.push('Cash-on-cash: ' + pend(perc, data.coc));
+    lines.push('Cash flow: ' + pend(money, data.cashFlowMo) + '/mo');
+  } else if (d.type === 'brrr') {
+    // BRRR keeps its refi math; only DSCR is insurance-dependent (matches
+    // pendingDealStats).
+    lines.push('BRRR ANALYSIS');
+    if (data.price != null) lines.push('Price: ' + money(data.price));
+    lines.push('DSCR: ' + pend(dscrS, data.dscr));
+    lines.push('Capital left in: ' + money(data.capitalLeft));
+    lines.push('Cash recovered: ' + perc(data.cashRecoveredPct));
   } else {
     lines.push('SHORT-TERM RENTAL ANALYSIS');
-    lines.push('Price: ' + fmt(data.price) + '  |  Down: ' + data.down + '%');
-    lines.push('Gross rent: ' + fmt(data.rent) + ' @ ' + data.occ + '% occ.');
-    lines.push('Cash flow: ' + (unresolvedIns ? 'Pending' : fmt(data.cashflow)) + '/yr');
-    lines.push('Cash-on-cash: ' + (unresolvedIns ? 'Pending' : pct(data.coc)) + '  |  Cap rate: ' + (unresolvedIns ? 'Pending' : pct(data.capRate)));
+    lines.push('Price: ' + money(data.price) + '  |  Down: ' + (data.down == null ? 'n/a' : data.down + '%'));
+    lines.push('Gross rent: ' + money(data.rent) + ' @ ' + (data.occ == null ? 'n/a' : data.occ + '%') + ' occ.');
+    lines.push('Cash flow: ' + pend(money, data.cashflow) + '/yr');
+    lines.push('Cash-on-cash: ' + pend(perc, data.coc) + '  |  Cap rate: ' + pend(perc, data.capRate));
   }
   if (d.notes) { lines.push(''); lines.push('Notes: ' + d.notes); }
   return lines.join('\n');

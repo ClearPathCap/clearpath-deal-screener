@@ -16,8 +16,11 @@
 import { supabase } from './supabaseClient.js';
 import { isSignedIn } from './auth.js';
 
-// Signed-in Starter keeps a small "taste" pipeline; Investor/Pro are unlimited.
-export const FREE_DEAL_CAP = 2;
+// Wave 5 (§18-1 ratified matrix): pipeline capacity is NOT a tier
+// differentiator. Every signed-in tier gets the same allowance — an
+// operational/anti-abuse bound, not an entitlement. The NUMBER is provisional
+// (owner decision pending; recommended 25) — change the constant, nothing else.
+export const PIPELINE_ALLOWANCE = 25;
 
 let _cache = [];  // current pipeline, in memory (source of truth is the server)
 let _mutationInFlight = false;  // at most one unresolved save/delete mutation

@@ -34,31 +34,19 @@ ok("nav locks at top:0", /(^|;)top:0(;|})/.test(navRule.slice(4)));
 ok("nav has an opaque background (content must not bleed through)", /background:var\(--bg\)/.test(navRule));
 ok("nav z-index above page content", /z-index:(1[0-9]|[2-9][0-9])/.test(navRule));
 
-// 2. The 26px dev-banner offset exists ONLY behind a visibility gate. Any
-//    adjacent-sibling nav offset without :not([hidden]) is the regression.
-const siblingRules = css.match(/\.dev-mode-banner[^{}]*\+\s*\.nav\s*\{[^}]*\}/g) || [];
-ok("exactly one banner→nav sibling rule", siblingRules.length === 1);
-ok("the sibling rule is gated on :not([hidden])", siblingRules.every(r => r.includes(":not([hidden])")));
-ok("no unconditional 26px nav offset anywhere", !/\.dev-mode-banner\s*\+\s*\.nav\s*\{/.test(css.replace(/\.dev-mode-banner:not\(\[hidden\]\)\s*\+\s*\.nav\s*\{[^}]*\}/g, "")));
-ok("hidden banner is display:none", /\.dev-mode-banner\[hidden\]\{display:none\}/.test(css));
-
-// 3. The banner element hides via the `hidden` attribute, never inline display.
-const bannerTag = (html.match(/<div id="dev-mode-banner"[^>]*>/) || [""])[0];
-ok("banner tag exists", bannerTag.length > 0);
-ok("banner uses the hidden attribute", /\bhidden\b/.test(bannerTag));
-ok("banner carries no inline style", !/style=/.test(bannerTag));
-// DOM order: banner immediately precedes the nav (the selector depends on it).
-const bannerIdx = html.indexOf('id="dev-mode-banner"');
-const navIdx = html.indexOf('<div class="nav">');
-ok("banner precedes the nav in the DOM", bannerIdx > -1 && navIdx > bannerIdx);
-ok("nothing but whitespace/comments between banner and nav", /^(\s|<!--[\s\S]*?-->)*$/.test(html.slice(html.indexOf(">", bannerIdx) + 1, navIdx).replace(/<\/div>/, "")));
-
-// 4. JS toggles `hidden`, never style.display, on the banner.
-const devFn = (mainJs.match(/function updateDevModeIndicator\(\)[\s\S]*?\n\}/) || [""])[0];
-ok("updateDevModeIndicator exists", devFn.length > 0);
-ok("JS shows banner via hidden=false", /banner\.hidden = false/.test(devFn));
-ok("JS hides banner via hidden=true", /banner\.hidden = true/.test(devFn));
-ok("JS never sets banner.style.display", !/banner\.style\.display/.test(mainJs));
+// 2–4. RE-PINNED in the Wave 5 commit (same-commit law, reasoning here): the
+//    dev banner — the ONLY element that ever justified a nav offset — was
+//    removed entirely with the tier-mutating dev tooling (SR-3 / plan v1.1
+//    C-2). The gate pins below are replaced by ABSENCE pins, which protect the
+//    nav-lock invariant more strongly: with no banner and no sibling rule, no
+//    state can offset the nav at all. If a future banner-like element returns,
+//    these pins force the same-commit re-derivation this suite's header demands.
+ok("no dev-banner selector remains anywhere in CSS", !/\.dev-mode-banner/.test(css));
+ok("no sibling rule offsets the nav (any selector)", !/\+\s*\.nav\s*\{/.test(css));
+ok("no dev-banner element remains in the DOM", !/dev-mode-banner/.test(html));
+ok("the nav is the first element inside <body> (nothing can sit above it)",
+   /^(\s|<!--[\s\S]*?-->)*<div class="nav">/.test(html.slice(html.indexOf("<body>") + 6)));
+ok("no banner JS remains in main.js", !/dev-mode-banner|updateDevModeIndicator\(/.test(mainJs.replace(/\/\/[^\n]*/g, "")));
 
 // 5. The util-bar stays in normal flow — it must scroll under the locked nav,
 //    never float over it or the wordmark row (Round 2 #3 stays honored).

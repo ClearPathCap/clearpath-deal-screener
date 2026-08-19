@@ -1,7 +1,7 @@
 // ─── Pipeline: saved deals, render, expand, filter, delete ───────────────────
 
 import { fmt, pct, escapeHtml } from './format.js';
-import { getDeals, saveDeals, FREE_DEAL_CAP } from './storage.js';
+import { getDeals, saveDeals, PIPELINE_ALLOWANCE } from './storage.js';
 import { isSignedIn } from './auth.js';
 import { getLastFlipResult } from './flip.js';
 import { getLastRentalResult } from './rental.js';
@@ -44,12 +44,11 @@ export async function saveDeal(type) {
     : getLastRentalResult();
   if (!result) { alert('Analyze the deal first, then save.'); return { status: 'refused-result' }; }
 
-  // Free Starter keeps a small pipeline; Investor/Pro are unlimited.
-  const tier  = getActiveTier();
+  // Wave 5 (§18-1): capacity is a UNIFORM allowance on every tier — an
+  // anti-abuse bound, never a paid differentiator. Tier-blind by design.
   const deals = getDeals();
-  if (tier !== 'investor' && tier !== 'pro' && deals.length >= FREE_DEAL_CAP) {
-    window.showToast && window.showToast(`That's your ${FREE_DEAL_CAP} free deal saves — upgrade for an unlimited pipeline`, 4200);
-    window.openUpgrade && window.openUpgrade('cap');
+  if (deals.length >= PIPELINE_ALLOWANCE) {
+    window.showToast && window.showToast(`Your pipeline is full (${PIPELINE_ALLOWANCE} deals) — delete a deal you're done with to save a new one`, 4200);
     return { status: 'refused-cap' };
   }
 

@@ -6,7 +6,7 @@
 // fake tier, and a shared/edited value is corrected on the next load.
 
 import { supabase } from './supabaseClient.js';
-import { setCachedTier, devModeVisible } from './tiers.js';
+import { setCachedTier } from './tiers.js';
 
 let _session = null;
 const _listeners = [];
@@ -29,13 +29,14 @@ export async function initAuthAndEntitlement() {
 
   supabase.auth.onAuthStateChange(async (_event, session) => {
     _session = session || null;
-    if (!devModeVisible()) await syncEntitlement();
+    await syncEntitlement();
     notify();
   });
 
-  // In Dev Mode the owner's locally-set tier controls the UI for testing, so we
-  // don't override it with the server value.
-  if (!devModeVisible()) await syncEntitlement();
+  // Wave 5 (SR-3): entitlement sync is UNCONDITIONAL — the dev-mode skip let any
+  // visitor suppress server truth with ?dev=1. Server answer lands on every boot
+  // and every auth change, always.
+  await syncEntitlement();
   notify();
 }
 

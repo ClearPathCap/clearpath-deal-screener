@@ -191,6 +191,26 @@ begin
   assert (select count(*) from public.entitlement_grants where stripe_subscription_id = 'sub_F') = 1,
     'apply: state-based upsert never duplicates a subscription grant';
 
+  -- ── Phase 6 entry Task A: stale-processing reclaim branch (explicit proof) ──
+  -- Source contract (0009 claim_stripe_event): a 'processing' row whose
+  -- claimed_at is older than 10 minutes is reclaimable — the claim returns
+  -- 'claimed', increments attempts, refreshes claimed_at, and the row stays
+  -- 'processing'; an immediate second claim then sees a FRESH processing row
+  -- and returns 'busy'. NOTE: now() is transaction-frozen, so the 11-minute
+  -- backdate is evaluated against the same instant claimed_at is refreshed to.
+  insert into public.stripe_events (event_id, livemode, type, state, attempts, claimed_at)
+  values ('evt_STALE', false, 'customer.subscription.updated', 'processing', 3, now() - interval '11 minutes');
+  v_out := public.claim_stripe_event('evt_STALE', 'customer.subscription.updated', false);
+  assert v_out = 'claimed', 'stale-reclaim (c): stale processing row is reclaimed with ''claimed''';
+  assert (select attempts from public.stripe_events where event_id = 'evt_STALE' and livemode = false) = 4,
+    'stale-reclaim (d): attempts incremented N -> N+1 (3 -> 4)';
+  assert (select claimed_at from public.stripe_events where event_id = 'evt_STALE' and livemode = false) = now(),
+    'stale-reclaim (e): claimed_at refreshed to the claim instant';
+  assert (select state from public.stripe_events where event_id = 'evt_STALE' and livemode = false) = 'processing',
+    'stale-reclaim (f): state remains processing after reclaim';
+  v_out := public.claim_stripe_event('evt_STALE', 'customer.subscription.updated', false);
+  assert v_out = 'busy', 'stale-reclaim (g): immediate re-claim of the fresh row is busy';
+
   -- ── checkout_attempts machine (C-7 + pin 1) ────────────────────────────────
   update public.payment_config set checkout_enabled = false, allowlist = array[u1] where id = 1;
   -- Gate: u2 (not allowlisted) refused; u1 (allowlisted) proceeds.

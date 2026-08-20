@@ -8,7 +8,7 @@
 // Idempotent: state-based upserts converge no matter how many nets fire.
 // Triggered by the client's checkout success/cancel return; also invocable by
 // the owner via service role for make-good handling.
-import Stripe from 'npm:stripe';
+import Stripe from 'npm:stripe@22.5.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { loadConfig } from '../_shared/stripe_config.mjs';
 import { mapSubscriptionToGrant } from '../_shared/stripe_normalize.mjs';

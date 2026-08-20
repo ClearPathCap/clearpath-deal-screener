@@ -4,7 +4,7 @@
 // (payment gate → same-tier law → one-live-attempt) → Stripe hosted Checkout.
 // The client supplies ONLY an abstract tier name; prices are server-selected;
 // no client value is entitlement authority.
-import Stripe from 'npm:stripe';
+import Stripe from 'npm:stripe@22.5.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { loadConfig } from '../_shared/stripe_config.mjs';
 

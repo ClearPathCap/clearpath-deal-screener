@@ -11,7 +11,7 @@
 //
 // STATE-BASED: relevant events trigger a FETCH of current subscription state;
 // arrival order is irrelevant; checkout.session.completed is never authority.
-import Stripe from 'npm:stripe';
+import Stripe from 'npm:stripe@22.5.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { loadConfig } from '../_shared/stripe_config.mjs';
 import { mapSubscriptionToGrant } from '../_shared/stripe_normalize.mjs';

@@ -4,7 +4,7 @@
 // never deployed; nothing else depends on it.
 // Portal provider configuration must match owner decision #8 (plan-change /
 // proration policy) — do not inherit Stripe Dashboard defaults silently.
-import Stripe from 'npm:stripe';
+import Stripe from 'npm:stripe@22.5.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { loadConfig } from '../_shared/stripe_config.mjs';
 

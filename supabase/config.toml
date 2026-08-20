@@ -1,0 +1,13 @@
+project_id = "qbddbblhduzwcfwslbac"
+
+[functions.checkout]
+verify_jwt = true
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.reconcile]
+verify_jwt = true
+
+[functions.portal]
+verify_jwt = true

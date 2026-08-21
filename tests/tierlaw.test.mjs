@@ -118,6 +118,25 @@ ok("[PRESERVATION] 0008 never renames the entitlements table", !/alter\s+table[^
 ok("[PRESERVATION] 0008 never alters entitlements RLS/policies/grants",
    !/((alter|create|drop)\s+policy[^;]*\bon\s+public\.entitlements\b)|revoke[^;]*\bon\s+(table\s+)?public\.entitlements\b/i.test(mig8));
 
+// ── §F · [DEFECT-CLOSING] ratified pricing law: Investor $14/mo, Pro $29/mo,
+//    monthly ONLY. Proven FAILING pre-fix at 1d9ba5b2 (modal carried $17/mo
+//    Investor plus $149/yr and $249/yr annual offers with savings claims —
+//    unauthorized commercial terms; owner ratification 8d99dc18 + Amendment 1).
+ok("[DEFECT-CLOSING] Investor card shows governed $14/mo",
+   /class="tc-price">\$14<span class="tc-per">\/mo<\/span>/.test(html));
+ok("[DEFECT-CLOSING] Pro card shows governed $29/mo",
+   /class="tc-price">\$29<span class="tc-per">\/mo<\/span>/.test(html));
+ok("[DEFECT-CLOSING] no $17 Investor offer survives anywhere shipped", !/\$17\b/.test(allShipped));
+ok("[DEFECT-CLOSING] no $149 annual offer survives anywhere shipped", !/\$149\b/.test(allShipped));
+ok("[DEFECT-CLOSING] no $249 annual offer survives anywhere shipped", !/\$249\b/.test(allShipped));
+ok("[DEFECT-CLOSING] no yearly-subscription price copy survives (\"$N/yr\" offer shape)",
+   !/\$\d+\s*\/\s*yr/.test(allShipped));
+ok("[DEFECT-CLOSING] no annual-savings claim survives", !/save \d+%/i.test(allShipped));
+ok("[DEFECT-CLOSING] tc-annual element is gone from the modal", !/tc-annual/.test(html));
+ok("[PRESERVATION] checkout still offers exactly the two abstract monthly tiers",
+   /startCheckout\('investor'\)/.test(html) && /startCheckout\('pro'\)/.test(html)
+   && !/startCheckout\('(?!investor'|pro')/.test(html));
+
 console.log(`\ntierlaw: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Tier/funding law holds ✓");

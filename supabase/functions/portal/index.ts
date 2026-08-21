@@ -10,7 +10,8 @@ import { loadConfig } from '../_shared/stripe_config.mjs';
 
 const CORS = {
   'Access-Control-Allow-Origin': 'https://dealfit.clearpathcapfunding.com',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
+  // R1 attempt-2 fix: same required allow-header set as checkout (see there).
+  'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const json = (status: number, body: unknown) =>

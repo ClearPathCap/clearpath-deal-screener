@@ -173,6 +173,30 @@ const mainSrc = src("docs/src/js/main.js");
 ok("reconcile return-path is wired to the safe logger",
    /logFunctionsFailure\('reconcile'/.test(mainSrc) && /logFunctionsFailure\('checkout-return'/.test(mainSrc));
 
+// ── §F · [DEFECT-CLOSING] Edge CORS preflight contract ───────────────────────
+// R1 Attempt 2 halted at CORS preflight: the paid functions allowed only
+// 'authorization, content-type', but supabase-js 2.112.3 sends x-client-info
+// on every Functions call and apikey on authenticated ones — Chrome blocked
+// the POST before the server gate was consulted. Proven failing pre-fix.
+const REQUIRED_PREFLIGHT_HEADERS = ['authorization', 'apikey', 'content-type', 'x-client-info'];
+const PROD_ORIGIN = 'https://dealfit.clearpathcapfunding.com';
+for (const fn of ['checkout', 'reconcile', 'portal']) {
+  const es = src(`supabase/functions/${fn}/index.ts`);
+  const allowHeaders = (es.match(/'Access-Control-Allow-Headers':\s*'([^']*)'/) ?? [])[1] ?? '';
+  const allowed = allowHeaders.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+  for (const h of REQUIRED_PREFLIGHT_HEADERS) {
+    ok(`[DEFECT-CLOSING] ${fn} CORS allows real-client header '${h}'`, allowed.includes(h));
+  }
+  const allowOrigin = (es.match(/'Access-Control-Allow-Origin':\s*'([^']*)'/) ?? [])[1] ?? '';
+  ok(`${fn} CORS origin stays production-only`, allowOrigin === PROD_ORIGIN);
+  ok(`${fn} CORS never uses wildcard origin`, !/Allow-Origin':\s*'\*'/.test(es));
+  ok(`${fn} CORS never admits localhost`, !/localhost|127\.0\.0\.1/.test(allowOrigin) && !/Allow-Origin[^\n]*localhost/.test(es));
+  ok(`${fn} allowed methods unchanged`, /'Access-Control-Allow-Methods':\s*'POST, OPTIONS'/.test(es));
+  ok(`${fn} handles OPTIONS preflight with the CORS map`, /req\.method === 'OPTIONS'[^\n]*204[^\n]*CORS/.test(es));
+}
+ok("stripe-webhook remains CORS-free (server-to-server only)",
+   !/Access-Control/i.test(src("supabase/functions/stripe-webhook/index.ts")));
+
 console.error = realConsoleError;
 console.log(`\ntransport: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }

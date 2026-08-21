@@ -10,7 +10,10 @@ import { loadConfig } from '../_shared/stripe_config.mjs';
 
 const CORS = {
   'Access-Control-Allow-Origin': 'https://dealfit.clearpathcapfunding.com',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
+  // R1 attempt-2 fix: supabase-js sends x-client-info on every Functions call
+  // and apikey on authenticated ones — omitting either fails CORS preflight
+  // and blocks the POST before the server gate is ever consulted.
+  'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const json = (status: number, body: unknown) =>

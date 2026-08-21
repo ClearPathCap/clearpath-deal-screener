@@ -37,7 +37,9 @@ export const supabase = {
       const c = cfg();
       c.invokeCalls = c.invokeCalls ?? [];
       c.invokeCalls.push({ name, opts });
-      return (c.functions ?? {})[name] ?? { data: null, error: { message: 'stub' } };
+      const r = (c.functions ?? {})[name];
+      if (typeof r === 'function') return r(opts);   // function entries may throw → rejected invoke
+      return r ?? { data: null, error: { message: 'stub' } };
     },
   },
 };

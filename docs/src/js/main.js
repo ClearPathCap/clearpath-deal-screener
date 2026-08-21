@@ -820,6 +820,24 @@ function configureUpgradeModal(trigger) {
 // refusal. Nothing here grants entitlement: paid state exists only when the
 // server writes a grant and current_tier() reports it after a sync. While the
 // payment gate is closed (pre-launch), the server refuses and the UI says so.
+
+// Safe transport diagnostic (R1 stabilization): a pre-fetch failure used to
+// vanish into one generic toast with zero evidence. Log ONLY name/message/
+// status — never tokens, headers, session objects, bodies, or identifiers.
+export function functionsFailureSummary(op, error) {
+  return {
+    op,
+    kind: error?.context?.status != null ? 'http' : 'transport',
+    name: typeof error?.name === 'string' ? error.name : typeof error,
+    message: String(error?.message ?? error ?? 'unknown').slice(0, 200),
+    status: typeof error?.context?.status === 'number' ? error.context.status : null,
+  };
+}
+function logFunctionsFailure(op, error) {
+  try { console.error('[dealfit] functions failure', functionsFailureSummary(op, error)); }
+  catch { /* diagnostics must never break the flow */ }
+}
+
 async function startCheckout(tierName) {
   if (!isSignedIn()) { openUpgrade('general'); showToast('Sign in first — your plan attaches to your account.'); return; }
   showToast('Opening secure checkout…');
@@ -831,12 +849,15 @@ async function startCheckout(tierName) {
       if (ctx?.status === 403) { showToast('Checkout isn\'t open yet — paid plans are coming soon.'); return; }
       if (ctx?.status === 409) { showToast('You already have this tier on your account.'); return; }
       if (ctx?.status === 429) { showToast('One moment — a checkout is already starting.'); return; }
+      logFunctionsFailure('checkout', error);
       showToast('Checkout is unavailable right now. Nothing was charged.');
       return;
     }
     if (data.url) { location.href = data.url; return; }
+    logFunctionsFailure('checkout', { name: 'MalformedResponse', message: 'success response carried no url' });
     showToast('Checkout is unavailable right now. Nothing was charged.');
-  } catch {
+  } catch (e) {
+    logFunctionsFailure('checkout', e);
     showToast('Checkout is unavailable right now. Nothing was charged.');
   }
 }
@@ -846,7 +867,8 @@ async function manageSubscription() {
   try {
     const { data, error } = await supabase.functions.invoke('portal', { body: {} });
     if (!error && data?.url) { location.href = data.url; return; }
-  } catch { /* fall through */ }
+    if (error) logFunctionsFailure('portal', error);
+  } catch (e) { logFunctionsFailure('portal', e); }
   showToast('Subscription management isn\'t available yet.');
 }
 
@@ -862,10 +884,11 @@ function handleCheckoutReturn() {
   if (flag !== 'success') return;
   showToast('Finalizing your plan…');
   supabase.functions.invoke('reconcile', { body: {} })
-    .catch(() => {})
+    .then((r) => { if (r?.error) logFunctionsFailure('reconcile', r.error); })
+    .catch((e) => { logFunctionsFailure('reconcile', e); })
     .then(() => syncEntitlement())
     .then(() => { refreshTierUI(); showToast('Your plan is active on this account.'); })
-    .catch(() => { showToast('Payment received — your plan will appear after the next sign-in.'); });
+    .catch((e) => { logFunctionsFailure('checkout-return', e); showToast('Payment received — your plan will appear after the next sign-in.'); });
 }
 
 // ─── Header tier badge — tappable, 5-tap dev trigger (items 3, 7) ────────────

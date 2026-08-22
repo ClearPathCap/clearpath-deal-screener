@@ -39,6 +39,36 @@ Deno.serve(async (req) => {
   const { tier } = await req.json().catch(() => ({}));
   if (tier !== 'investor' && tier !== 'pro') return json(400, { error: 'bad_tier' });
 
+  // 1b. LAUNCH BLOCKER (paid→paid): gate first, then paid-state — both BEFORE
+  // any attempt/customer/session side effect. The gate pre-check mirrors
+  // begin_checkout_attempt's own law (which still re-checks, defense in depth)
+  // so a non-allowlisted caller sees exactly the pre-fix 403 and never becomes
+  // a paid-state oracle.
+  const { data: cfgRow, error: cfgErr } = await service.from('payment_config')
+    .select('mode, checkout_enabled, allowlist').eq('id', 1).single();
+  if (cfgErr || !cfgRow) return json(500, { error: 'attempt_begin_failed' });
+  if (!(cfgRow.checkout_enabled || (cfgRow.allowlist ?? []).includes(user.id))) {
+    return json(403, { error: 'checkout_not_open' });
+  }
+  const mode = cfgRow.mode === 'live' ? 'live' : 'test';
+
+  // One active/grace Stripe subscription per user (Amendment 1: plan switching
+  // is deferred — a second Checkout would create a SECOND Stripe subscription,
+  // not a switch). Validity mirrors effective_tier_for's stripe branches:
+  // mode-matched; active needs a future period; grace needs a future
+  // grace_until. A stripe_customers mapping alone, or an ended/canceled/
+  // revoked grant, never blocks — only a currently-contributing subscription.
+  const nowIso = new Date().toISOString();
+  const { data: paidGrants, error: paidErr } = await service.from('entitlement_grants')
+    .select('id')
+    .eq('user_id', user.id).eq('source', 'stripe').eq('livemode', mode === 'live')
+    .or(`and(status.eq.active,current_period_end.gt.${nowIso}),and(status.eq.grace,grace_until.gt.${nowIso})`)
+    .limit(1);
+  if (paidErr) return json(500, { error: 'entitlement_check_failed' }); // fail closed: never risk a double charge
+  if (paidGrants && paidGrants.length > 0) {
+    return json(409, { error: 'plan_change_unavailable' });
+  }
+
   // 2. Server-side refusals + logical-attempt claim (single definer call:
   //    gate → same-tier law → one live attempt per user).
   const { data: begin, error: beginErr } = await service.rpc('begin_checkout_attempt', {
@@ -68,9 +98,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // 3. Customer mapping (per mode) — reuse, else create.
-    const { data: cfgRow } = await service.from('payment_config').select('mode').eq('id', 1).single();
-    const mode = cfgRow?.mode === 'live' ? 'live' : 'test';
+    // 3. Customer mapping (per mode) — reuse, else create. `mode` was read in
+    // step 1b from the same payment_config row this request already gated on.
     const { data: mapped } = await service.from('stripe_customers')
       .select('stripe_customer_id').eq('user_id', user.id).eq('mode', mode).maybeSingle();
     let customerId = mapped?.stripe_customer_id;

@@ -796,22 +796,23 @@ function configureUpgradeModal(trigger) {
   if (tier === 'pro') {
     // Already top tier — nothing to sell
     if (compare) compare.style.display = 'none';
-    if (topNote) topNote.style.display = 'block';
+    if (topNote) { topNote.style.display = 'block'; topNote.textContent = 'You\'re on Pro — every feature is unlocked.'; }
     if (title)   title.textContent = 'You\'re on Pro';
     if (subhead) subhead.textContent = '';
     return;
   }
 
   if (tier === 'investor') {
-    // Delta framing — show only the Pro column. Wave 5 (SR-1): the Pro delta is
-    // DealFit app features ONLY — funding treatment is identical on every tier.
-    if (colInv) colInv.style.display = 'none';
-    if (title)  title.textContent = 'You have 4 regions. Pro adds 2 more, plus full analyst depth.';
-    if (proFeat) proFeat.innerHTML = [
-      '2 more markets — 6 regions total',
-      'Full analyst notes &amp; sources for every market you track',
-      'Everything in Investor',
-    ].map(t => `<li>${t}</li>`).join('');
+    // LAUNCH BLOCKER (paid→paid): with Portal plan switching deferred
+    // (Amendment 1), a second Checkout creates a SECOND Stripe subscription,
+    // not a switch — the server refuses (plan_change_unavailable) and the UI
+    // offers no actionable paid CTA on any paid tier. The server remains the
+    // authority; this is UX/defense-in-depth only.
+    if (compare) compare.style.display = 'none';
+    if (topNote) { topNote.style.display = 'block'; topNote.textContent = 'You\'re on Investor — plan changes aren\'t available yet.'; }
+    if (title)   title.textContent = 'You\'re on Investor';
+    if (subhead) subhead.textContent = '';
+    return;
   }
 }
 
@@ -844,8 +845,13 @@ async function startCheckout(tierName) {
   try {
     const { data, error } = await supabase.functions.invoke('checkout', { body: { tier: tierName } });
     if (error || !data) {
-      // Refusals are server-truth; render them honestly.
+      // Refusals are server-truth; render them honestly. The body's error code
+      // outranks the bare status: two distinct 409 refusals exist
+      // (already_entitled vs plan_change_unavailable).
       const ctx = error?.context;
+      let code = null;
+      try { code = (await ctx.clone().json())?.error ?? null; } catch { /* non-JSON or no body */ }
+      if (code === 'plan_change_unavailable') { showToast('Plan changes aren\'t available yet.'); return; }
       if (ctx?.status === 403) { showToast('Checkout isn\'t open yet — paid plans are coming soon.'); return; }
       if (ctx?.status === 409) { showToast('You already have this tier on your account.'); return; }
       if (ctx?.status === 429) { showToast('One moment — a checkout is already starting.'); return; }

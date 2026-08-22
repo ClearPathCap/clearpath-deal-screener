@@ -197,6 +197,85 @@ for (const fn of ['checkout', 'reconcile', 'portal']) {
 ok("stripe-webhook remains CORS-free (server-to-server only)",
    !/Access-Control/i.test(src("supabase/functions/stripe-webhook/index.ts")));
 
+// ── §G · [LAUNCH BLOCKER] paid→paid checkout guard (server source law) ───────
+// Runtime QA proved an active Investor subscriber could complete a Pro
+// Checkout, creating a SECOND Stripe subscription ($14 + $29 on one customer).
+// Launch law: any active/grace Stripe entitlement blocks every new paid
+// Checkout, enforced server-side BEFORE attempt/customer/session creation.
+// Proven failing at parent 3b843b98.
+const checkoutSrc = src("supabase/functions/checkout/index.ts");
+const idx = (re) => { const m = re.exec(checkoutSrc); return m ? m.index : -1; };
+const iGate    = idx(/checkout_enabled \|\| \(cfgRow\.allowlist/);
+const iGuard   = idx(/plan_change_unavailable/);
+const iBegin   = idx(/rpc\('begin_checkout_attempt'/);
+const iCust    = idx(/stripe\.customers\.create/);
+const iSession = idx(/stripe\.checkout\.sessions\.create/);
+ok("[LAUNCH BLOCKER] paid→paid guard exists (plan_change_unavailable)", iGuard > -1);
+ok("[LAUNCH BLOCKER] gate pre-check precedes the guard (no paid-state oracle for public callers)",
+   iGate > -1 && iGate < iGuard);
+ok("[LAUNCH BLOCKER] guard precedes attempt insertion", iGuard > -1 && iBegin > -1 && iGuard < iBegin);
+ok("[LAUNCH BLOCKER] guard precedes Stripe customer creation", iGuard < iCust);
+ok("[LAUNCH BLOCKER] guard precedes Stripe session creation", iGuard < iSession);
+ok("[LAUNCH BLOCKER] guard reads stripe-source grants only", /eq\('source', 'stripe'\)/.test(checkoutSrc));
+ok("[LAUNCH BLOCKER] guard is mode-scoped (livemode match)", /eq\('livemode', mode === 'live'\)/.test(checkoutSrc));
+ok("[LAUNCH BLOCKER] guard blocks exactly active-with-future-period and grace-with-future-grace_until",
+   /and\(status\.eq\.active,current_period_end\.gt\./.test(checkoutSrc)
+   && /and\(status\.eq\.grace,grace_until\.gt\./.test(checkoutSrc)
+   && !/status\.eq\.(ended|revoked)/.test(checkoutSrc));
+ok("[LAUNCH BLOCKER] a stripe_customers mapping alone never blocks (guard reads entitlement_grants, not stripe_customers)",
+   /from\('entitlement_grants'\)/.test(checkoutSrc.slice(0, iBegin))
+   && !/from\('stripe_customers'\)/.test(checkoutSrc.slice(iGuard - 800, iBegin)));
+ok("[LAUNCH BLOCKER] entitlement-check failure fails closed", /entitlement_check_failed/.test(checkoutSrc)
+   && idx(/entitlement_check_failed/) < iBegin);
+ok("[PRESERVATION] same-tier law still enforced in the definer call", /refused_same_tier/.test(checkoutSrc));
+ok("[PRESERVATION] server-selected price law intact", /tier === 'pro' \? cfg\.priceProMonthly : cfg\.priceInvestorMonthly/.test(checkoutSrc));
+ok("[PRESERVATION] reconcile/portal untouched by the guard",
+   !/plan_change_unavailable/.test(src("supabase/functions/reconcile/index.ts"))
+   && !/plan_change_unavailable/.test(src("supabase/functions/portal/index.ts")));
+
+// ── §H · [LAUNCH BLOCKER] client mapping + paid-tier UI suppression ──────────
+// New refusal renders truthfully; body error code outranks bare 409 status.
+const mkPlanChangeCtx = () => ({ status: 409, clone() { return { json: async () => ({ error: 'plan_change_unavailable' }) }; } });
+c = freshCfg({ functions: { checkout: { data: null, error: { name: 'FunctionsHttpError', message: 'non-2xx', context: mkPlanChangeCtx() } } } });
+errCalls.length = 0; toastEl.textContent = '';
+await globalThis.startCheckout('pro');
+ok("[LAUNCH BLOCKER] plan_change_unavailable renders its own truthful message",
+   /plan changes aren't available yet/i.test(toastEl.textContent));
+ok("[LAUNCH BLOCKER] plan_change_unavailable is a server refusal, not a transport diagnostic", errCalls.length === 0);
+// already_entitled (bare 409, no clone) keeps its message — body parse falls through safely
+c = freshCfg({ functions: { checkout: refusal(409) } });
+toastEl.textContent = '';
+await globalThis.startCheckout('investor');
+ok("[PRESERVATION] bare-409 already_entitled mapping intact after body-parse change",
+   /already have this tier/i.test(toastEl.textContent));
+
+// UI: paid tiers expose NO actionable Subscribe control; Starter unchanged.
+const modalEls = {
+  compare: elements.get('upgrade-compare') ?? globalThis.document.getElementById('upgrade-compare'),
+  topNote: globalThis.document.getElementById('upgrade-toptier-note'),
+  title:   globalThis.document.getElementById('upgrade-modal-title'),
+};
+const setTierTo = async (v) => {
+  globalThis.__stubSupabase = { session, rpc: { current_tier: { data: v, error: null } } };
+  await auth.initAuthAndEntitlement();
+};
+await setTierTo('investor');
+globalThis.openUpgrade('general');
+ok("[LAUNCH BLOCKER] Investor modal hides the purchase comparison entirely",
+   modalEls.compare.style.display === 'none');
+ok("[LAUNCH BLOCKER] Investor modal states plan changes are unavailable",
+   /plan changes aren't available yet/i.test(modalEls.topNote.textContent) && modalEls.topNote.style.display === 'block');
+await setTierTo('pro');
+globalThis.openUpgrade('general');
+ok("[PRESERVATION] Pro modal still sells nothing", modalEls.compare.style.display === 'none');
+ok("[PRESERVATION] Pro note remains truthful", /every feature is unlocked/i.test(modalEls.topNote.textContent));
+await setTierTo(null);   // server: starter
+globalThis.openUpgrade('general');
+ok("[PRESERVATION] Starter modal still offers both purchases (comparison visible)",
+   modalEls.compare.style.display === '');
+ok("[PRESERVATION] Starter purchase CTAs unchanged in markup",
+   /startCheckout\('investor'\)/.test(src("docs/index.html")) && /startCheckout\('pro'\)/.test(src("docs/index.html")));
+
 console.error = realConsoleError;
 console.log(`\ntransport: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }

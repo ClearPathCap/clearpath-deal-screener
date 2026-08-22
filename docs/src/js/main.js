@@ -774,6 +774,7 @@ function configureUpgradeModal(trigger) {
   const colPro    = document.getElementById('upgrade-col-pro');
   const proFeat   = document.getElementById('upgrade-pro-features');
   const topNote   = document.getElementById('upgrade-toptier-note');
+  const manageBtn = document.getElementById('manage-sub-btn');
 
   // Context-aware headline by trigger. Wave 5: the 'cap' trigger is gone —
   // pipeline capacity is a uniform allowance on every tier (§18-1), never a
@@ -792,11 +793,13 @@ function configureUpgradeModal(trigger) {
   if (colInv)  colInv.style.display = '';
   if (colPro)  colPro.style.display = '';
   if (topNote) topNote.style.display = 'none';
+  if (manageBtn) manageBtn.style.display = 'none';   // paid tiers only (R4A3A)
 
   if (tier === 'pro') {
     // Already top tier — nothing to sell
     if (compare) compare.style.display = 'none';
     if (topNote) { topNote.style.display = 'block'; topNote.textContent = 'You\'re on Pro — every feature is unlocked.'; }
+    if (manageBtn) manageBtn.style.display = '';
     if (title)   title.textContent = 'You\'re on Pro';
     if (subhead) subhead.textContent = '';
     return;
@@ -810,6 +813,7 @@ function configureUpgradeModal(trigger) {
     // authority; this is UX/defense-in-depth only.
     if (compare) compare.style.display = 'none';
     if (topNote) { topNote.style.display = 'block'; topNote.textContent = 'You\'re on Investor — plan changes aren\'t available yet.'; }
+    if (manageBtn) manageBtn.style.display = '';
     if (title)   title.textContent = 'You\'re on Investor';
     if (subhead) subhead.textContent = '';
     return;
@@ -868,13 +872,22 @@ async function startCheckout(tierName) {
   }
 }
 
-// Stripe-hosted Customer Portal (subject to owner decision #7).
+// Stripe-hosted Customer Portal (owner decision #7 RESOLVED: Portal = YES for
+// launch — payment methods + period-end cancellation; plan switching stays
+// off). One activation = one portal invocation; a comp-only paid tier has no
+// stripe_customers mapping and gets the truthful no_subscription answer.
 async function manageSubscription() {
+  if (manageSubscription._busy) return;
+  manageSubscription._busy = true;
   try {
     const { data, error } = await supabase.functions.invoke('portal', { body: {} });
     if (!error && data?.url) { location.href = data.url; return; }
+    let code = null;
+    try { code = (await error?.context?.clone()?.json())?.error ?? null; } catch { /* non-JSON or no body */ }
+    if (code === 'no_subscription') { showToast('No Stripe subscription is linked to this account.'); return; }
     if (error) logFunctionsFailure('portal', error);
   } catch (e) { logFunctionsFailure('portal', e); }
+  finally { manageSubscription._busy = false; }
   showToast('Subscription management isn\'t available yet.');
 }
 

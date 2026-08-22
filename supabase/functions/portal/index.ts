@@ -1,7 +1,8 @@
 // ─── Wave 5 · Edge Function: portal ───────────────────────────────────────────
-// AUTHOR-ONLY in Phase 4 — not deployed, and SUBJECT TO OWNER DECISION #7
-// (Customer Portal in MVP). If #7 is ratified NO, this function is simply
-// never deployed; nothing else depends on it.
+// OWNER DECISION #7 RESOLVED: Customer Portal = YES for DealFit launch
+// (payment-method management ON, period-end cancellation ON, plan switching
+// OFF per Amendment 1). Deployed; reached from the paid-tier modal's
+// "Manage subscription" control via manageSubscription().
 // Portal provider configuration must match owner decision #8 (plan-change /
 // proration policy) — do not inherit Stripe Dashboard defaults silently.
 import Stripe from 'npm:stripe@22.5.0';

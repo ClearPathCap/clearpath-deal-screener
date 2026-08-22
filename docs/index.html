@@ -989,6 +989,10 @@
       </div>
     </div>
     <p id="upgrade-toptier-note" style="display:none;font-size:13px;color:var(--accent);text-align:center;padding:8px 0">You're on Pro — every feature is unlocked.</p>
+    <!-- R4A3A: the one customer-facing Portal entry point (owner decision #7:
+         Customer Portal = YES for launch). Shown only on paid effective tiers;
+         routes through the deployed portal Edge function via manageSubscription(). -->
+    <button class="btn-cancel" id="manage-sub-btn" style="display:none;width:100%;margin:4px 0 10px" onclick="manageSubscription()">Manage subscription</button>
 
     <!-- Account — passwordless magic-link sign-in (tiers verified server-side) -->
     <div class="redeem-block" id="account-block">

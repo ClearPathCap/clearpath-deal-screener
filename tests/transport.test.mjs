@@ -276,6 +276,60 @@ ok("[PRESERVATION] Starter modal still offers both purchases (comparison visible
 ok("[PRESERVATION] Starter purchase CTAs unchanged in markup",
    /startCheckout\('investor'\)/.test(src("docs/index.html")) && /startCheckout\('pro'\)/.test(src("docs/index.html")));
 
+// ── §I · [LAUNCH BLOCKER · R4A3A] Portal entry point ─────────────────────────
+// The deployed portal path was correct but unreachable: no customer-facing
+// control invoked manageSubscription(). Paid tiers now carry exactly one
+// "Manage subscription" control; Starter and signed-out never see it; a
+// comp-only/unmapped caller gets the truthful no_subscription answer.
+// Proven failing at parent 245885c2.
+const htmlSrc = src("docs/index.html");
+ok("[LAUNCH BLOCKER] exactly one Manage subscription control exists",
+   (htmlSrc.match(/onclick="manageSubscription\(\)"/g) || []).length === 1 && /id="manage-sub-btn"/.test(htmlSrc));
+ok("[LAUNCH BLOCKER] the control invokes the existing client path, not a Stripe URL",
+   !/billing\.stripe\.com|dashboard\.stripe\.com/.test(htmlSrc));
+const manageBtnEl = globalThis.document.getElementById('manage-sub-btn');
+await setTierTo('investor');
+globalThis.openUpgrade('general');
+ok("[LAUNCH BLOCKER] Investor modal shows Manage subscription", manageBtnEl.style.display === '');
+ok("[PRESERVATION] Investor still sells nothing alongside it", modalEls.compare.style.display === 'none');
+await setTierTo('pro');
+globalThis.openUpgrade('general');
+ok("[LAUNCH BLOCKER] Pro modal shows Manage subscription", manageBtnEl.style.display === '');
+await setTierTo(null);
+globalThis.openUpgrade('general');
+ok("[LAUNCH BLOCKER] Starter modal hides Manage subscription", manageBtnEl.style.display === 'none');
+ok("[PRESERVATION] Starter purchase comparison still visible", modalEls.compare.style.display === '');
+
+// mapped paid user: one activation → exactly one portal invocation → navigation
+c = freshCfg({ functions: { portal: { data: { url: 'portal://session' }, error: null } } });
+globalThis.location.href = 'https://dealfit.example/';
+await globalThis.manageSubscription();
+ok("[LAUNCH BLOCKER] one activation reaches portal exactly once",
+   (c.invokeCalls ?? []).filter(x => x.name === 'portal').length === 1);
+ok("[LAUNCH BLOCKER] portal session url is the navigation authority", globalThis.location.href === 'portal://session');
+ok("[LAUNCH BLOCKER] manage flow never touches checkout",
+   !(c.invokeCalls ?? []).some(x => x.name === 'checkout'));
+// concurrent double-activation collapses to one portal session
+c = freshCfg({ functions: { portal: { data: { url: 'portal://once' }, error: null } } });
+const pA = globalThis.manageSubscription(); const pB = globalThis.manageSubscription();
+await pA; await pB;
+ok("[LAUNCH BLOCKER] concurrent double-activation creates one portal invocation",
+   (c.invokeCalls ?? []).filter(x => x.name === 'portal').length === 1);
+// comp-only / unmapped: truthful no_subscription copy, no diagnostic, no checkout
+const mkNoSubCtx = () => ({ status: 404, clone() { return { json: async () => ({ error: 'no_subscription' }) }; } });
+c = freshCfg({ functions: { portal: { data: null, error: { name: 'FunctionsHttpError', message: 'non-2xx', context: mkNoSubCtx() } } } });
+errCalls.length = 0; toastEl.textContent = '';
+await globalThis.manageSubscription();
+ok("[LAUNCH BLOCKER] unmapped caller gets the truthful no-subscription copy",
+   /no stripe subscription is linked/i.test(toastEl.textContent));
+ok("[LAUNCH BLOCKER] no_subscription is server truth, not a transport diagnostic", errCalls.length === 0);
+ok("[LAUNCH BLOCKER] no_subscription never falls back to checkout",
+   !(c.invokeCalls ?? []).some(x => x.name === 'checkout'));
+// stale owner-decision marker is gone from both wiring sites
+ok("[LAUNCH BLOCKER] stale 'subject to owner decision #7' marker removed",
+   !/subject to owner decision #7/i.test(src("docs/src/js/main.js"))
+   && !/SUBJECT TO OWNER DECISION #7/.test(src("supabase/functions/portal/index.ts")));
+
 console.error = realConsoleError;
 console.log(`\ntransport: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }

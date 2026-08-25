@@ -146,19 +146,26 @@ begin
   get diagnostics n = row_count;
   assert n = 0, 'claim: second claim of a one-time code gets nothing';
 
-  -- Aspire pool default expiry = the ratified instant.
+  -- Aspire expiry = the governed FORCED instant (K-1 / 0010): caller values
+  -- are ignored, and the exact 10:00:00Z bound is intentional — do not
+  -- normalize to 00:00:00Z (it guarantees "through December 31, 2026" in
+  -- every U.S. timezone).
   select code into v_code from public.issue_comp_code('aspire', null, 'local-aspire');
   assert (select expires_at from public.comp_codes_v2 where code_hash = public.hash_comp_code(v_code))
-         = timestamptz '2027-01-01T00:00:00Z', 'aspire: default expiry is the ratified instant';
+         = timestamptz '2027-01-01T10:00:00Z', 'aspire: forced expiry is the governed instant';
+  select code into v_code from public.issue_comp_code('aspire', timestamptz '2028-06-01T00:00:00Z', 'local-aspire-override');
+  assert (select expires_at from public.comp_codes_v2 where code_hash = public.hash_comp_code(v_code))
+         = timestamptz '2027-01-01T10:00:00Z', 'aspire: caller-supplied expiry is ignored';
 
-  -- Pool ceilings: issuing beyond the seeded slots must fail.
+  -- Pool ceilings: issuing beyond the governed 25 aspire slots must fail
+  -- (two aspire codes were already issued just above).
   begin
-    for n in 1..12 loop
+    for n in 1..25 loop
       perform public.issue_comp_code('aspire', null, 'overflow-' || n);
     end loop;
     raise exception 'aspire ceiling did not enforce';
   exception when others then
-    if sqlerrm like '%business inventory is fixed%' then null;
+    if sqlerrm like '%business inventory is fixed at 25/10/10%' then null;
     else raise; end if;
   end;
 

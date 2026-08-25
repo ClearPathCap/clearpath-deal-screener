@@ -325,8 +325,15 @@ begin
     '4.1#1: service_role CAN claim events';
   assert has_function_privilege('service_role', 'public.apply_stripe_grant(text,uuid,text,text,text,text,text,timestamptz,boolean,integer)', 'execute'),
     '4.1#1: service_role CAN apply grants';
-  assert has_function_privilege('service_role', 'public.fail_stripe_event(text,text)', 'execute'),
+  -- K-3 (0011): the 2-arg form was replaced by (text,text,boolean default null)
+  -- so the deployed Edge's 2-argument call still resolves. Privilege is pinned
+  -- on the CURRENT signature; the 2-arg call path itself is exercised at :177.
+  assert has_function_privilege('service_role', 'public.fail_stripe_event(text,text,boolean)', 'execute'),
     '4.1#1: service_role CAN fail events';
+  assert not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                      where n.nspname = 'public' and p.proname = 'fail_stripe_event'
+                        and p.pronargs = 2),
+    'K-3: the superseded 2-arg fail_stripe_event is gone (no ambiguous overload)';
   assert has_function_privilege('service_role', 'public.begin_checkout_attempt(uuid,text)', 'execute'),
     '4.1#1: service_role CAN begin attempts';
   assert has_function_privilege('service_role', 'public.finalize_checkout_attempt(uuid,text)', 'execute'),

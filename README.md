@@ -30,7 +30,9 @@ Submissions and follow-up: **deals@clearpathcapfunding.com**
 
 ## Privacy
 
-All deal data is stored locally on your device. Nothing is sent to any server. Deleting browser data or uninstalling the app removes your pipeline.
+Signed-in DealFit accounts use Supabase for authentication and data. Saved pipeline, market selections, account, and entitlement records may be stored server-side. Stripe handles paid subscription and payment surfaces (Checkout and the Customer Portal); card details are entered on Stripe-hosted pages. Some interface preferences — tier display, onboarding state, market selection, install hints — remain in browser-local storage.
+
+The governing documents are [docs/terms.html](docs/terms.html) and [docs/privacy.html](docs/privacy.html).
 
 ## Tech
 

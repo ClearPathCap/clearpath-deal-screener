@@ -137,6 +137,45 @@ ok("[PRESERVATION] checkout still offers exactly the two abstract monthly tiers"
    /startCheckout\('investor'\)/.test(html) && /startCheckout\('pro'\)/.test(html)
    && !/startCheckout\('(?!investor'|pro')/.test(html));
 
+// ── §G · [K-4B] legal surface: pages exist, are linked, and the stale
+//    local-only README privacy claim is gone. Proven FAILING before K-4B
+//    (neither page existed and no legal link shipped).
+const termsHtml   = src("docs/terms.html");
+const privacyHtml = src("docs/privacy.html");
+ok("[K-4B] docs/terms.html exists and is a DealFit page",
+   /<title>Terms of Service — DealFit/.test(termsHtml) && /styles\.css/.test(termsHtml));
+ok("[K-4B] docs/privacy.html exists and is a DealFit page",
+   /<title>Privacy Policy — DealFit/.test(privacyHtml) && /styles\.css/.test(privacyHtml));
+ok("[K-4B] both documents carry the governed effective date",
+   /Effective Date: August 26, 2026/.test(termsHtml) && /Effective Date: August 26, 2026/.test(privacyHtml));
+ok("[K-4B] the app links to Terms at its canonical path", /href="terms\.html"/.test(html));
+ok("[K-4B] the app links to Privacy at its canonical path", /href="privacy\.html"/.test(html));
+ok("[K-4B] the legal links live in a single quiet footer, not the analyzer body",
+   (html.match(/class="legal-footer"/g) || []).length === 1);
+ok("[K-4B] each document offers a return path to DealFit and to the other document",
+   /href="\.\/"/.test(termsHtml) && /href="privacy\.html"/.test(termsHtml)
+   && /href="\.\/"/.test(privacyHtml) && /href="terms\.html"/.test(privacyHtml));
+// Mechanism check, not a word check: the documents legitimately DISCUSS
+// analytics in prose, so assert on script tags and external hosts instead.
+const legalHosts = [...new Set(
+  ((termsHtml + privacyHtml).match(/https?:\/\/[a-z0-9.-]+/gi) || [])
+    .map(u => u.replace(/^https?:\/\//i, '').toLowerCase()))];
+ok("[K-4B] legal pages ship no script tag and no host beyond the app's existing font CDN",
+   !/<script/i.test(termsHtml) && !/<script/i.test(privacyHtml)
+   && legalHosts.every(h => h === 'fonts.googleapis.com' || h === 'fonts.gstatic.com'));
+const readme = src("README.md");
+ok("[K-4B] the stale local-only privacy claim is gone from README",
+   !/stored locally on your device/i.test(readme) && !/Nothing is sent to any server/i.test(readme));
+ok("[K-4B] README privacy section is architecture-accurate",
+   /Supabase/.test(readme) && /Stripe/.test(readme) && /browser-local/.test(readme));
+// [PRESERVATION] the legal work changed no commercial surface.
+ok("[PRESERVATION] Starter purchase CTAs and governed prices are untouched",
+   /startCheckout\('investor'\)/.test(html) && /startCheckout\('pro'\)/.test(html)
+   && /class="tc-price">\$14<span class="tc-per">\/mo<\/span>/.test(html)
+   && /class="tc-price">\$29<span class="tc-per">\/mo<\/span>/.test(html));
+ok("[PRESERVATION] no payment or consent control was added to the app shell",
+   !/consent_collection/.test(html) && !/type="checkbox"[^>]*agree/i.test(html));
+
 console.log(`\ntierlaw: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Tier/funding law holds ✓");

@@ -269,6 +269,38 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 .tc-name{font-size:14px;font-weight:800;letter-spacing:.08em;color:var(--text);margin-bottom:2px}
 .tc-price{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--accent);margin-bottom:10px}
 .tc-per{font-size:13px;color:var(--muted)}
+
+/* ─── K-4B legal pages + app legal footer ───────────────────────────────────
+   Standalone Terms/Privacy pages reuse this stylesheet so they inherit the
+   DealFit palette and type. .legal-body widens the app's 500px mobile measure
+   to a readable document column; everything else is scoped to .legal-*. */
+.legal-body{max-width:760px;padding-bottom:56px}
+.legal-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:20}
+.legal-back{color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-decoration:none}
+.legal-back:hover{text-decoration:underline}
+.legal-brand{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.legal-doc{padding:28px 20px 48px}
+.legal-doc h1{font-size:24px;font-weight:800;letter-spacing:-.01em;margin:0 0 6px;color:var(--text)}
+.legal-doc h2{font-size:15px;font-weight:700;letter-spacing:.01em;margin:30px 0 10px;color:var(--accent)}
+.legal-doc h3{font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin:20px 0 8px;color:var(--text)}
+.legal-doc p{font-size:14px;line-height:1.65;color:var(--text);margin:0 0 12px}
+.legal-doc ul,.legal-doc ol{margin:0 0 14px;padding-left:22px}
+.legal-doc li{font-size:14px;line-height:1.6;color:var(--text);margin-bottom:6px}
+.legal-doc a{color:var(--accent)}
+.legal-effective{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:22px !important}
+.legal-contact{font-family:var(--mono);font-size:13px}
+.legal-return{margin-top:34px !important;padding-top:18px;border-top:1px solid var(--border);font-size:13px}
+@media (min-width:640px){
+  .legal-doc{padding:36px 32px 56px}
+  .legal-doc h1{font-size:28px}
+  .legal-doc p,.legal-doc li{font-size:15px}
+}
+/* In-app persistent legal linkage — deliberately quiet, below all analyzer UI. */
+.legal-footer{display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:18px 12px 4px;font-size:11px;letter-spacing:.04em;color:var(--muted2)}
+.legal-footer a{color:var(--muted);text-decoration:none}
+.legal-footer a:hover{color:var(--accent)}
 .tc-features{list-style:none;padding:0;margin:0 0 12px;flex:1}
 .tc-features li{font-size:11px;color:var(--muted);padding:4px 0;border-bottom:1px solid var(--border);line-height:1.4}
 .tc-features li::before{content:'✓ ';color:var(--accent);font-weight:700}

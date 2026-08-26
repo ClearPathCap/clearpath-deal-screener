@@ -31,19 +31,27 @@ begin
     raise exception 'K1-3 FAIL: stored aspire expiry differs (got %)', v_exp;
   end if;
 
-  -- 4/5. generic_investor UNCHANGED: caller expiry honored; NULL stays NULL.
+  -- 4. generic_investor: a FUTURE caller expiry is honored exactly (K-2 keeps
+  --    the honor-verbatim half of the old K1-4 pin).
   select t.expires_at into v_exp
     from public.issue_comp_code('generic_investor', timestamptz '2028-06-01T00:00:00Z', 'k1-gi-exp') t;
   if v_exp <> timestamptz '2028-06-01T00:00:00Z' then
     raise exception 'K1-4 FAIL: generic_investor caller expiry not honored (got %)', v_exp;
   end if;
-  select t.expires_at into v_exp
-    from public.issue_comp_code('generic_investor', null, 'k1-gi-null') t;
-  if v_exp is not null then
-    raise exception 'K1-5 FAIL: generic_investor null expiry mutated (got %)', v_exp;
-  end if;
+  -- 5. [K-2 RE-PIN] generic_investor NULL expiry now RAISES. The superseded
+  --    K1-5 asserted "NULL stays NULL" — that was K-1's proof that the aspire
+  --    hardening had not leaked, and it is replaced by the governed K-2 law:
+  --    permanent Investor codes are not governed. Full K-2 coverage lives in
+  --    supabase/tests/verify_k2_generic_expiry_local.sql.
+  begin
+    perform public.issue_comp_code('generic_investor', null, 'k1-gi-null');
+    raise exception 'K1-5 FAIL: generic_investor NULL expiry was accepted';
+  exception when others then
+    if position('generic_investor requires an explicit expiry' in sqlerrm) = 0 then raise; end if;
+  end;
 
-  -- 6. generic_pro UNCHANGED: caller expiry honored.
+  -- 6. generic_pro: a FUTURE caller expiry is honored exactly (its NULL/
+  --    permanent path is governed and proven in the K-2 suite).
   select t.expires_at into v_exp
     from public.issue_comp_code('generic_pro', timestamptz '2029-01-01T00:00:00Z', 'k1-gp-exp') t;
   if v_exp <> timestamptz '2029-01-01T00:00:00Z' then

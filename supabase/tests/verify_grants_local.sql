@@ -121,6 +121,9 @@ begin
   update public.payment_config set mode = 'test' where id = 1;
 
   -- ── comp issuance / slots / rotation / one-time claim ──────────────────────
+  -- The NULL expiry here is DELIBERATE and governed (K-2): generic_pro codes
+  -- MAY be permanent. generic_investor could not be used this way — its NULL
+  -- expiry raises. Permanence is intentional here, not incidental.
   select code into v_code from public.issue_comp_code('generic_pro', null, 'local-test-1');
   assert v_code like 'CPC-G-%', 'issue: code format';
   assert (select count(*) from public.campaign_slots where pool = 'generic_pro' and state = 'issued') = 1,

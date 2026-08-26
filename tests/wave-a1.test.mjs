@@ -367,12 +367,26 @@ globalThis.__tier = 'starter';
 const modal = el('modal-upgrade'), title = el('upgrade-modal-title');
 globalThis.handleAuthChipClick();   // signed-out (ready flipped by boot chain)
 ok(modal.classList.contains('active'), 'D4 signed-out click opens modal');
-ok(title.textContent === "Never lose a deal you've already found", 'D4 signed-out -> sign-in view (save trigger)');
+// RE-PINNED in the D-1 P1-B commit (same-commit law — reasoning, not deletion).
+//
+// This read "Never lose a deal you've already found" — the paid 'save' upsell
+// headline — and it passed because it pinned the DEFECT. A signed-out visitor
+// tapping "Sign in" was shown a paid pitch, with the free email field and Send
+// code sitting below both Subscribe buttons. D-1 confirmed that live. The
+// chip's ROUTING is unchanged (same shared modal, same 'save' trigger); what
+// changed is what a signed-out visitor is shown once it opens. The assertion's
+// actual intent — the two resolved states yield DISTINCT, state-truthful views
+// — is preserved, and strengthened by the second pin.
+ok(title.textContent === 'Sign in or create a free account', 'D4 signed-out -> free-account view');
+ok(!/never lose a deal|4 markets/i.test(title.textContent),
+   'D4 signed-out is never headlined by a paid upsell (D-1 P1-B)');
 modal.classList.remove('active');
 globalThis.__authState.signedIn = true;
 globalThis.handleAuthChipClick();
 ok(modal.classList.contains('active'), 'D4 signed-in click opens modal');
 ok(title.textContent === 'Upgrade Your Plan', 'D4 signed-in -> account view (general trigger)');
+ok(title.textContent !== 'Sign in or create a free account',
+   'D4 the two resolved states remain distinct (original D4 intent)');
 // D5 saveButtonUI: success reachable ONLY from 'saved'
 const statuses = ['refused-auth', 'refused-name', 'refused-result', 'refused-cap', 'refused-busy', 'save-failed', undefined];
 ok(globalThis.saveButtonUI('saved').saved === true && globalThis.saveButtonUI('saved').label === 'Saved ✓', 'D5 saved -> Saved ✓');

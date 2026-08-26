@@ -764,11 +764,79 @@ document.querySelectorAll('.modal-backdrop').forEach(m => {
 
 // ─── Upgrade modal — context-aware + tier-aware (item 3) ─────────────────────
 
+// The paid framing sentence. It carries the compliance-load-bearing clause
+// ("funding stays free on every tier") and must accompany the plan cards in
+// BOTH modal views — as the subhead when the plans lead, and as the plans'
+// lead-in when the free account leads.
+const PAID_PLANS_LEAD =
+  'Paid plans unlock real market data for the markets you invest in — funding stays free on every tier.';
+
+// D-1 P1-B — state→presentation mapping for the one shared modal, in the style
+// of authChipUI: pure, no DOM, exhaustively testable.
+//
+// THE DEFECT: every signed-out route into this modal (header Sign in, the Save
+// gate, the Pipeline CTA) opened on the Investor/Pro pitch, leaving the free
+// email field and Send code below the fold. A visitor who came to make a FREE
+// account had to scroll past two Subscribe buttons to find one.
+//
+// THE LAW: signed out → the free account is the primary action and its controls
+// lead; the paid cards keep every price, badge and action, below. Signed in →
+// the paid-plan-first upgrade experience is untouched, and no redundant sign-in
+// form is inserted (the sign-in row is already hidden when signed in).
+//
+// `trigger` still selects the signed-in headline. Signed out it does not: the
+// headline's job there is to say a free account exists, which no trigger-
+// specific upsell line does.
+export function upgradeModalLayout(signedIn, trigger) {
+  // Wave 5: the 'cap' trigger is gone — pipeline capacity is a uniform
+  // allowance on every tier (§18-1), never a reason to upsell.
+  const headlines = {
+    region: 'Analyze deals in 4 markets, not 2',
+    save:   'Never lose a deal you\'ve already found',
+    general:'Upgrade Your Plan',
+  };
+  if (!signedIn) {
+    return {
+      accountFirst: true,
+      title:     'Sign in or create a free account',
+      subhead:   'Your pipeline lives with your free account. Sign in or create one to save deals and track them across all your devices.',
+      plansLead: PAID_PLANS_LEAD,
+    };
+  }
+  return {
+    accountFirst: false,
+    title:     headlines[trigger] || headlines.general,
+    subhead:   PAID_PLANS_LEAD,
+    plansLead: '',
+  };
+}
+
+// Applies the layout's ordering to the real DOM. Moves the node rather than
+// restyling it, so focus order and screen-reader order match what is painted
+// (see the CSS note). Every step is optional-guarded: three test harnesses load
+// this module against flat element stubs with no tree, and configuring the
+// modal must never throw there.
+function applyAccountPriority(accountFirst) {
+  const shell = document.getElementById('upgrade-modal-body');
+  if (shell?.classList?.toggle) shell.classList.toggle('account-first', !!accountFirst);
+
+  const account = document.getElementById('account-block');
+  const anchor  = accountFirst
+    ? document.getElementById('upgrade-compare')   // above the plan cards
+    : document.getElementById('redeem-block');     // back to its authored slot
+  const parent  = account?.parentNode;
+  if (!parent || !anchor || !account || typeof parent.insertBefore !== 'function') return;
+  if (anchor.parentNode !== parent) return;        // unexpected tree — leave it alone
+  if (account.nextSibling === anchor) return;      // already in place
+  parent.insertBefore(account, anchor);
+}
+
 // trigger: 'region' | 'save' | 'cap' | 'general'
 function configureUpgradeModal(trigger) {
   const tier      = getActiveTier();
   const title     = document.getElementById('upgrade-modal-title');
   const subhead   = document.getElementById('upgrade-subhead');
+  const plansLead = document.getElementById('upgrade-plans-lead');
   const compare   = document.getElementById('upgrade-compare');
   const colInv    = document.getElementById('upgrade-col-investor');
   const colPro    = document.getElementById('upgrade-col-pro');
@@ -776,17 +844,14 @@ function configureUpgradeModal(trigger) {
   const topNote   = document.getElementById('upgrade-toptier-note');
   const manageBtn = document.getElementById('manage-sub-btn');
 
-  // Context-aware headline by trigger. Wave 5: the 'cap' trigger is gone —
-  // pipeline capacity is a uniform allowance on every tier (§18-1), never a
-  // reason to upsell.
-  const headlines = {
-    region: 'Analyze deals in 4 markets, not 2',
-    save:   'Never lose a deal you\'ve already found',
-    general:'Upgrade Your Plan',
-  };
-  if (title)   title.textContent = headlines[trigger] || headlines.general;
-  if (subhead) subhead.textContent =
-    'Paid plans unlock real market data for the markets you invest in — funding stays free on every tier.';
+  const layout = upgradeModalLayout(isSignedIn(), trigger);
+
+  if (title)   title.textContent   = layout.title;
+  if (subhead) subhead.textContent = layout.subhead;
+  if (plansLead) {
+    plansLead.textContent   = layout.plansLead;
+    plansLead.style.display = layout.plansLead ? '' : 'none';
+  }
 
   // Reset visibility defaults
   if (compare) compare.style.display = '';
@@ -794,6 +859,14 @@ function configureUpgradeModal(trigger) {
   if (colPro)  colPro.style.display = '';
   if (topNote) topNote.style.display = 'none';
   if (manageBtn) manageBtn.style.display = 'none';   // paid tiers only (R4A3A)
+
+  applyAccountPriority(layout.accountFirst);
+
+  // Signed out, the tier branches below cannot apply: they describe YOUR plan,
+  // and there is no account to hold one. Returning here also means a stale tier
+  // cache can never stand a signed-out visitor in front of "You're on Investor"
+  // with no way to sign in. The plan cards stay visible — available, below.
+  if (!isSignedIn()) return;
 
   if (tier === 'pro') {
     // Already top tier — nothing to sell
@@ -1294,6 +1367,8 @@ Object.assign(window, {
   handleAuthChipClick,
   authChipUI,
   saveButtonUI,
+  // D-1 P1-B signed-out modal priority — same pure-mapper contract
+  upgradeModalLayout,
   // pipeline funding (clearpath)
   handlePipelineFundingClick,
 });

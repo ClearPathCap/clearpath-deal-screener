@@ -958,9 +958,14 @@
 
 <!-- Upgrade — context-aware, tier-aware (item 3) -->
 <div class="modal-backdrop" id="modal-upgrade">
-  <div class="modal modal-upgrade">
+  <div class="modal modal-upgrade" id="upgrade-modal-body">
     <h3 id="upgrade-modal-title">Upgrade Your Plan</h3>
     <p id="upgrade-subhead" style="margin-bottom:12px">Paid plans unlock real market data for the markets you invest in — funding stays free on every tier.</p>
+    <!-- D-1 P1-B: when the account block leads (signed-out), the paid framing
+         sentence moves here so the "funding stays free on every tier" statement
+         still sits with the plans it qualifies. Hidden in the signed-in view,
+         where the same sentence remains the subhead. -->
+    <p id="upgrade-plans-lead" style="display:none;margin-bottom:12px"></p>
     <div class="tier-compare" id="upgrade-compare">
       <div class="tier-card" id="upgrade-col-investor">
         <div class="tc-name">INVESTOR</div>
@@ -997,14 +1002,17 @@
     <!-- Account — passwordless magic-link sign-in (tiers verified server-side) -->
     <div class="redeem-block" id="account-block">
       <div id="signin-row">
-        <div class="redeem-label">Sign in to redeem a code or manage your plan</div>
+        <!-- This row renders ONLY when signed out (updateAccountUI), so its
+             label is the first thing a signed-out visitor reads: it must say
+             the account is free rather than describe post-sign-in chores. -->
+        <div class="redeem-label" id="signin-label">Free account — we'll email you a sign-in code</div>
         <div class="redeem-row" id="signin-email-step">
           <input type="email" id="signin-email" placeholder="you@email.com" autocomplete="email" inputmode="email" spellcheck="false" onkeydown="if(event.key==='Enter')sendSignInCode()">
-          <button class="btn-redeem" style="flex:0 0 150px" onclick="sendSignInCode()">Send code</button>
+          <button class="btn-redeem btn-redeem-fixed" onclick="sendSignInCode()">Send code</button>
         </div>
         <div class="redeem-row" id="signin-code-step" style="display:none;margin-top:8px">
           <input type="text" id="signin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="Enter your code" spellcheck="false" onkeydown="if(event.key==='Enter')verifySignInCode()">
-          <button class="btn-redeem" style="flex:0 0 150px" onclick="verifySignInCode()">Verify</button>
+          <button class="btn-redeem btn-redeem-fixed" onclick="verifySignInCode()">Verify</button>
         </div>
         <div id="signin-msg" class="redeem-msg"></div>
       </div>

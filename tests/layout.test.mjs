@@ -54,6 +54,57 @@ const utilRule = (css.match(/\.util-bar\{[^}]*\}/) || [""])[0];
 ok("util-bar rule exists", utilRule.length > 0);
 ok("util-bar is not positioned (static flow)", !/position:/.test(utilRule));
 
+// ─── 6. D-1 P1-B · narrow-screen ergonomics of the shared modal ──────────────
+// Two defects in the same component, both only visible on a phone:
+//   (a) the auth fields inherited the shared 13px input size. iOS Safari zooms
+//       the whole page whenever a focused input renders below 16px, throwing the
+//       visitor into a magnified, horizontally-scrolled page mid-sign-in.
+//   (b) the plan comparison held its two 1fr columns at every width, leaving
+//       ~120px of content per card on a 375px phone.
+// The behavioural half of D-1 P1-B lives in tests/modalauth.test.mjs; these are
+// the CSS invariants, pinned here because this suite already owns "layout rules
+// that regressed once and must not regress again."
+const mobileBlock = (css.match(/@media \(max-width:480px\)\{[\s\S]*?\n\}/) || [""])[0];
+ok("a narrow-screen block exists at the ruled ~480px breakpoint", mobileBlock.length > 0);
+ok("plan cards stack below the breakpoint (single column)",
+   /\.tier-compare\{grid-template-columns:1fr\}/.test(mobileBlock));
+ok("the auth email field renders at >=16px below the breakpoint",
+   /#signin-email[^{]*\{[^}]*font-size:(1[6-9]|[2-9][0-9])px/.test(mobileBlock));
+ok("the one-time-code field is raised with it (same flow, same zoom trigger)",
+   /#signin-code[^{]*\{[^}]*font-size:(1[6-9]|[2-9][0-9])px/.test(mobileBlock)
+   || /#signin-email,#signin-code\{font-size:(1[6-9]|[2-9][0-9])px\}/.test(mobileBlock));
+
+// The zoom fix must NEVER be bought by disabling the visitor's own zoom.
+const viewportTag = (html.match(/<meta name="viewport"[^>]*>/) || [""])[0];
+ok("a viewport meta tag exists", viewportTag.length > 0);
+ok("pinch zoom is not disabled (no maximum-scale)", !/maximum-scale/i.test(viewportTag));
+ok("pinch zoom is not disabled (no user-scalable=no)", !/user-scalable\s*=\s*(no|0)/i.test(viewportTag));
+ok("no stylesheet rule disables touch zoom either", !/touch-action:\s*(none|pan-x|pan-y)/.test(css));
+
+// Desktop must keep the two-column comparison and the fixed-width action.
+ok("the desktop comparison is still a two-column grid",
+   /\.tier-compare\{display:grid;grid-template-columns:1fr 1fr/.test(css));
+ok("the desktop auth action keeps its fixed width", /\.btn-redeem-fixed\{flex:0 0 150px\}/.test(css));
+// Measured at 375px: side by side, the 150px action left 112px of text width
+// for a 133px placeholder. The row wraps instead, giving the field full width.
+ok("the narrow-screen auth row wraps so the email field gets full width",
+   /#signin-email-step,#signin-code-step\{flex-wrap:wrap\}/.test(mobileBlock));
+ok("the narrow-screen auth field spans the row", /#signin-email,#signin-code\{flex:1 1 100%\}/.test(mobileBlock));
+ok("the narrow-screen auth action spans the row (full-width primary CTA)",
+   /\.btn-redeem-fixed\{flex:1 1 100%\}/.test(mobileBlock));
+ok("the fixed-width action is a class, not an inline style (so the media query can win)",
+   !/style="flex:0 0 150px"/.test(html) && (html.match(/btn-redeem btn-redeem-fixed/g) || []).length === 2);
+
+// The signed-out reorder must be a DOM move, never CSS `order`: flex order
+// repaints boxes but leaves tab order and screen-reader order on the source
+// sequence, which would put the Subscribe buttons ahead of the free controls
+// for precisely the visitors least able to skip past them.
+ok("the modal is not reordered with CSS order", !/\.modal-upgrade[^{]*\{[^}]*order:/.test(css));
+ok("no account-first rule fakes the order visually", !/\.account-first[^{]*\{[^}]*(order:|flex-direction:column-reverse)/.test(css));
+ok("the reorder is performed in the DOM", /insertBefore\(account, anchor\)/.test(mainJs));
+ok("the modal shell carries a stable hook for the account-first state",
+   /id="upgrade-modal-body"/.test(html) && /classList\?\.toggle/.test(mainJs));
+
 console.log(`\nlayout: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Nav-lock invariants hold ✓");

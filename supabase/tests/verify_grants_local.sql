@@ -312,7 +312,9 @@ begin
     'priv: anon cannot issue';
   assert not has_function_privilege('authenticated', 'public.issue_comp_code(text,timestamptz,text)', 'execute'),
     'priv: authenticated cannot issue';
-  assert not has_function_privilege('authenticated', 'public.apply_stripe_grant(text,uuid,text,text,text,text,text,timestamptz,boolean,integer)', 'execute'),
+  -- K-5 (0012): apply_stripe_grant is now the 12-arg returns-text form; the
+  -- trailing params default so existing 10-argument calls resolve unchanged.
+  assert not has_function_privilege('authenticated', 'public.apply_stripe_grant(text,uuid,text,text,text,text,text,timestamptz,boolean,integer,timestamptz,boolean)', 'execute'),
     'priv: authenticated cannot apply grants';
   assert not has_function_privilege('authenticated', 'public.begin_checkout_attempt(uuid,text)', 'execute'),
     'priv: authenticated cannot call attempt helpers directly';
@@ -323,8 +325,12 @@ begin
   -- Phase 4.1 (#1): service_role matrix — Edge-called helpers YES, owner-only NO.
   assert has_function_privilege('service_role', 'public.claim_stripe_event(text,text,boolean)', 'execute'),
     '4.1#1: service_role CAN claim events';
-  assert has_function_privilege('service_role', 'public.apply_stripe_grant(text,uuid,text,text,text,text,text,timestamptz,boolean,integer)', 'execute'),
+  assert has_function_privilege('service_role', 'public.apply_stripe_grant(text,uuid,text,text,text,text,text,timestamptz,boolean,integer,timestamptz,boolean)', 'execute'),
     '4.1#1: service_role CAN apply grants';
+  assert not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                      where n.nspname = 'public' and p.proname = 'apply_stripe_grant'
+                        and p.pronargs = 10),
+    'K-5: the superseded 10-arg apply_stripe_grant is gone (no ambiguous overload)';
   -- K-3 (0011): the 2-arg form was replaced by (text,text,boolean default null)
   -- so the deployed Edge's 2-argument call still resolves. Privilege is pinned
   -- on the CURRENT signature; the 2-arg call path itself is exercised at :177.

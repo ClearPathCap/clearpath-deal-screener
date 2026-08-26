@@ -48,17 +48,42 @@ Deno.serve(async (req) => {
     const subs = await stripe.subscriptions.list({
       customer: mapped.stripe_customer_id, status: 'all', limit: 20,
     });
+    // K-5: one fetch, one instant — the list response's own Date stamps every
+    // subscription it returned. Never Edge wall-clock; missing header → null
+    // (fails closed under enforcement).
+    const listHdr = (subs as { lastResponse?: { headers?: Record<string, string> } })
+      .lastResponse?.headers?.['date'];
+    const listStateAt = listHdr ? new Date(listHdr).toISOString() : null;
     let applied = 0;
+    const unconverged: string[] = [];
     for (const sub of subs.data) {
       const m = mapSubscriptionToGrant(sub, cfg);
       if (!m.ok) { console.warn(`reconcile skip ${sub.id}: ${m.anomaly}`); continue; }
-      const { error } = await service.rpc('apply_stripe_grant', {
-        p_event_id: null, p_user_id: userId, ...m.args,
+      const { data: disp, error } = await service.rpc('apply_stripe_grant', {
+        p_event_id: null, p_user_id: userId, ...m.args, p_state_at: listStateAt,
       });
       if (error) throw new Error(`apply ${sub.id}: ${error.message}`);
+      if (disp === 'needs_refetch') {
+        // Bounded resolution: ONE fresh read. Reconcile has no retry behind
+        // it, so an unresolved ambiguity is reported honestly, not swallowed.
+        const fresh = await stripe.subscriptions.retrieve(sub.id);
+        const rm = mapSubscriptionToGrant(fresh, cfg);
+        if (!rm.ok) { console.warn(`reconcile skip(refetch) ${sub.id}: ${rm.anomaly}`); unconverged.push(sub.id); continue; }
+        const freshHdr = (fresh as { lastResponse?: { headers?: Record<string, string> } })
+          .lastResponse?.headers?.['date'];
+        const { data: disp2, error: reErr } = await service.rpc('apply_stripe_grant', {
+          p_event_id: null, p_user_id: userId, ...rm.args,
+          p_state_at: freshHdr ? new Date(freshHdr).toISOString() : null,
+          p_after_refetch: true,
+        });
+        if (reErr) throw new Error(`apply(refetch) ${sub.id}: ${reErr.message}`);
+        if (disp2 === 'needs_refetch') { unconverged.push(sub.id); continue; }
+      }
       applied++;
     }
-    return json(200, { reconciled: applied });
+    return json(200, unconverged.length
+      ? { reconciled: applied, unconverged }
+      : { reconciled: applied });
   } catch (e) {
     return json(502, { error: 'reconcile_failed', detail: String(e).slice(0, 200) });
   }

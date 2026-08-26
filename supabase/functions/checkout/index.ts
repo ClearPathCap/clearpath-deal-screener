@@ -123,6 +123,12 @@ Deno.serve(async (req) => {
       success_url: 'https://dealfit.clearpathcapfunding.com/?checkout=success',
       cancel_url: 'https://dealfit.clearpathcapfunding.com/?checkout=cancel',
       subscription_data: { metadata: { dealfit_user_id: user.id } },
+      // K-4C2: Stripe-native pre-charge Terms acceptance. Stripe renders the
+      // checkbox and links the Terms URL stored in the account's Public
+      // Business Information (K-4C1) — DealFit builds no custom checkbox and
+      // duplicates no legal text. The Customer Portal inherits the same
+      // account-level URLs; its per-configuration legal fields stay NULL.
+      consent_collection: { terms_of_service: 'required' },
       // NO trial configuration at launch (pin 7); no pause feature (pin 8).
     }, { idempotencyKey: begin.attempt_id });
 

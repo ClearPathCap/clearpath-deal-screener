@@ -330,6 +330,52 @@ ok("[LAUNCH BLOCKER] stale 'subject to owner decision #7' marker removed",
    !/subject to owner decision #7/i.test(src("docs/src/js/main.js"))
    && !/SUBJECT TO OWNER DECISION #7/.test(src("supabase/functions/portal/index.ts")));
 
+// ── §J · [K-4C2] Stripe-native pre-charge Terms acceptance ──────────────────
+// The Checkout Session is created with consent_collection.terms_of_service =
+// 'required', so Stripe renders its own Terms checkbox against the account's
+// Public Business Information URLs (K-4C1). NOTE: this pins the INSTRUCTION in
+// source; live acceptance is proven only after the separately authorized Edge
+// deployment and runtime verification.
+const sessionCreateBlock = (checkoutSrc.match(/stripe\.checkout\.sessions\.create\(\{[\s\S]*?\}, \{ idempotencyKey/) || [''])[0];
+ok("[K-4C2] paid Checkout creation requires Terms acceptance",
+   /consent_collection/.test(sessionCreateBlock));
+ok("[K-4C2] the exact Stripe value is terms_of_service: 'required'",
+   /consent_collection:\s*\{\s*terms_of_service:\s*'required'\s*\}/.test(sessionCreateBlock));
+ok("[K-4C2] exactly one Checkout Session creation path exists repo-wide",
+   (checkoutSrc.match(/checkout\.sessions\.create/g) || []).length === 1
+   && !/checkout\.sessions\.create/.test(src("supabase/functions/portal/index.ts"))
+   && !/checkout\.sessions\.create/.test(src("supabase/functions/reconcile/index.ts"))
+   && !/checkout\.sessions\.create/.test(src("supabase/functions/stripe-webhook/index.ts")));
+ok("[K-4C2] Investor and Pro both flow through that single consented path",
+   /const price = tier === 'pro' \? cfg\.priceProMonthly : cfg\.priceInvestorMonthly/.test(checkoutSrc)
+   && /line_items: \[\{ price, quantity: 1 \}\]/.test(sessionCreateBlock));
+ok("[PRESERVATION] no trial was introduced",
+   !/trial_period_days|trial_end|trial_settings|trial_/.test(checkoutSrc));
+ok("[PRESERVATION] promotion codes remain off",
+   !/allow_promotion_codes|promotion_code|discounts/.test(checkoutSrc));
+ok("[PRESERVATION] tax behavior unchanged (no automatic_tax introduced)",
+   !/automatic_tax|tax_id_collection/.test(checkoutSrc));
+ok("[PRESERVATION] subscription mode, one item, customer binding and URLs unchanged",
+   /mode: 'subscription'/.test(sessionCreateBlock)
+   && /customer: customerId/.test(sessionCreateBlock)
+   && /client_reference_id: user\.id/.test(sessionCreateBlock)
+   && /success_url: 'https:\/\/dealfit\.clearpathcapfunding\.com\/\?checkout=success'/.test(sessionCreateBlock)
+   && /cancel_url: 'https:\/\/dealfit\.clearpathcapfunding\.com\/\?checkout=cancel'/.test(sessionCreateBlock)
+   && /idempotencyKey: begin\.attempt_id/.test(checkoutSrc));
+ok("[PRESERVATION] gate, same-tier, paid→paid and one-attempt protections intact",
+   /checkout_enabled \|\| \(cfgRow\.allowlist/.test(checkoutSrc)
+   && /plan_change_unavailable/.test(checkoutSrc)
+   && /refused_same_tier/.test(checkoutSrc)
+   && /attempt_in_flight/.test(checkoutSrc));
+const shellHtml = src("docs/index.html");
+ok("[K-4C2] no custom client-side consent control exists — consent lives only in the Edge source",
+   !/consent_collection/.test(shellHtml) && !/type="checkbox"[^>]*agree/i.test(shellHtml)
+   && !/I agree/i.test(shellHtml));
+ok("[K-4C2] the shipped legal surface still serves the URLs Stripe is configured with",
+   /href="terms\.html"/.test(shellHtml) && /href="privacy\.html"/.test(shellHtml)
+   && /Effective Date: August 26, 2026/.test(src("docs/terms.html"))
+   && /Effective Date: August 26, 2026/.test(src("docs/privacy.html")));
+
 console.error = realConsoleError;
 console.log(`\ntransport: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }

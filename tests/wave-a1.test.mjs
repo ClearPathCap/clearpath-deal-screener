@@ -57,7 +57,12 @@ const STUBS = {
     isMarketUnlocked=()=>true,getMarketLabel=(x)=>x;`,
   'marketIntel.js': `export const fetchMarketIntel = async () => new Map();`,
   'install.js': `export const openInstall=()=>{},triggerInstall=()=>{},initInstallHint=()=>{};`,
-  'repair.js': `export const setRepairTier=()=>{},calcRepair=()=>{},useRepairEstimate=()=>{},onSelfRenoToggle=()=>{};`,
+  // This stub mirrors main.js's import surface from repair.js and must grow with
+  // it — a missing name is a hard ESM instantiation error, not a silent undefined.
+  // Added in the D-1 P2 batch: updateRepairRangesForMarket (M-1's no-market reset)
+  // and repairFieldShouldSelectOnFocus (P2-1). Both are inert here; §D only
+  // exercises the auth-chip and save-button mappers.
+  'repair.js': `export const setRepairTier=()=>{},calcRepair=()=>{},useRepairEstimate=()=>{},onSelfRenoToggle=()=>{},updateRepairRangesForMarket=()=>{},repairFieldShouldSelectOnFocus=()=>false;`,
   'share.js': `export const openShareApp=()=>{},shareDeal=()=>{};`,
   'markets.js': `export const ALL_MARKETS=[],STR_MARKETS={},FLIP_MARKETS={},LTR_MARKETS={};`,
 };

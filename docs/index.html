@@ -1017,7 +1017,7 @@
         <div id="signin-msg" class="redeem-msg"></div>
       </div>
       <div id="account-row" style="display:none">
-        <div class="redeem-label">Signed in as <strong id="account-email"></strong> · <a href="#" onclick="signOutAccount();return false;" style="color:var(--accent);text-decoration:underline">Sign out</a></div>
+        <div class="redeem-label">Signed in as <strong id="account-email"></strong> · <a href="#" class="sign-out-link" onclick="signOutAccount();return false;" style="color:var(--accent);text-decoration:underline">Sign out</a></div>
       </div>
     </div>
 
@@ -1075,8 +1075,11 @@
 
 <!-- K-4B: persistent legal linkage. Quiet, below every analyzer surface, no
      framework and no tracking — the pages are plain static documents. -->
+<!-- D-1 P2-4: the analyzer holds an UNSAVED deal in DOM state, so navigating away
+     to read Terms would discard it. These open in a new tab; rel="noopener
+     noreferrer" severs the opener handle. URLs and labels are unchanged. -->
 <footer class="legal-footer">
-  <a href="terms.html">Terms</a><span>&middot;</span><a href="privacy.html">Privacy</a>
+  <a href="terms.html" target="_blank" rel="noopener noreferrer">Terms</a><span>&middot;</span><a href="privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a>
 </footer>
 
 <div class="toast" id="toast"></div>

@@ -5,7 +5,8 @@ import { analyzeRental, setRentalPreset, resetRental }              from './rent
 import { analyzeLtr, setLtrPreset, resetLtr }                       from './ltr.js';
 import { analyzeBrrr, setBrrrPreset, resetBrrr }                    from './brrr.js';
 import { setRepairTier, calcRepair, useRepairEstimate,
-         onSelfRenoToggle }                                          from './repair.js';
+         onSelfRenoToggle, updateRepairRangesForMarket,
+         repairFieldShouldSelectOnFocus }                            from './repair.js';
 import { saveDeal as _saveDeal, renderPipeline,
          filterPipeline, toggleDeal,
          requestDelete, confirmDelete }                              from './pipeline.js';
@@ -349,6 +350,16 @@ function renderMarketSlots(containerId, tabType) {
       setRentalPreset(activeId, el);
       updateRentRangeHint(activeId);
     }
+  } else if (tabType === 'flip') {
+    // M-1: the repair estimator's ranges are module state in repair.js, and the
+    // ONLY writer was setFlipPreset — reachable just now, inside `if (activeId)`.
+    // So updateRepairRangesForMarket's own `else { _ranges = DEFAULT_RANGES }`
+    // branch was unreachable whenever the active market went away: clear the
+    // slot, or lose it to a tier downgrade or sign-out that locks it while slot 0
+    // is empty, and the chips read "Pick Market" while the estimator kept serving
+    // the departed market's bands — and kept auto-filling Repair Costs from them.
+    // Calling it with null on the empty path makes that reset reachable.
+    updateRepairRangesForMarket(null);
   }
 }
 
@@ -1428,7 +1439,24 @@ if (repField) {
     repField.dataset.userEdited = '1';
     delete repField.dataset.autoFilled;
   });
-  repField.addEventListener('focus', () => repField.classList.remove('auto-filled'));
+  // P2-1: while the value on screen is still the estimator's, focusing the field
+  // offers it up for replacement instead of parking a caret mid-number. A pointer
+  // press fires focus BEFORE it places the caret, so that one release would
+  // collapse the selection we just made — suppress exactly that release, never a
+  // later one, so a second click still positions the caret normally.
+  let selectOnRelease = false;
+  repField.addEventListener('focus', () => {
+    repField.classList.remove('auto-filled');
+    if (!repairFieldShouldSelectOnFocus(repField.dataset)) return;
+    selectOnRelease = true;
+    try { repField.select(); } catch { /* older engines: caret stays put */ }
+  });
+  repField.addEventListener('mouseup', e => {
+    if (!selectOnRelease) return;
+    selectOnRelease = false;
+    e.preventDefault();
+  });
+  repField.addEventListener('blur', () => { selectOnRelease = false; });
 }
 
 // ─── Multifamily band sync (LTR + BRRR) ───────────────────────────────────────

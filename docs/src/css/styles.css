@@ -358,6 +358,33 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
   .btn-redeem-fixed{flex:1 1 100%}
 }
 
+/* ── D-1 P2-3 · phone-sized deal inputs must not trigger iOS zoom-on-focus ────
+   The shared input rule renders deal fields at 14px (the deal-name row at 13px),
+   and iOS Safari zooms the whole page whenever a focused input renders below
+   16px — mid-deal, on the field you are typing into. The bound covers phones in
+   BOTH orientations (932px is the widest common phone landscape) and stops well
+   short of desktop viewports, so desktop sizing is untouched.
+
+   Scoped to `.page` deliberately: the analyzer/pipeline surfaces are what this
+   is about. Modals live outside `.page`, so the comp-code field keeps its own
+   sizing and the P1-B auth rule stays the auth rule.
+
+   PINCH ZOOM IS NOT TOUCHED — no maximum-scale, no user-scalable, no
+   touch-action. The fix is the rendered size, never the viewport's capability. */
+@media (max-width:932px){
+  .page input[type=number],.page input[type=text],.page input[type=tel],
+  .page select,.page textarea{font-size:16px}
+}
+
+/* ── D-1 P2-4 · utility + legal tap targets meet the 24x24 floor ──────────────
+   Terms, Privacy and Sign out were rendering as ~11px inline text, well under
+   the WCAG 2.2 target-size minimum. The hit area is grown with min dimensions
+   and padding while the visible type stays exactly as it was, so the targets
+   become reachable without the footer bulking up. */
+.legal-footer a,.sign-out-link{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:24px;min-width:24px;padding:0 6px}
+
 /* ONBOARDING MODAL — First-launch market selection */
 .modal-onboarding{max-width:420px;padding:24px}
 .onboarding-header{display:flex;align-items:center;gap:8px;margin-bottom:16px}

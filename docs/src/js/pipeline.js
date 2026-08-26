@@ -193,7 +193,10 @@ function dealRegionLabel(type) {
 function buildDealStats(type, r) {
   if (type === 'flip') return [
     { l: 'Profit', v: fmt(r.profit) },
-    { l: 'ROI',    v: pct(r.roi) },
+    // P2-2: this figure is the cash-on-cash return, not a generic ROI. Adopts the
+    // label the results screen already uses in Guide mode (flip.js). The value and
+    // the formula behind it are untouched — only the word changes.
+    { l: 'Cash-on-Cash ROI', v: pct(r.roi) },
     { l: r.ltvLabel || 'LTV', v: pct(r.ltv) },
   ];
   if (type === 'ltr') return [
@@ -348,7 +351,8 @@ function buildFlipDetail(d) {
   ];
   const metrics = [
     { l: 'Net profit',             v: d.profit   != null ? fmt(d.profit)   : '—' },
-    { l: 'ROI',                    v: d.roi      != null ? pct(d.roi)      : '—' },
+    // P2-2: same figure, same formula — named precisely on the expanded surface too.
+    { l: 'Cash-on-Cash ROI',       v: d.roi      != null ? pct(d.roi)      : '—' },
     { l: 'Max offer (your number)',v: d.maxOffer != null ? fmt(d.maxOffer) : '—' },
     { l: 'LTV at asking',          v: d.ltv      != null ? pct(d.ltv)      : '—' },
     { l: 'Total all-in',           v: (d.totalIn != null && d.sellCost != null) ? fmt(d.totalIn + d.sellCost) : '—' },

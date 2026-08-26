@@ -105,6 +105,62 @@ ok("the reorder is performed in the DOM", /insertBefore\(account, anchor\)/.test
 ok("the modal shell carries a stable hook for the account-first state",
    /id="upgrade-modal-body"/.test(html) && /classList\?\.toggle/.test(mainJs));
 
+// ─── 7. D-1 P2-3 · phone-sized deal inputs must not trigger iOS zoom ─────────
+// The shared input rule renders deal fields at 14px and the deal-name row at
+// 13px; iOS Safari zooms the page on focus below 16px. The bound covers phones
+// in BOTH orientations (932px is the widest common phone landscape) and stops
+// short of desktop viewports.
+const dealBlock = (css.match(/@media \(max-width:932px\)\{[\s\S]*?\n\}/) || [""])[0];
+ok("a phone-sized block exists covering portrait AND landscape widths", dealBlock.length > 0);
+ok("deal text inputs reach >=16px on phone widths",
+   /\.page input\[type=text\]/.test(dealBlock) && /font-size:16px/.test(dealBlock));
+ok("deal numeric inputs reach >=16px on phone widths", /\.page input\[type=number\]/.test(dealBlock));
+ok("deal tel inputs reach >=16px on phone widths", /\.page input\[type=tel\]/.test(dealBlock));
+ok("deal selects reach >=16px (a <select> zooms on focus too)", /\.page select/.test(dealBlock));
+ok("deal textareas reach >=16px", /\.page textarea/.test(dealBlock));
+ok("the rule is scoped to .page, so modal fields keep their own sizing",
+   !/(^|[^.\w])input\[type=text\]\{/.test(dealBlock.replace(/\.page /g, '')));
+// Desktop must not be enlarged: the base rules survive unchanged.
+ok("the base desktop input size is still 14px",
+   /input\[type=number\],select,input\[type=text\],input\[type=tel\],textarea\{[^}]*font-size:14px/.test(css));
+ok("the desktop deal-name row is still 13px", /\.save-row input\[type=text\]\{[^}]*font-size:13px\}/.test(css));
+ok("the desktop field select is still 14px", /\.field select\{[^}]*font-size:14px/.test(css));
+// The zoom fix must never be bought with the viewport (re-pinned for this batch).
+ok("P2-3 did not disable pinch zoom (no maximum-scale)", !/maximum-scale/i.test(viewportTag));
+ok("P2-3 did not disable pinch zoom (no user-scalable)", !/user-scalable/i.test(viewportTag));
+ok("P2-3 introduced no touch-action restriction", !/touch-action:\s*(none|pan-x|pan-y)/.test(css));
+
+// ─── 8. D-1 P2-4 · utility + legal tap targets meet the 24x24 floor ─────────
+const tapRule = (css.match(/\.legal-footer a,\.sign-out-link\{[\s\S]*?\}/) || [""])[0];
+ok("a shared tap-target rule covers the legal links and Sign out", tapRule.length > 0);
+ok("the target floor is at least 24px tall", /min-height:24px/.test(tapRule));
+ok("the target floor is at least 24px wide", /min-width:24px/.test(tapRule));
+ok("min dimensions can actually apply (the anchor is not inline)", /display:inline-flex/.test(tapRule));
+ok("Sign out carries the hook class", /class="sign-out-link"/.test(html));
+ok("Sign out still invokes the existing sign-out path", /class="sign-out-link"[^>]*onclick="signOutAccount\(\);return false;"/.test(html));
+// Legal links: URLs and labels preserved, opened without displacing an unsaved deal.
+ok("the Terms URL is unchanged", /<a href="terms\.html"/.test(html));
+ok("the Privacy URL is unchanged", /<a href="privacy\.html"/.test(html));
+ok("the visible labels are unchanged", />Terms<\/a>/.test(html) && />Privacy<\/a>/.test(html));
+ok("Terms opens in a new tab", /<a href="terms\.html"[^>]*target="_blank"/.test(html));
+ok("Privacy opens in a new tab", /<a href="privacy\.html"[^>]*target="_blank"/.test(html));
+ok("both legal links sever the opener handle",
+   (html.match(/rel="noopener noreferrer"/g) || []).length >= 2
+   && /<a href="terms\.html"[^>]*rel="noopener noreferrer"/.test(html)
+   && /<a href="privacy\.html"[^>]*rel="noopener noreferrer"/.test(html));
+// Every new-tab link must sever the opener handle. `noopener` is the part that
+// does that; `noreferrer` additionally strips the Referer header, which the two
+// pre-existing CPC links deliberately do NOT do — the funding handoff carries
+// its attribution that way, and it is out of scope for this batch. So the law is
+// "every target=_blank carries noopener", not "every one carries noreferrer".
+const blankLinks = html.match(/<a [^>]*target="_blank"[^>]*>/g) || [];
+ok("every new-tab link exists and is accounted for", blankLinks.length === 4);
+ok("every new-tab link severs the opener handle",
+   blankLinks.every(a => /rel="[^"]*noopener/.test(a)));
+ok("[PRESERVATION] the CPC handoff links keep referrer attribution (out of scope)",
+   blankLinks.filter(a => /clearpathcapfunding\.com/.test(a)).length === 2
+   && blankLinks.filter(a => /clearpathcapfunding\.com/.test(a)).every(a => !/noreferrer/.test(a)));
+
 console.log(`\nlayout: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Nav-lock invariants hold ✓");

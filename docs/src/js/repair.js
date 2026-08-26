@@ -124,6 +124,22 @@ export function onSelfRenoToggle() {
   }
 }
 
+// ─── P2-1 · is the Repair Costs value still the estimator's, not the user's? ──
+// The field is currency-formatted, so a caret landing anywhere and new digits
+// being typed CONCATENATES rather than replaces: an estimator-filled 7,800 with
+// 55,000 typed after it reformats to 7,800,055,000. When the value on screen is
+// still the estimator's, focusing it should offer it up for replacement.
+//
+// The two flags are the whole law, and they are already mutually exclusive by
+// construction: calcRepair only auto-fills while `userEdited` is unset, and the
+// first real keystroke sets `userEdited` and clears `autoFilled` (main.js). Both
+// are checked anyway so the rule reads as its own statement — once the user has
+// taken ownership of this field, focusing it never selects, and an intentionally
+// positioned caret is left exactly where it was put.
+export function repairFieldShouldSelectOnFocus(dataset) {
+  return dataset?.autoFilled === '1' && !dataset?.userEdited;
+}
+
 export function useRepairEstimate() {
   const sqft = +document.getElementById('sqft').value;
   const self = document.getElementById('self-reno')?.checked;

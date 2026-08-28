@@ -2,6 +2,7 @@
 
 import { fmt, pct } from './format.js';
 import { getDeals } from './storage.js';
+import { supabase } from './supabaseClient.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
 
 // NOTE: Phase 1 will hard-code APP_URL to the deployed domain.
@@ -45,29 +46,68 @@ export function openShareApp() {
   openModal('modal-share-app');
 }
 
-// ─── Share deal ───────────────────────────────────────────────────────────────
+// ─── Share deal (UX wave finding 5) ──────────────────────────────────────────
+// PROVEN: the old flow led with an sms: protocol — on desktop Windows/Chrome
+// that dead-ends in an "Open Pick an app?" dialog, and on mobile it bypassed
+// the OS share sheet's contact picker. The redesign:
+//   A. navigator.share environments → the OS share sheet directly (Messages,
+//      recent contacts, Mail — whatever the OS exposes). No contacts access.
+//   B. everywhere else → a clean fallback: Copy Share Link / Email / Copy Deal
+//      Summary. The sms: protocol is GONE from the deal path.
+// The message is concise opportunity copy carrying a deal-specific read-only
+// link (server-minted opaque token, migration 0014) instead of the analysis
+// dump; the recipient views the deal without an account.
 
-export function shareDeal(id) {
+// Where the read-only viewer lives, derived the same guarded way as APP_URL.
+const SHARE_VIEW_URL = APP_URL.replace(/[^/]*$/, '') + 'shared.html';
+
+// Pure message builder (exported for tests). With a url: the full opportunity
+// message. Without (link unavailable / native share carries url separately):
+// the same copy minus the link block. Region comes from the market stamped on
+// the deal at save time; legacy deals without one just omit it.
+export function buildShareMessage(d, url) {
+  const region = d.marketLabel ? ' in ' + d.marketLabel : '';
+  const lines = ['Potential investment opportunity' + region, '', d.name];
+  if (url) lines.push('', 'Click below to view the deal in DealFit:', url);
+  return lines.join('\n');
+}
+
+export async function shareDeal(id) {
   const deal = getDeals().find(d => d.id === id);
   if (!deal) return;
-  const summary = buildDealSummaryText(deal);
-  const fullMsg = summary + '\n\nAnalyzed with DealFit: ' + APP_URL;
+
+  // Mint (or re-fetch — idempotent) the deal's opaque share link.
+  let url = null;
+  try {
+    const { data, error } = await supabase.rpc('create_deal_share', { p_deal_id: id });
+    if (!error && data && data.ok && data.token) url = SHARE_VIEW_URL + '?d=' + data.token;
+  } catch { /* link unavailable — fall back to summary sharing below */ }
+
+  // A. Native share sheet — the OS owns contact/app selection.
+  if (canNativeShare() && url) {
+    try {
+      await navigator.share({ title: deal.name, text: buildShareMessage(deal, null), url });
+      return;
+    } catch { /* user dismissed the sheet, or payload rejected — offer the fallback */ }
+  }
+
+  // B. Fallback (desktop, no navigator.share, or no link): no sms: anywhere.
+  const fullMsg = url
+    ? buildShareMessage(deal, url)
+    : buildDealSummaryText(deal) + '\n\nAnalyzed with DealFit: ' + APP_URL;
+  if (!url) window.showToast && window.showToast('Share link unavailable right now — sharing the summary instead.');
   const opts = [
-    canNativeShare() ? {
-      icon: shareIconSVG('native'), name: 'Quick Share', desc: 'Pick a contact from your phone',
-      action: () => nativeShare(deal.name, fullMsg),
+    url ? {
+      icon: shareIconSVG('copy'), name: 'Copy Share Link', desc: 'A read-only view of this deal',
+      action: () => { navigator.clipboard.writeText(url); window.showToast && window.showToast('Share link copied'); closeModal('modal-share-deal'); },
     } : null,
-    {
-      icon: shareIconSVG('sms'), name: 'Send by Text', desc: 'Open your SMS app pre-filled',
-      action: () => promptPhoneAndSend(fullMsg, 'sms'),
-    },
     {
       icon: shareIconSVG('email'), name: 'Email', desc: 'Send to your partner or lender',
       href: 'mailto:?subject=' + encodeURIComponent('Deal: ' + deal.name) + '&body=' + encodeURIComponent(fullMsg),
     },
     {
-      icon: shareIconSVG('copy'), name: 'Copy Deal Summary', desc: 'Paste in any app',
-      action: () => { navigator.clipboard.writeText(fullMsg); window.showToast && window.showToast('Summary copied'); closeModal('modal-share-deal'); },
+      icon: shareIconSVG('copy'), name: 'Copy Deal Summary', desc: 'Full analysis text, paste in any app',
+      action: () => { navigator.clipboard.writeText(buildDealSummaryText(deal) + (url ? '\n\nView the deal: ' + url : '')); window.showToast && window.showToast('Summary copied'); closeModal('modal-share-deal'); },
     },
   ].filter(Boolean);
 

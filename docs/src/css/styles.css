@@ -358,6 +358,36 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
   .btn-redeem-fixed{flex:1 1 100%}
 }
 
+/* ── UX wave · pipeline edit-in-place + save affordance ──────────────────────
+   The edit form reuses the app's own .field/.field-row/.toggle-row markup
+   inside .deal-detail; only the affordances that don't exist yet are added. */
+.btn-action.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+.btn-action.primary:hover{opacity:.9;color:var(--accent-text)}
+.deal-edit-form .field{margin-bottom:10px}
+.deal-edit-form textarea{min-height:64px;padding-top:10px}
+.deal-edit-toggle{margin:2px 0 10px}
+.deal-edit-actions{margin-top:10px}
+
+/* ── UX wave finding 4 · phone-width pipeline cards ──────────────────────────
+   PROVEN on iPhone: the verdict badge shares a flex row with the deal title —
+   long names squeeze into an unusable column and the two collide. At phone
+   widths the header stacks: title (full width, cleared of the expand arrow),
+   THEN badge on its own line, THEN stats with breathing room. The expand arrow
+   keeps its own isolated corner; actions become full-height touch targets.
+   Desktop keeps the existing side-by-side layout untouched. */
+@media (max-width:480px){
+  .deal-card-top{display:block;padding-right:0}
+  .deal-card-top > div:first-child{padding-right:30px}   /* clear the expand arrow */
+  .deal-badge{display:inline-block;margin-top:8px;max-width:100%;white-space:normal;text-align:left}
+  .deal-stats{gap:12px;row-gap:8px}
+  .deal-stat{flex:1 1 28%;min-width:86px}
+  .deal-stat .dsv{font-size:15px}
+  .detail-actions{flex-wrap:wrap}
+  .btn-action{flex:1 1 46%;min-height:44px}
+  .detail-row{gap:10px}
+  .detail-row .dv{text-align:right}
+}
+
 /* ── D-1 P2-3 · phone-sized deal inputs must not trigger iOS zoom-on-focus ────
    The shared input rule renders deal fields at 14px (the deal-name row at 13px),
    and iOS Safari zooms the whole page whenever a focused input renders below

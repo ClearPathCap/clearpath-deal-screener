@@ -48,13 +48,16 @@ const STUBS = {
     export const analyzeBrrr=()=>{},setBrrrPreset=()=>{},resetBrrr=()=>{};`,
   'clearpath.js': `export const getPipelineFundingButtonHTML = () => '';
     export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{};`,
+  // Mirrors main.js's + pipeline.js's import surface from tiers.js — grow it in
+  // the same commit that grows the imports (missing name = hard ESM error).
+  // UX wave: + getActiveMarketId (deal market stamping / auto-name).
   'tiers.js': `export const getActiveTier = () => globalThis.__tier;
     export const isDevMode=()=>false,setDevTier=()=>{},setCachedTier=()=>{},devModeVisible=()=>false,
     migrateMarketStorage=()=>{},redeemCode=()=>({ok:false}),hasSelectedMarkets=()=>true,
     getMarketSlots=()=>[],getMarketForSlot=()=>'',setMarketSlot=()=>{},getPrimaryMarket=()=>'',
     getMarket2=()=>'',completePrimarySelection=()=>{},recordSlotChange=()=>{},isSlotLocked=()=>false,
     slotLockedUntilDate=()=>null,slotWillLockUntilDate=()=>'',getUnlockedSlotCount=()=>2,
-    isMarketUnlocked=()=>true,getMarketLabel=(x)=>x;`,
+    isMarketUnlocked=()=>true,getMarketLabel=(x)=>x,getActiveMarketId=()=>'';`,
   'marketIntel.js': `export const fetchMarketIntel = async () => new Map();`,
   'install.js': `export const openInstall=()=>{},triggerInstall=()=>{},initInstallHint=()=>{};`,
   // This stub mirrors main.js's import surface from repair.js and must grow with
@@ -65,6 +68,9 @@ const STUBS = {
   'repair.js': `export const setRepairTier=()=>{},calcRepair=()=>{},useRepairEstimate=()=>{},onSelfRenoToggle=()=>{},updateRepairRangesForMarket=()=>{},repairFieldShouldSelectOnFocus=()=>false;`,
   'share.js': `export const openShareApp=()=>{},shareDeal=()=>{};`,
   'markets.js': `export const ALL_MARKETS=[],STR_MARKETS={},FLIP_MARKETS={},LTR_MARKETS={};`,
+  // UX wave: main.js imports market sync; inert here — §A-§F never exercise it.
+  'marketSync.js': `export const hydrateMarketsOnAuth=async()=>({status:'signed-out',pulled:0,pushed:0}),
+    pushMarketChange=async()=>({ok:true,local:true});`,
 };
 
 registerHooks({

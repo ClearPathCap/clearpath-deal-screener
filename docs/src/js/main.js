@@ -9,13 +9,15 @@ import { setRepairTier, calcRepair, useRepairEstimate,
          repairFieldShouldSelectOnFocus }                            from './repair.js';
 import { saveDeal as _saveDeal, renderPipeline,
          filterPipeline, toggleDeal,
-         requestDelete, confirmDelete }                              from './pipeline.js';
+         requestDelete, confirmDelete,
+         startDealEdit, cancelDealEdit, saveDealEdits }              from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
 import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency } from './format.js';
 import { propertyBand, BAND_RULES }                                 from './finance.js';
 import { handlePipelineFundingClick }                               from './clearpath.js';
+import { hydrateMarketsOnAuth, pushMarketChange }                   from './marketSync.js';
 import {
   getActiveTier,
   hasSelectedMarkets, getMarketSlots,
@@ -24,6 +26,7 @@ import {
   completePrimarySelection, recordSlotChange,
   isSlotLocked, slotLockedUntilDate, slotWillLockUntilDate,
   getUnlockedSlotCount, isMarketUnlocked, getMarketLabel,
+  getActiveMarketId,
   migrateMarketStorage,
   redeemCode,
 } from './tiers.js';
@@ -596,8 +599,19 @@ function pickerSelectState(stateCode) {
   if (search) search.value = '';
 }
 
-function pickerSelectMarket(marketId) {
+async function pickerSelectMarket(marketId) {
   closeModal('modal-market-picker');
+
+  // UX wave finding 3: signed in, the SERVER is asked first — its tier-cap and
+  // cooldown answer is the authority, and only ok:true commits locally, so two
+  // devices can never fork. Signed out, pushMarketChange resolves ok:true
+  // without any network and the flow below is byte-identical to the old one.
+  const slot = _pickerIsFirst ? 0 : _pickerSlot;
+  const res = await pushMarketChange(slot, marketId);
+  if (!res.ok) {
+    showToast(res.msg || 'That market change isn\'t available right now.');
+    return;
+  }
 
   if (_pickerIsFirst) {
     // First launch — always slot 0
@@ -718,8 +732,33 @@ function validateRequiredFields(type) {
   return valid;
 }
 
+// ─── Deal-name auto-default (UX wave finding 2) ──────────────────────────────
+// "Save This Deal" defaults to "<street> — <region>" from data already typed
+// (e.g. "417 Saddlebrooke Rd — Lake Murray"). Street only — the pipeline card
+// already shows the full address, and long names wrap badly on phones. The
+// field stays fully editable, and once the user customizes it we never
+// overwrite: dataset.autoName records the last value WE wrote, so "current
+// value === our last write" is the only state we'll replace.
+function maybeDefaultDealName(nameFieldId, addrFieldId) {
+  const nameEl = document.getElementById(nameFieldId);
+  const addrEl = document.getElementById(addrFieldId);
+  if (!nameEl || !addrEl) return;
+  const current = nameEl.value.trim();
+  if (current && current !== nameEl.dataset.autoName) return;   // user-customized — hands off
+  const street = (addrEl.value || '').split(',')[0].trim();
+  if (!street) return;
+  const marketId = getActiveMarketId();
+  const region = marketId ? slotDisplayName(getMarketLabel(marketId).replace(', ', ' ')) : '';
+  const auto = region ? street + ' — ' + region : street;
+  nameEl.value = auto;
+  nameEl.dataset.autoName = auto;
+}
+
 function analyzeFlipValidated() {
-  if (validateRequiredFields('flip')) analyzeFlip();
+  if (validateRequiredFields('flip')) {
+    analyzeFlip();
+    maybeDefaultDealName('flip-deal-name', 'f-addr');
+  }
 }
 
 function analyzeRentalValidated() {
@@ -1345,6 +1384,10 @@ Object.assign(window, {
   toggleDeal,
   requestDelete,
   confirmDelete,
+  // pipeline edit-in-place (UX wave) — canonical-engine recompute lives in pipeline.js
+  startDealEdit,
+  cancelDealEdit,
+  saveDealEdits,
   // share
   openShareApp,
   shareDeal,
@@ -1405,6 +1448,7 @@ initOnboarding();
 // above paints from the cached tier for speed; this corrects it from the server.
 onAuthChange(refreshTierUI);
 onAuthChange(syncPipelineOnAuth);
+onAuthChange(syncMarketsOnAuth);   // UX wave finding 3: market slots follow the account
 // Wave A1 (auth chip readiness): the boot promise is the proven completion
 // boundary — it resolves only after the initial getSession() settled, the auth
 // subscription is wired, and the first entitlement sync + notify ran. Until
@@ -1422,6 +1466,20 @@ async function syncPipelineOnAuth() {
   else clearPipelineCache();
   if (document.getElementById('page-pipeline')?.classList.contains('active')) {
     renderPipeline();
+  }
+}
+
+// UX wave finding 3: pull the account's market slots down (and push local-only
+// slots up) whenever auth resolves, then re-render every slot surface. Sign-out
+// deliberately does NOT clear local slots — signed-out users keep the existing
+// local behavior, and hydrateMarketsOnAuth is a no-op for them. Runs after
+// refreshTierUI in the onAuthChange chain, so the server-side tier caps that
+// set_user_market applies match the tier the UI just resolved.
+async function syncMarketsOnAuth() {
+  const res = await hydrateMarketsOnAuth();
+  if (res.status === 'synced' && (res.pulled > 0 || res.pushed > 0)) {
+    renderAllSlots();            // M-1 stays correct: the empty path resets ranges
+    renderGuideMarketIntel();
   }
 }
 

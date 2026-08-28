@@ -1,6 +1,6 @@
 // ─── Pipeline: saved deals, render, expand, filter, delete ───────────────────
 
-import { fmt, pct, escapeHtml } from './format.js';
+import { fmt, pct, escapeHtml, parseComma } from './format.js';
 import { getDeals, saveDeals, PIPELINE_ALLOWANCE } from './storage.js';
 import { isSignedIn } from './auth.js';
 import { getLastFlipResult } from './flip.js';
@@ -8,8 +8,9 @@ import { getLastRentalResult } from './rental.js';
 import { getLastLtrResult } from './ltr.js';
 import { getLastBrrrResult } from './brrr.js';
 import { getPipelineFundingButtonHTML } from './clearpath.js';
-import { getActiveTier } from './tiers.js';
+import { getActiveTier, getActiveMarketId, getMarketLabel } from './tiers.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
+import { computeFlip, computeFlipStress, flipVerdict, validateInputs } from './finance.js';
 
 // Local modal helpers — avoids circular dep with main.js
 const openModal  = id => document.getElementById(id).classList.add('active');
@@ -53,6 +54,11 @@ export async function saveDeal(type) {
   }
 
   const notes = document.getElementById(notesId).value.trim();
+  // UX wave finding 3 (retention rule): stamp the market this deal was
+  // underwritten against AT SAVE TIME. The user's active region can change later
+  // (or sync in from another device) without rewriting what this analysis meant.
+  // Additive fields — legacy deals without them render fine.
+  const marketId = getActiveMarketId();
   const deal  = {
     id:      Date.now(),
     name,
@@ -61,6 +67,9 @@ export async function saveDeal(type) {
     cls:     result.cls,
     notes,
     date:    new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    savedAt: new Date().toISOString(),
+    market:      marketId || null,
+    marketLabel: marketId ? getMarketLabel(marketId) : null,
     data:    result,
     stats:   buildDealStats(type, result),
   };
@@ -285,7 +294,7 @@ function buildDealCard(d) {
   const insP       = unresolvedInsPresentation(d.type, data);
   const cardStats  = insP ? pendingDealStats(d) : d.stats;
   const address    = data.addr ? `<div class="deal-address">${escapeHtml(data.addr)}</div>` : '';
-  const detailRows = d.type === 'flip' ? buildFlipDetail(data)
+  const detailRows = d.type === 'flip' ? buildFlipDetail(data, d)
     : d.type === 'ltr'  ? buildLtrDetail(data)
     : d.type === 'brrr' ? buildBrrrDetail(data)
     : buildRentalDetail(data);
@@ -308,7 +317,7 @@ function buildDealCard(d) {
           ${cardStats.map(s => `<div class="deal-stat"><div class="dsl">${s.l}</div><div class="dsv">${s.v}</div></div>`).join('')}
         </div>
         <div class="deal-footer">
-          <div class="deal-date">Saved ${d.date}</div>
+          <div class="deal-date">Saved ${d.date}${d.updated ? ' · Updated ' + d.updated : ''}</div>
           <button class="card-delete-btn" onclick="event.stopPropagation();requestDelete(${d.id},event)" title="Delete deal">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
           </button>
@@ -320,6 +329,10 @@ function buildDealCard(d) {
         ${notesBlock}
         ${getPipelineFundingButtonHTML(d)}
         <div class="detail-actions">
+          ${d.type === 'flip' ? `<button class="btn-action" onclick="event.stopPropagation();startDealEdit(${d.id})">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+            Edit
+          </button>` : ''}
           ${(getActiveTier() === 'investor' || getActiveTier() === 'pro')
             ? `<button class="btn-action" onclick="event.stopPropagation();shareDeal(${d.id})">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
@@ -339,15 +352,214 @@ function buildDealCard(d) {
   `;
 }
 
-function buildFlipDetail(d) {
+// ─── Edit-in-place (UX wave finding 1) ───────────────────────────────────────
+// The Pipeline is the WORKING deal record — seller price drops, the GC's bid
+// replaces the planning estimate, hold slips a month — so a saved deal must be
+// editable where it lives instead of forcing a new save per adjustment.
+//
+// ARCHITECTURAL LAW (dispatch, verbatim intent): there is ONE Fix & Flip
+// engine. This editor recomputes through the SAME canonical functions the
+// analyzer uses — computeFlip / computeFlipStress / flipVerdict in finance.js —
+// so an edited saved deal and a freshly analyzed one can never disagree.
+// Flip-only this wave: flip was the analyzer without a pure engine (that gap is
+// what this wave closed); LTR/BRRR/STR already have pure engines and follow in
+// a later wave.
+//
+// Units at the boundary (the saved schema is uneven by history): saved cc1/cc2
+// are WHOLE numbers, saved rate/points are FRACTIONS. The form shows all four
+// as percentages; conversion happens exactly once, here.
+
+// One deal in edit at a time; entering edit on another card re-renders first.
+let editingDealId = null;
+
+const peField = (card, key) => card ? card.querySelector(`[data-pe="${key}"]`) : null;
+const peNum   = (card, key, fallback) => {
+  const el = peField(card, key);
+  const v = el ? parseComma(el.value) : NaN;
+  return Number.isFinite(v) && el.value.trim() !== '' ? v : fallback;
+};
+
+function buildFlipEditForm(d) {
+  const data = d.data || {};
+  const money = (v) => v != null && Number.isFinite(+v) ? (+v).toLocaleString() : '';
+  const ratePct   = data.rate   != null ? +(data.rate * 100).toFixed(2)   : 10;
+  const pointsPct = data.points != null ? +(data.points * 100).toFixed(2) : 3;
+  return `
+    <div class="detail-section deal-edit-form">
+      <div class="detail-title">Edit Deal</div>
+      <div class="field full"><label>Deal name</label>
+        <input type="text" data-pe="name" value="${escapeHtml(d.name)}"></div>
+      <div class="field-row">
+        <div class="field"><label>Asking Price</label>
+          <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="ask" value="${money(data.ask)}"></div></div>
+        <div class="field"><label>ARV</label>
+          <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="arv" value="${money(data.arv)}"></div></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Repair Costs</label>
+          <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="rep" value="${money(data.rep)}"></div></div>
+        <div class="field"><label>Hold (months)</label>
+          <div class="input-wrap"><input type="number" data-pe="hold" value="${data.hold ?? 5}"><span class="sfx">mo</span></div></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Buying Costs %</label>
+          <div class="input-wrap"><input type="number" class="has-sfx" data-pe="cc1" value="${data.cc1 ?? 2}"><span class="sfx">%</span></div></div>
+        <div class="field"><label>Selling Costs %</label>
+          <div class="input-wrap"><input type="number" class="has-sfx" data-pe="cc2" value="${data.cc2 ?? 5}"><span class="sfx">%</span></div></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Carrying Cost / mo</label>
+          <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="carry" value="${money(data.carry)}"></div></div>
+        <div class="field"><label>Min Profit Target</label>
+          <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="target" value="${money(data.target)}"></div></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Loan Amount <span>(blank = all-cash)</span></label>
+          <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="loan" value="${data.loan ? money(data.loan) : ''}"></div></div>
+        <div class="field"><label>Square Footage</label>
+          <div class="input-wrap"><input type="number" data-pe="sqft" value="${data.sqft || ''}"></div></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Interest Rate %</label>
+          <div class="input-wrap"><input type="number" step="0.1" class="has-sfx" data-pe="rate" value="${ratePct}"><span class="sfx">%</span></div></div>
+        <div class="field"><label>Points %</label>
+          <div class="input-wrap"><input type="number" step="0.1" class="has-sfx" data-pe="points" value="${pointsPct}"><span class="sfx">%</span></div></div>
+      </div>
+      <div class="toggle-row deal-edit-toggle">
+        <div><div class="toggle-label">Self-Renovating</div>
+        <div class="toggle-sub">Only if you perform the renovation labor yourself</div></div>
+        <label class="toggle"><input type="checkbox" data-pe="self" ${data.self ? 'checked' : ''}><div class="toggle-track"></div></label>
+      </div>
+      ${d.marketLabel ? `<div class="detail-row"><span class="dl">Underwritten in</span><span class="dv">${escapeHtml(d.marketLabel)}</span></div>` : ''}
+      <div class="field full"><label>Notes <span>(optional)</span></label>
+        <textarea data-pe="notes">${escapeHtml(d.notes || '')}</textarea></div>
+      <div class="detail-actions deal-edit-actions">
+        <button class="btn-action" onclick="event.stopPropagation();cancelDealEdit(${d.id})">Cancel</button>
+        <button class="btn-action primary" onclick="event.stopPropagation();saveDealEdits(${d.id})">Save Changes</button>
+      </div>
+      <div class="redeem-msg" data-pe="msg"></div>
+    </div>
+  `;
+}
+
+export function startDealEdit(id) {
+  const deal = getDeals().find(d => d.id === id);
+  if (!deal || deal.type !== 'flip') return;
+  if (editingDealId !== null && editingDealId !== id) renderPipeline();  // close any other edit
+  editingDealId = id;
+  const card = document.querySelector('.deal-card[data-id="' + id + '"]');
+  if (!card) return;
+  const detail = card.querySelector('.deal-detail');
+  if (!detail) return;
+  detail.innerHTML = buildFlipEditForm(deal);
+  card.classList.add('expanded');
+}
+
+// Cancel restores the prior saved values with ZERO mutation: nothing was
+// written anywhere, so a full re-render from the untouched cache is the proof.
+export function cancelDealEdit(id) {
+  editingDealId = null;
+  renderPipeline();
+  const card = document.querySelector('.deal-card[data-id="' + id + '"]');
+  if (card) card.classList.add('expanded');
+}
+
+// Save recalculates through the canonical engine, rebakes verdict/cls/stats,
+// and persists via the SAME saveDeals coordinator every other mutation uses —
+// busy lock, auth gate, await-then-commit, and whole-array semantics (which is
+// what carries every other deal, canary included, forward intact).
+export async function saveDealEdits(id) {
+  const deals = getDeals();
+  const deal  = deals.find(d => d.id === id);
+  if (!deal || deal.type !== 'flip') return { status: 'not-found' };
+  const card = document.querySelector('.deal-card[data-id="' + id + '"]');
+  const msgEl = peField(card, 'msg');
+  const say = (t) => { if (msgEl) { msgEl.textContent = t; msgEl.className = 'redeem-msg err'; } };
+
+  const name = (peField(card, 'name')?.value || '').trim();
+  if (!name) { say('Give this deal a name.'); return { status: 'refused-name' }; }
+
+  const old = deal.data || {};
+  const ask    = peNum(card, 'ask',    old.ask);
+  const arv    = peNum(card, 'arv',    old.arv);
+  const rep    = peNum(card, 'rep',    old.rep ?? 0);
+  const hold   = peNum(card, 'hold',   old.hold ?? 5) || 5;
+  const cc1W   = peNum(card, 'cc1',    old.cc1 ?? 2);      // whole numbers in the form
+  const cc2W   = peNum(card, 'cc2',    old.cc2 ?? 5);
+  const carry  = peNum(card, 'carry',  old.carry ?? 900) || 900;
+  const target = peNum(card, 'target', old.target ?? 40000) || 40000;
+  const sqft   = peNum(card, 'sqft',   old.sqft ?? 0) || 0;
+  const rateW  = peNum(card, 'rate',   old.rate != null ? old.rate * 100 : 10);
+  const pointsW= peNum(card, 'points', old.points != null ? old.points * 100 : 3);
+  const loanEl = peField(card, 'loan');
+  const loan   = loanEl && loanEl.value.trim() !== '' ? (parseComma(loanEl.value) || 0) : 0;
+  const self   = !!peField(card, 'self')?.checked;
+  const notes  = (peField(card, 'notes')?.value || '').trim();
+
+  if (!ask || !arv) { say('Asking price and ARV are required.'); return { status: 'invalid' }; }
+  const vErr = validateInputs('flip', { ask, rep, loan, price: ask, cc1: cc1W, cc2: cc2W, rate: rateW, points: pointsW });
+  if (vErr.errors.length) { say(vErr.errors[0].label + ' ' + vErr.errors[0].message); return { status: 'invalid' }; }
+
+  // ONE canonical engine — identical calls to the analyzer's.
+  const cc1 = cc1W / 100, cc2 = cc2W / 100, rate = rateW / 100, points = pointsW / 100;
+  const eng = computeFlip({ ask, arv, rep, hold, cc1, cc2, carry, loan, rate, points, self });
+  const { stressedProfit, marginOfSafety } = computeFlipStress({
+    ask, arv, rep, cc1, cc2, carry, hold, financed: eng.financed, loan, rate, points, target,
+  });
+  const { cls, verdict } = flipVerdict({
+    profit: eng.profit, roi: eng.roi, target, maxOffer: eng.maxOffer, marginOfSafety, stressedProfit, self,
+  });
+
+  const newData = {
+    ...old,                       // preserves addr and any legacy extras untouched by the form
+    type: 'flip', ask, arv, rep, hold,
+    cc1: cc1W, cc2: cc2W,         // schema convention: whole numbers
+    carry, target, sqft, self,
+    loan, rate, points,           // schema convention: fractions
+    financed: eng.financed, finCost: eng.finCost, loanInt: eng.loanInt, loanFees: eng.loanFees,
+    cashIn: eng.cashIn, ltc: eng.ltc,
+    profit: eng.profit, roi: eng.roi, ltv: eng.ltvVal, ltvLabel: eng.ltvLabel, maxOffer: eng.maxOffer,
+    buyCost: eng.buyCost, sellCost: eng.sellCost, holdCost: eng.holdCost, totalIn: eng.totalIn,
+    marginOfSafety, stressedProfit, verdict, cls, hot: cls === 'hot',
+  };
+  const updatedDeal = {
+    ...deal, name, notes,
+    verdict, cls,
+    data: newData,
+    stats: buildDealStats('flip', newData),
+    updatedAt: new Date().toISOString(),
+    updated:   new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+  };
+
+  const candidate = deals.map(x => x.id === id ? updatedDeal : x);
+  const res = await saveDeals(candidate);
+  if (res.ok) {
+    editingDealId = null;
+    window.showToast && window.showToast('Deal updated');
+    renderPipeline();
+    const c2 = document.querySelector('.deal-card[data-id="' + id + '"]');
+    if (c2) c2.classList.add('expanded');
+    return { status: 'saved' };
+  }
+  if (res.reason === 'busy') { say('Another pipeline update is in progress.'); return { status: 'refused-busy' }; }
+  if (res.reason === 'auth') { say('Your session has expired — sign in again.'); return { status: 'save-failed', failureClass: 'auth' }; }
+  say("Couldn't save changes — connection or server problem. Try again.");
+  return { status: 'save-failed', failureClass: 'other' };
+}
+
+function buildFlipDetail(d, deal) {
   const rows = [
     { l: 'Asking price',           v: d.ask  != null ? fmt(d.ask)  : '—' },
     { l: 'After Repair Value (ARV)', v: d.arv != null ? fmt(d.arv)  : '—' },
     { l: 'Repair budget',          v: d.rep  != null ? fmt(d.rep) + (d.self ? ' (self-perform)' : '') : '—' },
     { l: 'Hold period',            v: d.hold ? d.hold + ' months' : '—' },
-    { l: 'Purchase costs / Sale costs', v: (d.cc1 || '?') + '% / ' + (d.cc2 || '?') + '%' },
+    { l: 'Buying costs / Selling costs', v: (d.cc1 || '?') + '% / ' + (d.cc2 || '?') + '%' },
     { l: 'Carrying cost/mo',       v: d.carry != null ? fmt(d.carry) : '—' },
     { l: 'Square footage',         v: d.sqft  ? d.sqft.toLocaleString() + ' sqft' : '—' },
+    // Finding 3 retention rule: the market this analysis was underwritten
+    // against, stamped at save time — the active region moving later (or
+    // syncing in from another device) never rewrites it. Legacy deals lack it.
+    ...(deal && deal.marketLabel ? [{ l: 'Underwritten in', v: escapeHtml(deal.marketLabel) }] : []),
   ];
   const metrics = [
     { l: 'Net profit',             v: d.profit   != null ? fmt(d.profit)   : '—' },
@@ -355,7 +567,10 @@ function buildFlipDetail(d) {
     { l: 'Cash-on-Cash ROI',       v: d.roi      != null ? pct(d.roi)      : '—' },
     { l: 'Max offer (your number)',v: d.maxOffer != null ? fmt(d.maxOffer) : '—' },
     { l: 'LTV at asking',          v: d.ltv      != null ? pct(d.ltv)      : '—' },
-    { l: 'Total all-in',           v: (d.totalIn != null && d.sellCost != null) ? fmt(d.totalIn + d.sellCost) : '—' },
+    // UX wave finding 7: this row ADDS selling costs to totalIn (which excludes
+    // them), while the analyzer's cash row excludes them — the two looked
+    // contradictory under generic names. Named by what it actually is; math unchanged.
+    { l: 'Total project cost (incl. selling costs)', v: (d.totalIn != null && d.sellCost != null) ? fmt(d.totalIn + d.sellCost) : '—' },
   ];
   return `
     <div class="detail-section">

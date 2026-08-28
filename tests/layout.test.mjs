@@ -161,6 +161,51 @@ ok("[PRESERVATION] the CPC handoff links keep referrer attribution (out of scope
    blankLinks.filter(a => /clearpathcapfunding\.com/.test(a)).length === 2
    && blankLinks.filter(a => /clearpathcapfunding\.com/.test(a)).every(a => !/noreferrer/.test(a)));
 
+// ─── 9. UX wave · phone-width pipeline cards + edit affordance ───────────────
+// PROVEN on iPhone: verdict badge collided with the deal title in a shared flex
+// row; long names squeezed unusably. At ≤480px the header stacks; actions grow
+// to touch height. Desktop keeps the side-by-side layout.
+// The stylesheet now carries MORE THAN ONE 480px block (P1-B modal + UX-wave
+// pipeline) — sweep them all, not just the first.
+const all480 = (css.match(/@media \(max-width:480px\)\{[\s\S]*?\n\}/g) || []).join('\n');
+ok("phone block stacks the card header (badge leaves the title's row)",
+   /\.deal-card-top\{display:block;padding-right:0\}/.test(all480));
+ok("the title column clears the expand arrow", /\.deal-card-top > div:first-child\{padding-right:30px\}/.test(all480));
+ok("the badge sits on its own line and may wrap",
+   /\.deal-badge\{display:inline-block;margin-top:8px;max-width:100%;white-space:normal/.test(all480));
+ok("action buttons reach touch height on phones", /\.btn-action\{flex:1 1 46%;min-height:44px\}/.test(all480));
+ok("desktop keeps the side-by-side card header",
+   /\.deal-card-top\{display:flex;justify-content:space-between/.test(css));
+ok("the edit affordance has a primary style", /\.btn-action\.primary\{background:var\(--accent\)/.test(css));
+
+// ─── 10. UX wave · underwriting copy (findings 6/7/8) ────────────────────────
+// Beginner-confusing labels renamed; formulas untouched (dealedit.test.mjs pins
+// the math). BRRR's single 'Purchase Costs' field is DELIBERATELY not renamed
+// this wave — flip-scope per dispatch; consistency ruling deferred to A-Aron.
+ok("flip form says Buying Costs %", /<label>Buying Costs %<\/label>/.test(html));
+ok("flip form says Selling Costs %", /<label>Selling Costs %<\/label>/.test(html));
+ok("the old flip cost labels are gone",
+   !/<label>Purchase Costs %<\/label>/.test(html) && !/<label>Sale Costs %<\/label>/.test(html));
+ok("buy-side helper speaks acquisition closing costs", /Acquisition closing costs — attorney\/title/.test(html));
+ok("sell-side helper speaks resale\/disposition costs", /Resale \(disposition\) costs — agent commissions/.test(html));
+const flipJs = src("docs/src/js/flip.js");
+ok("analyzer breakdown rows renamed", /'Buying costs \('/.test(flipJs) && /'Selling costs \('/.test(flipJs));
+ok("cash row named by what it is (excludes selling costs)",
+   /'Cash invested \(before resale\)' : 'Cash required before resale'/.test(flipJs));
+// The old label may legitimately survive in explanatory COMMENTS — the pin
+// targets the rendered row form `{ l: ... }`, not prose.
+ok("the contradictory old cash label is gone from the rendered rows",
+   !/l: [^}]*'Total cash \(all-cash\)'/.test(flipJs.replace(/\/\/[^\n]*/g, '').replace(/l: financed \? 'Cash invested \(before resale\)' : 'Cash required before resale'/, '')));
+const pipeJs = src("docs/src/js/pipeline.js");
+ok("pipeline total named by what it includes",
+   /'Total project cost \(incl\. selling costs\)'/.test(pipeJs) && !/'Total all-in'/.test(pipeJs));
+ok("estimator declares itself a planning estimate",
+   /A planning estimate from market \$\/sf bands/.test(html) && /Planning estimate range/.test(html));
+ok("self-renovating means the LABOR, and a GC/partner doesn't count",
+   /perform the renovation labor yourself — hiring a GC or working with a partner doesn't count/.test(html));
+ok("repair-band constants untouched by the copy work (finding 8 boundary)",
+   /\$12–22\/sf/.test(html) && /\$28–48\/sf/.test(html) && /\$60–95\/sf/.test(html));
+
 console.log(`\nlayout: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Nav-lock invariants hold ✓");

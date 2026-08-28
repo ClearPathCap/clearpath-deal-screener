@@ -75,8 +75,11 @@
   <div class="toggle-row">
     <div>
       <div class="toggle-label">Self-Renovating</div>
-      <div class="toggle-sub">You're doing the work — saves 20–35% on labor</div>
-      <div class="toggle-sub beginner-only" style="margin-top:4px">Only check this if you'll genuinely perform the renovation yourself — lenders verify.</div>
+      <div class="toggle-sub">You're doing the work yourself — saves 20–35% on labor</div>
+      <!-- UX wave finding 8: "self" means the user performs the renovation
+           LABOR — hiring a GC or having a business partner run the job doesn't
+           qualify, and lenders check. Copy only; the discount math is untouched. -->
+      <div class="toggle-sub beginner-only" style="margin-top:4px">Only check this if you'll genuinely perform the renovation labor yourself — hiring a GC or working with a partner doesn't count. Lenders verify.</div>
     </div>
     <label class="toggle">
       <input type="checkbox" id="self-reno" onchange="updateSelfReno()">
@@ -105,6 +108,9 @@
   <!-- REPAIR ESTIMATOR — item 8: guide mode expanded descriptions -->
   <div class="repair-card">
     <div class="repair-title">Repair Cost Estimator</div>
+    <!-- UX wave finding 8: the estimator is a PLANNING number from market $/sf
+         bands — a contractor's real bid outranks it. Copy only; bands untouched. -->
+    <div class="field-hint" style="margin:2px 0 8px">A planning estimate from market $/sf bands — replace it with your contractor's real bid when you have one.</div>
     <div class="repair-tiers">
       <div class="tier" onclick="setRepairTier('light',this)">
         <div class="tier-name">Light</div>
@@ -130,7 +136,7 @@
       <div class="input-wrap" style="flex:1"><input type="number" id="sqft" placeholder="1,400" oninput="calcRepair()" style="height:38px"></div>
     </div>
     <div class="repair-result" id="repair-result" style="display:none">
-      <span class="rlabel">Estimated repair range</span>
+      <span class="rlabel">Planning estimate range</span>
       <span class="rval" id="repair-est">—</span>
     </div>
     <button class="use-estimate" id="use-est-btn" style="display:none" onclick="useRepairEstimate()">↑ Use midpoint estimate in calculator</button>
@@ -140,7 +146,7 @@
     <div class="field">
       <label>Repair Costs</label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-rep" class="has-pfx" placeholder="60,000" data-currency></div>
-      <div class="field-hint beginner-only">Your total budget to fix up the property</div>
+      <div class="field-hint beginner-only">Your renovation budget — auto-filled from the planning estimate until you enter your contractor's number</div>
     </div>
     <div class="field">
       <label>Hold Period (months)</label>
@@ -174,15 +180,19 @@
   <!-- item 10: Cost Assumptions section, carry total moved to bottom -->
   <div class="slabel">Your Cost Assumptions</div>
   <div class="field-row">
+    <!-- UX wave finding 6: "Purchase Costs / Sale Costs" both said "closing
+         fees", which read as double-counted to a beginner. Buy-side and
+         sell-side are now named plainly; acquisition/disposition stay in the
+         helper vocabulary only. Percentages and formulas unchanged. -->
     <div class="field">
-      <label>Purchase Costs %</label>
+      <label>Buying Costs %</label>
       <div class="input-wrap"><input type="number" id="f-cc1" class="has-sfx" value="2" placeholder="2"><span class="sfx">%</span></div>
-      <div class="field-hint beginner-only">Fees at closing when you buy — title, escrow, inspections</div>
+      <div class="field-hint beginner-only">Acquisition closing costs — attorney/title, recording, inspections, lender/escrow fees</div>
     </div>
     <div class="field">
-      <label>Sale Costs %</label>
+      <label>Selling Costs %</label>
       <div class="input-wrap"><input type="number" id="f-cc2" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
-      <div class="field-hint beginner-only">Includes agent commissions and closing fees. We use 5% as a conservative market estimate.</div>
+      <div class="field-hint beginner-only">Resale (disposition) costs — agent commissions, seller closing costs, concessions. We use 5% as a conservative market estimate.</div>
     </div>
   </div>
   <div class="field-row">

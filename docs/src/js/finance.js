@@ -92,8 +92,8 @@ export function validateInputs(type, raw) {
     if (raw.maint   !== undefined && Number.isFinite(+raw.maint)   && +raw.maint   < 0) err('v-maint','Maintenance','can\'t be negative.');
     if (raw.furnish !== undefined && Number.isFinite(+raw.furnish) && +raw.furnish < 0) err('v-furnish','Furnishing','can\'t be negative.');
   } else { // flip
-    if (oob(raw.cc1, RANGE.pct)) err('f-cc1','Purchase costs','must be between 0% and 100%.');
-    if (oob(raw.cc2, RANGE.pct)) err('f-cc2','Sale costs','must be between 0% and 100%.');
+    if (oob(raw.cc1, RANGE.pct)) err('f-cc1','Buying costs','must be between 0% and 100%.');
+    if (oob(raw.cc2, RANGE.pct)) err('f-cc2','Selling costs','must be between 0% and 100%.');
     if (oob(raw.rate, RANGE.rate)) err('f-rate','Loan rate','must be between 0% and 30%.');
     if (oob(raw.points, RANGE.points)) err('f-points','Points','must be between 0 and 15.');
     const cost = (+raw.ask || 0) + (+raw.rep || 0);
@@ -142,19 +142,52 @@ export function mosLabel(mos) {
       : { label: 'Fails', cls: 'bad' };
 }
 
+// ── Canonical Fix & Flip base engine ─────────────────────────────────────────
+// THE one place the flip numbers come from. Until the UX wave this math lived
+// inline in analyzeFlip (DOM-coupled) while computeFlipStress re-derived the
+// same cost formulas under haircuts — two copies of one formula set. Both now
+// delegate here, and the Pipeline editor recomputes saved deals through this
+// exact function, so the analyzer, the stress test, and an edited saved deal
+// can never disagree.
+//
+// Units contract (matches what analyzeFlip always used internally):
+//   cc1 / cc2 / rate / points are FRACTIONS (0.02, not 2). Callers holding the
+//   saved-deal schema must convert: saved cc1/cc2 are whole numbers, saved
+//   rate/points are already fractions.
+//   loan 0 or absent = all-cash view; self toggles the 75%/70% max-offer rule.
+export function computeFlip({ ask, arv, rep, hold, cc1, cc2, carry, loan = 0, rate = 0.10, points = 0.03, self = false }) {
+  const financed = loan > 0;
+  const cost     = ask + rep;
+  const buyCost  = ask * cc1;
+  const sellCost = arv * cc2;
+  const holdCost = carry * hold;                              // non-loan holding only
+  const loanInt  = financed ? loan * (rate / 12) * hold : 0;  // interest-only carry
+  const loanFees = financed ? loan * points : 0;              // origination + broker points
+  const finCost  = loanInt + loanFees;
+
+  const cashIn   = financed ? (cost - loan) + buyCost + holdCost + finCost
+                            : cost + buyCost + holdCost;       // investment basis
+  const totalIn  = cost + buyCost + holdCost + finCost;        // all-in (excl. selling costs)
+  const profit   = arv - sellCost - cost - buyCost - holdCost - finCost;
+  const roi      = cashIn > 0 ? (profit / cashIn) * 100 : 0;   // leveraged when financed
+  const maxOffer = arv * (self ? 0.75 : 0.70) - rep;
+  const ltvVal   = financed ? (loan / arv) * 100 : (ask / arv) * 100;
+  const ltvLabel = financed ? 'LTV' : 'Price / ARV';
+  const ltc      = financed && cost > 0 ? (loan / cost) * 100 : 0;
+
+  return { financed, cost, buyCost, sellCost, holdCost, loanInt, loanFees, finCost,
+           cashIn, totalIn, profit, roi, maxOffer, ltvVal, ltvLabel, ltc };
+}
+
 // ── Flip stress test: ARV −5%, rehab +10%, hold +1 month → net profit ≥ 0 ──
 // Inputs are flip base numbers (cc1/cc2/rate/points as FRACTIONS). Pure so flip.js
-// and the tests share it.
+// and the tests share it. The stressed profit is the canonical engine run on the
+// haircut inputs — one formula set, not a second copy.
 export function computeFlipStress({ ask, arv, rep, cc1, cc2, carry, hold, financed, loan, rate, points, target }) {
-  const sArv = arv * 0.95;
-  const sRep = rep * 1.1;
-  const sHold = hold + 1;
-  const buyCost = ask * cc1;
-  const sSellCost = sArv * cc2;
-  const sHoldCost = carry * sHold;
-  const sLoanInt = financed ? loan * (rate / 12) * sHold : 0;
-  const loanFees = financed ? loan * points : 0;
-  const stressedProfit = sArv - sSellCost - (ask + sRep) - buyCost - sHoldCost - sLoanInt - loanFees;
+  const stressedProfit = computeFlip({
+    ask, arv: arv * 0.95, rep: rep * 1.1, hold: hold + 1,
+    cc1, cc2, carry, loan: financed ? loan : 0, rate, points,
+  }).profit;
   const strongBar = target > 0 ? 0.5 * target : 25000;
   const marginOfSafety =
     stressedProfit < 0 ? 'fails' : stressedProfit >= strongBar ? 'strong' : 'tight';

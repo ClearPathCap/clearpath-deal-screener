@@ -4,7 +4,7 @@ import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, renderInputIssue
 import { FLIP_MARKETS, ALL_MARKETS } from './markets.js';
 import { updateRepairRangesForMarket } from './repair.js';
 import { maybeShowFundingButton } from './clearpath.js';
-import { computeFlipStress, flipVerdict, mosLabel, validateInputs } from './finance.js';
+import { computeFlip, computeFlipStress, flipVerdict, mosLabel, validateInputs } from './finance.js';
 
 // ─── Regional fallback defaults (Task 3) ──────────────────────────────────────
 const FLIP_REGIONAL_DEFAULTS = {
@@ -94,23 +94,12 @@ export function analyzeFlip() {
     return;
   }
 
-  const cost     = ask + rep;
-  const buyCost  = ask * cc1;
-  const sellCost = arv * cc2;
-  const holdCost = carry * hold;                              // non-loan holding only
-  const loanInt  = financed ? loan * (rate / 12) * hold : 0;  // interest-only carry
-  const loanFees = financed ? loan * points : 0;              // origination + broker points
-  const finCost  = loanInt + loanFees;
-
-  const cashIn   = financed ? (cost - loan) + buyCost + holdCost + finCost
-                            : cost + buyCost + holdCost;       // investment basis
-  const totalIn  = cost + buyCost + holdCost + finCost;        // all-in (excl. sale costs)
-  const profit   = arv - sellCost - cost - buyCost - holdCost - finCost;
-  const roi      = cashIn > 0 ? (profit / cashIn) * 100 : 0;   // leveraged when financed
-  const maxOffer = arv * (self ? 0.75 : 0.70) - rep;
-  const ltvVal   = financed ? (loan / arv) * 100 : (ask / arv) * 100;
-  const ltvLabel = financed ? 'LTV' : 'Price / ARV';
-  const ltc      = financed && cost > 0 ? (loan / cost) * 100 : 0;
+  // UX wave: the base math is the canonical engine in finance.js — the same
+  // function the stress test and the Pipeline editor run — so nothing here can
+  // drift from a recomputed saved deal.
+  const { buyCost, sellCost, holdCost, loanInt, loanFees, finCost,
+          cashIn, totalIn, profit, roi, maxOffer, ltvVal, ltvLabel, ltc } =
+    computeFlip({ ask, arv, rep, hold, cc1, cc2, carry, loan, rate, points, self });
   const ratePct  = (rate * 100).toFixed(2).replace(/\.?0+$/, '');
   const pointsPct = (points * 100).toFixed(2).replace(/\.?0+$/, '');
 
@@ -140,15 +129,20 @@ export function analyzeFlip() {
   document.getElementById('flip-breakdown').innerHTML = buildRows([
     { l: 'Purchase price',                                    v: fmt(ask) },
     { l: 'Repair costs' + (self ? ' (self-perform)' : ''),   v: fmt(rep) },
-    { l: 'Purchase costs (' + Math.round(cc1 * 100) + '%)',  v: fmt(buyCost) },
+    { l: 'Buying costs (' + Math.round(cc1 * 100) + '%)',    v: fmt(buyCost) },
     { l: 'Carrying costs (' + hold + ' mo, non-loan)',        v: fmt(holdCost) },
     ...(financed ? [
       { l: 'Loan interest (' + hold + ' mo @ ' + ratePct + '%)', v: fmt(loanInt) },
       { l: 'Points (' + pointsPct + '%)',                       v: fmt(loanFees) },
     ] : []),
-    { l: 'Sale costs (' + Math.round(cc2 * 100) + '%)',       v: fmt(sellCost) },
+    { l: 'Selling costs (' + Math.round(cc2 * 100) + '%)',    v: fmt(sellCost) },
     ...(financed ? [{ l: 'LTC (loan ÷ cost)', v: (Math.round(ltc * 10) / 10) + '%' }] : []),
-    { l: financed ? 'Cash invested' : 'Total cash (all-cash)', v: fmt(cashIn) },
+    // D-1 UX wave finding 7: this figure EXCLUDES selling costs (it is the cash
+    // you are into the project before resale), while the Pipeline's total adds
+    // selling costs back. The old labels ('Total cash (all-cash)' vs 'Total
+    // all-in') read as a contradiction on the same deal; both are now named by
+    // what they actually are. Formulas untouched.
+    { l: financed ? 'Cash invested (before resale)' : 'Cash required before resale', v: fmt(cashIn) },
     { l: 'Net profit', v: fmt(profit), tot: true, color: profit >= 0 ? 'var(--accent)' : 'var(--danger)' },
     { l: 'Stress-test profit (ARV −5%, rehab +10%, +1mo)', v: fmt(stressedProfit), color: stressedProfit >= 0 ? 'var(--accent)' : 'var(--danger)' },
   ]);

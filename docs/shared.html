@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- Read-only shared-deal view (UX wave finding 5). Token-addressed; never
+     indexed; no account required to view; no owner controls exist here. -->
+<meta name="robots" content="noindex, nofollow">
+<title>Shared Deal — DealFit by Clear Path Capital</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/css/styles.css">
+<style>
+  /* Page-scoped chrome only — everything else reuses the app stylesheet. */
+  .shared-wrap{max-width:520px;margin:0 auto;padding:24px 20px 48px}
+  .shared-brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+  .shared-brand img{height:26px}
+  .shared-brand .sb-name{font-weight:800;font-size:15px;letter-spacing:.02em}
+  .shared-tag{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .shared-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px}
+  .shared-name{font-size:19px;font-weight:800;margin-bottom:2px}
+  .shared-sub{font-size:13px;color:var(--muted);margin-bottom:10px}
+  .shared-cta{display:block;text-align:center;background:var(--accent);color:var(--accent-text);border-radius:10px;padding:14px;font-weight:800;text-decoration:none;margin-top:18px}
+  .shared-disclaimer{font-size:11px;color:var(--muted2);line-height:1.5;margin-top:16px}
+  .shared-state{text-align:center;color:var(--muted);padding:60px 0;font-size:14px}
+</style>
+</head>
+<body>
+<div class="shared-wrap">
+  <div class="shared-brand">
+    <img src="icons/clearpath-mark.png" alt="">
+    <div class="sb-name">DealFit <span style="color:var(--muted);font-weight:400">by Clear Path Capital</span></div>
+  </div>
+
+  <div id="shared-loading" class="shared-state">Loading deal…</div>
+  <div id="shared-missing" class="shared-state" style="display:none">
+    This shared deal isn't available.<br>
+    The link may have been revoked, or the deal removed.
+  </div>
+  <div id="shared-content" style="display:none"></div>
+
+  <div class="shared-disclaimer">
+    Shared from DealFit as a read-only view. All figures are the owner's own
+    underwriting estimates (est.) — not an offer, a loan approval, or a
+    guarantee of terms. Clear Path Capital is a broker, not a lender.
+  </div>
+  <footer class="legal-footer">
+    <a href="terms.html" target="_blank" rel="noopener noreferrer">Terms</a><span>&middot;</span><a href="privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a>
+  </footer>
+</div>
+<script type="module" src="src/js/sharedView.js"></script>
+</body>
+</html>

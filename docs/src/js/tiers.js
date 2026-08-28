@@ -88,6 +88,18 @@ export function setMarketSlot(index, id) {
 export function getPrimaryMarket() { return getMarketForSlot(0); }
 export function getMarket2()       { return getMarketForSlot(1); }
 
+// UX wave: the market that is DRIVING analysis right now. main.js keeps its
+// module-level _activeSlot mirrored into localStorage 'activeSlot', so reading
+// the mirror here lets pipeline.js stamp a saved deal with the market it was
+// underwritten against without reaching into main.js state. Falls back through
+// the same guard renderMarketSlots applies: an empty/invalid active slot means
+// slot 0; an empty slot 0 means no market ('').
+export function getActiveMarketId() {
+  const v = parseInt(localStorage.getItem('activeSlot'), 10);
+  const slot = Number.isInteger(v) && v >= 0 && v < 6 ? v : 0;
+  return getMarketForSlot(slot) || getMarketForSlot(0) || '';
+}
+
 // Returns a flat array of all set market IDs (for clearpath summary etc.)
 export function getMarketSlots() {
   const result = [];

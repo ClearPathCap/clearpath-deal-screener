@@ -11,7 +11,8 @@ import { saveDeal as _saveDeal, renderPipeline,
          filterPipeline, toggleDeal,
          requestDelete, confirmDelete,
          startDealEdit, cancelDealEdit, saveDealEdits,
-         dealEditSelfToggled, dealEditUseEstimate }                  from './pipeline.js';
+         dealEditSelfToggled, dealEditUseEstimate,
+         dealEditMarketChanged, dealEditRepTouched }                 from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
@@ -1392,6 +1393,8 @@ Object.assign(window, {
   // repair-provenance corrective: governed self-toggle swap + explicit estimator re-adopt
   dealEditSelfToggled,
   dealEditUseEstimate,
+  dealEditMarketChanged,
+  dealEditRepTouched,
   // share
   openShareApp,
   shareDeal,

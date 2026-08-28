@@ -427,6 +427,106 @@ f2 = savedPayloads.at(-1).find(d => d.id === 6002);
 ok("[DEFECT-CLOSING · F7] name text never infers a market (cleared selector → null stamp)",
    f2.market === null && f2.marketLabel === null && /Asheville/.test(f2.name));
 
+// ── §G · FINAL RULING — DealFit-estimate vs manual, live recompute ───────────
+// Supersedes frozen-snapshot editor semantics: DealFit-controlled budgets
+// recompute LIVE from the current context (sqft + explicitly selected market,
+// canonical resolver); manual numbers are inviolable; legacy recovery is
+// exact-match only; the action is "Use DealFit estimate" in accent styling.
+const G_MATCH = { id: 7001, name: 'Legacy Exact Match', type: 'flip', verdict: 'X', cls: 'pass',
+  notes: '', date: 'Aug 27, 2026', market: 'lake-murray-sc', marketLabel: 'Lake Murray, SC',
+  data: { type: 'flip', ask: 289000, arv: 365000, rep: 98000, hold: 5, cc1: 2, cc2: 5,
+          carry: 2150, target: 28000, sqft: 2622, self: true, loan: 0, rate: 0.10, points: 0.03 },
+  stats: [] };
+const G_NOMATCH = { ...G_MATCH, id: 7002, name: 'Legacy No Match',
+  data: { ...G_MATCH.data, rep: 90000 }, stats: [] };
+const G_NOCTX = { id: 7003, name: 'Legacy No Context', type: 'flip', verdict: 'X', cls: 'pass',
+  notes: '', date: 'Jun 16, 2026', market: null, marketLabel: null,
+  data: { type: 'flip', ask: 200000, arv: 300000, rep: 75000, hold: 5, cc1: 2, cc2: 5,
+          carry: 900, target: 40000, sqft: 2000, self: true, loan: 0, rate: 0.10, points: 0.03 },
+  stats: [] };
+savedPayloads = [];
+globalThis.__stubSupabase = { session, rpc: {
+  get_pipeline: { data: [G_MATCH, G_NOMATCH, G_NOCTX], error: null },
+  save_pipeline: (args) => { savedPayloads.push(args.p_deals); return { data: { ok: true }, error: null }; },
+} };
+await auth.initAuthAndEntitlement();
+await storage.hydratePipeline();
+
+// G7 · exact-match legacy recovery at form open (sqft + explicit market)
+const detail = el('detail-host');
+pipeline.startDealEdit(7001);
+ok("[RULING · G7] legacy value exactly matching the governed estimate recovers DealFit control at open",
+   /data-rep-owned="estimator"/.test(detail.innerHTML));
+ok("[RULING · G7] DealFit-controlled state line uses the ruled plain-English copy",
+   /DealFit estimate — updates with renovation mode/.test(detail.innerHTML));
+// G8 · nonmatching legacy stays manual (never approximate)
+pipeline.cancelDealEdit(7001);
+pipeline.startDealEdit(7002);
+ok("[RULING · G8] a nonmatching legacy value is manual", /data-rep-owned="manual"/.test(detail.innerHTML));
+ok("[RULING · G8] manual state line + the renamed action",
+   /Manual repair budget/.test(detail.innerHTML) && /Use DealFit estimate/.test(detail.innerHTML));
+ok("[RULING · G8] insufficient context (no market) also opens manual",
+   (pipeline.cancelDealEdit(7002), pipeline.startDealEdit(7003), /data-rep-owned="manual"/.test(detail.innerHTML)));
+ok("[RULING] the verbose legacy explanation is GONE",
+   !/No estimator record is stored/.test(src("docs/src/js/pipeline.js")));
+
+// G-recovery · legacy + context arriving IN the editor (exact match on region pick)
+pe('rep').value = '75,000'; pe('rep').dataset.repOwned = 'manual'; pe('rep').dataset.repLegacy = '1';
+pe('self').checked = true; pe('sqft').value = '2,000'; pe('market').value = 'lake-murray-sc';
+pipeline.dealEditMarketChanged(7003);
+ok("[RULING · G7b] picking a region that makes the value an exact governed match recovers DealFit control",
+   pe('rep').dataset.repOwned === 'estimator');
+pe('self').checked = false; pipeline.dealEditSelfToggled(7003);
+const g7b = repair.repairEstimateSnapshotFor(2000, { repairLow: 38, repairHigh: 82 });
+ok("[RULING · G5] after recovery, toggles swap live through the governed estimator",
+   pe('rep').value === (+g7b.hiredMid).toLocaleString());
+
+// G9/G10 · region changes: manual untouched; DealFit-controlled recomputes
+pe('rep').value = '88,000'; pe('rep').dataset.repOwned = 'manual'; pe('rep').dataset.repLegacy = '';
+pe('market').value = 'charlotte-nc';
+pipeline.dealEditMarketChanged(7003);
+ok("[RULING · G9] a region change never rewrites a manual repair budget", pe('rep').value === '88,000');
+pipeline.dealEditUseEstimate(7003);       // hand back to DealFit at charlotte, self OFF
+const cltEst = repair.repairEstimateSnapshotFor(2000, { repairLow: 40, repairHigh: 85 });
+ok("[RULING · G4] Use DealFit estimate applies the governed CURRENT estimate for the current self state",
+   pe('rep').value === (+cltEst.hiredMid).toLocaleString() && pe('rep').dataset.repOwned === 'estimator');
+pe('market').value = 'lake-murray-sc';
+pipeline.dealEditMarketChanged(7003);
+ok("[RULING · G10] DealFit-controlled repair follows an intentional region change via the canonical resolver",
+   pe('rep').value === (+g7b.hiredMid).toLocaleString());
+// G6 · another manual edit afterward returns to protected behavior
+pe('rep').value = '77,777'; pe('rep').dataset.repOwned = 'manual';
+pe('self').checked = true; pipeline.dealEditSelfToggled(7003);
+ok("[RULING · G6] a later manual edit is protected again", pe('rep').value === '77,777');
+
+// G3 · Aaron's exact live sequence: $88,000 manual survives repeated toggles
+pe('rep').value = '88,000'; pe('rep').dataset.repOwned = 'manual';
+for (const s of [true, false, true, false]) { pe('self').checked = s; pipeline.dealEditSelfToggled(7003); }
+ok("[RULING · G3] $88,000 manual budget survives repeated Self ON/OFF", pe('rep').value === '88,000');
+
+// G11 · square footage renders formatted, stores numeric
+ok("[RULING · G11] the form renders 2,622 (formatted)",
+   (pipeline.cancelDealEdit(7003), pipeline.startDealEdit(7001), /value="2,622"/.test(detail.innerHTML)));
+pe('name').value = 'Legacy Exact Match'; pe('sqft').value = '2,622';
+pe('rep').value = '98,000'; pe('rep').dataset.repOwned = 'estimator';
+pe('ask').value = '289,000'; pe('arv').value = '365,000'; pe('market').value = 'lake-murray-sc';
+pe('hold').value = '5'; pe('cc1').value = '2'; pe('cc2').value = '5'; pe('carry').value = '2,150';
+pe('target').value = '28,000'; pe('rate').value = '10'; pe('points').value = '3';
+pe('loan').value = ''; pe('notes').value = ''; pe('self').checked = true;
+await pipeline.saveDealEdits(7001);
+const g11 = savedPayloads.at(-1).find(d => d.id === 7001);
+ok("[RULING · G11] storage stays numeric 2622", g11.data.sqft === 2622);
+ok("[RULING] DealFit-owned save persists estimator ownership + the current governed snapshot",
+   g11.data.repSource === 'estimator' && g11.data.repEstimate.selfMid === 98000 && g11.data.repEstimate.hiredMid === 157000);
+
+// G12 · action styling: accent class, no browser-default-blue bare anchor
+const plFinal = src("docs/src/js/pipeline.js");
+ok("[RULING · G12] the action carries the accent class", /class="rep-action"/.test(plFinal));
+ok("[RULING · G12] no bare estimator-action anchor remains",
+   !/<a href="#" onclick="dealEditUseEstimate/.test(plFinal));
+ok("[RULING · G12] the accent rule exists in the stylesheet",
+   /\.rep-action\{color:var\(--accent\);text-decoration:underline/.test(src("docs/src/css/styles.css")));
+
 console.log(`\ndealedit: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Canonical-engine pipeline editing holds ✓");

@@ -418,6 +418,16 @@ function buildFlipEditForm(d) {
   const money = (v) => v != null && Number.isFinite(+v) ? (+v).toLocaleString() : '';
   const ratePct   = data.rate   != null ? +(data.rate * 100).toFixed(2)   : 10;
   const pointsPct = data.points != null ? +(data.points * 100).toFixed(2) : 3;
+
+  // Ownership at form open. Persisted ownership wins; a legacy deal (nothing
+  // persisted) recovers DealFit control ONLY on an exact match against the
+  // governed current estimate for its own saved context — else manual.
+  const isLegacy = data.repSource !== 'estimator' && data.repSource !== 'manual';
+  let owned = data.repSource === 'estimator' ? 'estimator' : 'manual';
+  if (isLegacy && data.sqft && d.market) {
+    const est = repairEstimateSnapshotFor(data.sqft, getFlipMarket(d.market));
+    if (est && data.rep === (data.self ? est.selfMid : est.hiredMid)) owned = 'estimator';
+  }
   return `
     <div class="detail-section deal-edit-form">
       <div class="detail-title">Edit Deal</div>
@@ -432,13 +442,9 @@ function buildFlipEditForm(d) {
       <div class="field-row">
         <div class="field"><label>Repair Costs</label>
           <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="rep"
-            data-rep-owned="${data.repSource === 'estimator' ? 'estimator' : 'manual'}"
-            oninput="this.dataset.repOwned='manual'" value="${money(data.rep)}"></div>
-          ${data.repEstimate
-            ? (data.repSource === 'estimator'
-                ? `<div class="field-hint">Estimator midpoint (${escapeHtml(String(data.repEstimate.tier))} scope) — recalculates when Self-Renovating changes</div>`
-                : `<div class="field-hint">Your number — Self-Renovating won't change it · <a href="#" onclick="dealEditUseEstimate(${d.id});return false;">use estimator midpoint</a></div>`)
-            : `<div class="field-hint">No estimator record is stored for this older deal, so DealFit won't change this repair budget automatically. · <a href="#" onclick="dealEditUseEstimate(${d.id});return false;">Use estimator midpoint</a></div>`}
+            data-rep-owned="${owned}" data-rep-legacy="${isLegacy && owned !== 'estimator' ? '1' : ''}"
+            oninput="this.dataset.repOwned='manual';this.dataset.repLegacy='';dealEditRepTouched(${d.id})" value="${money(data.rep)}"></div>
+          <div class="field-hint" data-pe="rephint">${repHintHTML(d.id, owned)}</div>
         </div>
         <div class="field"><label>Hold (months)</label>
           <div class="input-wrap"><input type="number" data-pe="hold" value="${data.hold ?? 5}"><span class="sfx">mo</span></div></div>
@@ -459,7 +465,7 @@ function buildFlipEditForm(d) {
         <div class="field"><label>Loan Amount <span>(blank = all-cash)</span></label>
           <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="loan" value="${data.loan ? money(data.loan) : ''}"></div></div>
         <div class="field"><label>Square Footage</label>
-          <div class="input-wrap"><input type="number" data-pe="sqft" value="${data.sqft || ''}"></div></div>
+          <div class="input-wrap"><input type="text" inputmode="numeric" data-pe="sqft" value="${data.sqft ? (+data.sqft).toLocaleString() : ''}"></div></div>
       </div>
       <div class="field-row">
         <div class="field"><label>Interest Rate %</label>
@@ -473,7 +479,7 @@ function buildFlipEditForm(d) {
         <label class="toggle"><input type="checkbox" data-pe="self" onchange="dealEditSelfToggled(${d.id})" ${data.self ? 'checked' : ''}><div class="toggle-track"></div></label>
       </div>
       <div class="field full"><label>Underwritten in <span>(market/region)</span></label>
-        <select data-pe="market">
+        <select data-pe="market" onchange="dealEditMarketChanged(${d.id})">
           <option value="">— No region —</option>
           ${buildMarketOptions(d.market)}
         </select>
@@ -498,64 +504,105 @@ function buildFlipEditForm(d) {
 //                      (downstream math still reacts to `self` at Save, e.g.
 //                      the 75%/70% max-offer rule — that is the engine's law);
 //   legacy/unknown   → no snapshot exists; never mutate anything.
-// The snapshot governing THIS edit session: one explicitly adopted during the
-// session (stashed as JSON on the field by dealEditUseEstimate) outranks the
-// deal's stored one — that is what lets a legacy deal behave like an
-// estimator-owned deal the moment the user adopts, before Save persists it.
-function sessionSnapshot(repEl, deal) {
-  if (repEl?.dataset?.repSnapshot) {
-    try { return JSON.parse(repEl.dataset.repSnapshot); } catch { /* fall through */ }
-  }
-  return deal?.data?.repEstimate || null;
+// ─── Repair-budget ownership (FINAL RULING) ──────────────────────────────────
+// Two user-facing states, no internal jargon:
+//   DEALFIT ESTIMATE  — the budget is DealFit-controlled: Self-Renovating and
+//                       region changes update it LIVE through the one governed
+//                       estimator (current sqft + explicitly selected market via
+//                       the canonical resolver). No Save needed to see it move.
+//   MANUAL            — the instant the user types a number it is theirs:
+//                       toggles and region changes never overwrite it. The
+//                       "Use DealFit estimate" action is the explicit way back.
+// Legacy deals (no persisted ownership) recover DealFit control ONLY when the
+// saved value EXACTLY equals the governed current estimate for the deal's own
+// context (sqft + explicitly saved/selected market + self state) — never
+// approximate, never from the deal name.
+
+// The estimate for the CURRENT editor context (form values first, saved deal
+// as fallback). Null when square footage is missing.
+function editorFreshEstimate(card, deal) {
+  const sqft = peNum(card, 'sqft', deal?.data?.sqft ?? 0) || 0;
+  if (!sqft) return null;
+  const mktEl = peField(card, 'market');
+  const marketId = mktEl ? (mktEl.value || null) : (deal?.market ?? null);
+  return repairEstimateSnapshotFor(sqft, marketId ? getFlipMarket(marketId) : null);
+}
+
+// Plain-English state line under the Repair Costs field (ruled copy).
+function repHintHTML(dealId, owned) {
+  return owned === 'estimator'
+    ? 'DealFit estimate — updates with renovation mode'
+    : `Manual repair budget · <a href="#" class="rep-action" onclick="dealEditUseEstimate(${dealId});return false;">Use DealFit estimate</a>`;
+}
+function setRepHint(card, dealId, owned) {
+  const hint = peField(card, 'rephint');
+  if (hint) hint.innerHTML = repHintHTML(dealId, owned);
 }
 
 export function dealEditSelfToggled(id) {
   const deal = getDeals().find(d => d.id === id);
   const card = document.querySelector('.deal-card[data-id="' + id + '"]');
   const repEl = peField(card, 'rep');
-  const est = sessionSnapshot(repEl, deal);
-  if (!repEl || !est) return;                              // no snapshot: hands off
-  if (repEl.dataset.repOwned !== 'estimator') return;      // user-owned: hands off
-  const selfOn = !!peField(card, 'self')?.checked;
-  const mid = selfOn ? est.selfMid : est.hiredMid;
+  if (!repEl || repEl.dataset.repOwned !== 'estimator') return;   // manual: protected
+  const est = editorFreshEstimate(card, deal);
+  if (!est) return;
+  const mid = peField(card, 'self')?.checked ? est.selfMid : est.hiredMid;
   if (Number.isFinite(+mid)) repEl.value = (+mid).toLocaleString();
 }
 
-// Explicit estimator adoption — the ONLY way ownership becomes (or returns to)
-// the estimator, never inference. Pre-push ruling: this must ALSO work for
-// legacy deals with no stored snapshot, computed by the EXISTING governed
-// estimator from the deal's own square footage and its saved/selected market —
-// without leaving the Pipeline. Explicit user action, so the no-silent-rewrite
-// law is intact: nothing here runs unless the user clicks it.
+// Region change inside the editor: DealFit-controlled budgets follow the new
+// region through the canonical resolver; manual budgets are untouched. A pure
+// legacy value (no persisted ownership, user hasn't typed) may RECOVER DealFit
+// control here — exact match only — the moment enough context exists.
+export function dealEditMarketChanged(id) {
+  const deal = getDeals().find(d => d.id === id);
+  const card = document.querySelector('.deal-card[data-id="' + id + '"]');
+  const repEl = peField(card, 'rep');
+  if (!repEl) return;
+  const est = editorFreshEstimate(card, deal);
+  if (repEl.dataset.repOwned === 'estimator') {
+    if (!est) return;
+    const mid = peField(card, 'self')?.checked ? est.selfMid : est.hiredMid;
+    if (Number.isFinite(+mid)) repEl.value = (+mid).toLocaleString();
+    return;
+  }
+  if (repEl.dataset.repLegacy === '1' && est) {
+    const current = parseComma(repEl.value) || 0;
+    const mid = peField(card, 'self')?.checked ? est.selfMid : est.hiredMid;
+    if (current === mid) {                                  // EXACT match only
+      repEl.dataset.repOwned = 'estimator';
+      setRepHint(card, id, 'estimator');
+    }
+  }
+}
+
+// Typing in the field makes the number the user's — refresh the state line.
+export function dealEditRepTouched(id) {
+  const card = document.querySelector('.deal-card[data-id="' + id + '"]');
+  setRepHint(card, id, 'manual');
+}
+
+// "Use DealFit estimate" — the explicit hand-back. Computes the governed
+// CURRENT estimate (form sqft + selected market + current self state), replaces
+// the manual number, and restores live DealFit control immediately.
 export function dealEditUseEstimate(id) {
   const deal = getDeals().find(d => d.id === id);
   const card = document.querySelector('.deal-card[data-id="' + id + '"]');
   const repEl = peField(card, 'rep');
   if (!repEl || !deal) return;
   const msgEl = peField(card, 'msg');
-
-  let est = sessionSnapshot(repEl, deal);
+  const est = editorFreshEstimate(card, deal);
   if (!est) {
-    // Legacy adoption: sqft and market come from the FORM first (the user may
-    // have just corrected them), falling back to the saved deal.
-    const sqft = peNum(card, 'sqft', deal.data?.sqft ?? 0) || 0;
-    if (!sqft) {
-      if (msgEl) { msgEl.textContent = 'Enter square footage first — the estimator needs it.'; msgEl.className = 'redeem-msg err'; }
-      return;
-    }
-    const mktEl = peField(card, 'market');
-    const marketId = mktEl ? (mktEl.value || null) : (deal.market ?? null);
-    est = repairEstimateSnapshotFor(sqft, marketId ? getFlipMarket(marketId) : null);
-    if (!est) return;
-    repEl.dataset.repSnapshot = JSON.stringify(est);   // Save persists this adoption
-    if (msgEl) { msgEl.textContent = ''; msgEl.className = 'redeem-msg'; }
+    if (msgEl) { msgEl.textContent = 'Enter square footage first — the estimator needs it.'; msgEl.className = 'redeem-msg err'; }
+    return;
   }
-
-  const selfOn = !!peField(card, 'self')?.checked;
-  const mid = selfOn ? est.selfMid : est.hiredMid;
+  if (msgEl) { msgEl.textContent = ''; msgEl.className = 'redeem-msg'; }
+  const mid = peField(card, 'self')?.checked ? est.selfMid : est.hiredMid;
   if (!Number.isFinite(+mid)) return;
   repEl.value = (+mid).toLocaleString();
   repEl.dataset.repOwned = 'estimator';
+  repEl.dataset.repLegacy = '';
+  setRepHint(card, id, 'estimator');
 }
 
 export function startDealEdit(id) {
@@ -633,10 +680,8 @@ export async function saveDealEdits(id) {
   // the stored one and is what gets persisted; otherwise the stored snapshot
   // rides forward as underwriting history.
   const repEl = peField(card, 'rep');
-  const est = sessionSnapshot(repEl, deal);
-  const repSource = (repEl?.dataset?.repOwned === 'estimator' && est
-                     && rep === (self ? est.selfMid : est.hiredMid))
-    ? 'estimator' : 'manual';
+  const repSource = repEl?.dataset?.repOwned === 'estimator' ? 'estimator' : 'manual';
+  const est = repSource === 'estimator' ? editorFreshEstimate(card, deal) : old.repEstimate;
 
   // Defect-2: the deal's market association comes from the EXPLICIT selector —
   // never from the active market, never from name/address text. A missing

@@ -131,6 +131,11 @@ await storage.hydratePipeline();
 ok("[HARNESS] cache hydrated with both deals", storage.getDeals().length === 2);
 
 // Seed the edit form: the GC's real bid replaces the planning estimate, seller drops.
+// RE-PINNED (provenance/market corrective, same-commit law): the real form now
+// carries a market <select data-pe="market"> pre-selected to the deal's stamp,
+// and a rep-ownership dataset. The harness seeds both exactly as the form does.
+pe('market').value = 'lake-murray-sc';
+pe('rep').dataset.repOwned = 'manual';
 pe('name').value = '417 Saddlebrooke Rd — Lake Murray';
 pe('ask').value = '235,000'; pe('arv').value = '365,000'; pe('rep').value = '82,000';
 pe('hold').value = '6'; pe('cc1').value = '2'; pe('cc2').value = '5';
@@ -158,8 +163,10 @@ ok("[DEFECT-CLOSING] stats rebaked to the new numbers", JSON.stringify(edited.st
 ok("[DEFECT-CLOSING] updatedAt + display Updated stamp added",
    typeof edited.updatedAt === 'string' && typeof edited.updated === 'string');
 ok("[PRESERVATION] original save date survives", edited.date === 'Aug 26, 2026' && edited.savedAt === DEAL.savedAt);
+// RE-PINNED: the editor now persists the market from the explicit selector and
+// normalizes the label through getMarketLabel ('Lake Murray, SC' — with comma).
 ok("[PRESERVATION] underwritten market association survives the edit",
-   edited.market === 'lake-murray-sc' && edited.marketLabel === 'Lake Murray SC');
+   edited.market === 'lake-murray-sc' && edited.marketLabel === 'Lake Murray, SC');
 ok("[PRESERVATION] address survives (not an editable field this wave)",
    edited.data.addr === '417 Saddlebrooke Rd, Lexington SC');
 ok("[DEFECT-CLOSING] notes edit persisted", edited.notes === 'GC bid $82k; seller countered 235k');
@@ -231,6 +238,159 @@ ok("[DEFECT-CLOSING · WIPE] successful re-hydrate re-arms the edit path",
    staleRes.status === 'saved' && savedPayloads.length === 1);
 ok("[DEFECT-CLOSING · WIPE] the re-armed save still carries every other deal",
    savedPayloads[0].some(d => d.id === 4002));
+
+// ── §E · repair provenance (real-operator corrective, defect 1) ──────────────
+// PROVEN LIVE: toggling Self-Renovating in the editor left an estimator-owned
+// $98,000 untouched while max-offer moved — internally inconsistent. Root
+// cause: ownership lived ONLY in analyzer DOM state (dataset.autoFilled /
+// userEdited) and was never serialized. The law now: estimator-owned swaps to
+// the OTHER governed midpoint from the deal's frozen underwriting snapshot;
+// user-owned dollars are never touched; legacy deals without provenance are
+// never mutated.
+const repair = await import("../docs/src/js/repair.js");
+
+// E0 · the snapshot IS the governed estimator math. Aaron's real numbers are
+// mathematically determined by the existing rules: lake-murray-sc has no flip
+// entry → Southeast regional fallback {38,82}; self bands are round(lo*.62)=24
+// / round(hi*.62)=51; at 2,622 sqft the midpoints are exactly 98,000 / 157,000.
+repair.updateRepairRangesForMarket({ repairLow: 38, repairHigh: 82 });
+const snap = repair.repairEstimateSnapshot(2622);
+ok("[GOLDEN · E0] snapshot self midpoint is exactly Aaron's $98,000", snap.selfMid === 98000);
+ok("[GOLDEN · E0] snapshot hired midpoint is the governed $157,000", snap.hiredMid === 157000);
+ok("[GOLDEN · E0] snapshot records the scope tier", snap.tier === 'mid');
+ok("[E0] no sqft → no snapshot (never a fabricated estimate)", repair.repairEstimateSnapshot(0) === null);
+
+const EST_DEAL = {
+  id: 6001, name: '417 Saddlebrooke Rd — Lake Murray', type: 'flip',
+  verdict: 'Counter at Max Offer — Walk Away', cls: 'pass', notes: '',
+  date: 'Aug 27, 2026', market: 'lake-murray-sc', marketLabel: 'Lake Murray, SC',
+  data: { type: 'flip', addr: '417 Saddlebrooke Rd, Lexington SC', ask: 289000, arv: 365000,
+          rep: 98000, hold: 5, cc1: 2, cc2: 5, carry: 2150, target: 28000, sqft: 2622, self: true,
+          loan: 0, rate: 0.10, points: 0.03, financed: false,
+          repSource: 'estimator', repEstimate: { tier: 'mid', selfMid: 98000, hiredMid: 157000 } },
+  stats: [],
+};
+const LEGACY_DEAL = { id: 6002, name: 'Legacy No Provenance', type: 'flip', verdict: 'X', cls: 'warm',
+  notes: '', date: 'Jun 16, 2026',
+  data: { type: 'flip', ask: 100000, arv: 200000, rep: 40000, hold: 5, cc1: 2, cc2: 5,
+          carry: 900, target: 40000, sqft: 0, self: false, loan: 0, rate: 0.10, points: 0.03 },
+  stats: [] };
+savedPayloads = [];
+globalThis.__stubSupabase = { session, rpc: {
+  get_pipeline: { data: [EST_DEAL, LEGACY_DEAL], error: null },
+  save_pipeline: (args) => { savedPayloads.push(args.p_deals); return { data: { ok: true }, error: null }; },
+} };
+await auth.initAuthAndEntitlement();
+await storage.hydratePipeline();
+
+// E1 · estimator-owned + toggle → governed midpoint swap, then canonical recompute at Save
+pe('name').value = '417 Saddlebrooke Rd — Lake Murray';
+pe('market').value = 'lake-murray-sc';
+pe('ask').value = '289,000'; pe('arv').value = '365,000';
+pe('rep').value = '98,000'; pe('rep').dataset.repOwned = 'estimator';
+pe('hold').value = '5'; pe('cc1').value = '2'; pe('cc2').value = '5';
+pe('carry').value = '2,150'; pe('target').value = '28,000'; pe('sqft').value = '2622';
+pe('rate').value = '10'; pe('points').value = '3'; pe('loan').value = ''; pe('notes').value = '';
+pe('self').checked = false;                           // Aaron's live action: turn self OFF
+pipeline.dealEditSelfToggled(6001);
+ok("[DEFECT-CLOSING · E1] estimator-owned repair swaps to the hired midpoint on toggle",
+   pe('rep').value === '157,000');
+pe('self').checked = true; pipeline.dealEditSelfToggled(6001);
+ok("[DEFECT-CLOSING · E1] toggling back restores the self midpoint", pe('rep').value === '98,000');
+pe('self').checked = false; pipeline.dealEditSelfToggled(6001);
+let r6 = await pipeline.saveDealEdits(6001);
+let e6 = savedPayloads.at(-1).find(d => d.id === 6001);
+const expOff = finance.computeFlip({ ask: 289000, arv: 365000, rep: 157000, hold: 5,
+  cc1: 0.02, cc2: 0.05, carry: 2150, loan: 0, self: false });
+ok("[DEFECT-CLOSING · E1] save persists the recalculated estimator repair", e6.data.rep === 157000);
+ok("[DEFECT-CLOSING · E1] downstream economics recompute through canonical computeFlip",
+   e6.data.profit === expOff.profit && e6.data.maxOffer === expOff.maxOffer
+   && e6.data.totalIn === expOff.totalIn);
+ok("[DEFECT-CLOSING · E1] ownership stays estimator after a governed swap", e6.data.repSource === 'estimator');
+ok("[PRESERVATION · E1] the snapshot rides forward", JSON.stringify(e6.data.repEstimate) === JSON.stringify(EST_DEAL.data.repEstimate));
+
+// E2 · manual override + toggle → the user's dollars are never touched
+pe('rep').value = '120,000'; pe('rep').dataset.repOwned = 'manual';   // E3: typing flips ownership
+pe('self').checked = true; pipeline.dealEditSelfToggled(6001);
+ok("[DEFECT-CLOSING · E2] toggling never rewrites a user-owned repair number", pe('rep').value === '120,000');
+r6 = await pipeline.saveDealEdits(6001);
+e6 = savedPayloads.at(-1).find(d => d.id === 6001);
+ok("[DEFECT-CLOSING · E2/E3] save persists the manual number and manual ownership",
+   e6.data.rep === 120000 && e6.data.repSource === 'manual');
+ok("[PRESERVATION · E2] self flag still reaches the engine (75% rule) despite manual repair",
+   e6.data.maxOffer === finance.computeFlip({ ask: 289000, arv: 365000, rep: 120000, hold: 5,
+     cc1: 0.02, cc2: 0.05, carry: 2150, loan: 0, self: true }).maxOffer);
+
+// E4 · explicit re-adoption returns ownership to the estimator
+pipeline.dealEditUseEstimate(6001);
+ok("[DEFECT-CLOSING · E4] use-estimator re-applies the governed midpoint for the current self state",
+   pe('rep').value === '98,000' && pe('rep').dataset.repOwned === 'estimator');
+pe('self').checked = false; pipeline.dealEditSelfToggled(6001);
+ok("[DEFECT-CLOSING · E4] subsequent toggles recalc again after re-adoption", pe('rep').value === '157,000');
+
+// E5 · legacy unknown provenance → zero silent mutation
+pe('rep').value = '40,000'; pe('rep').dataset.repOwned = 'manual';
+pe('ask').value = '100,000'; pe('arv').value = '200,000'; pe('name').value = 'Legacy No Provenance';
+pe('market').value = ''; pe('sqft').value = ''; pe('carry').value = '900'; pe('target').value = '40,000';
+pe('self').checked = true; pipeline.dealEditSelfToggled(6002);
+ok("[DEFECT-CLOSING · E5] legacy deal (no snapshot): toggle mutates nothing", pe('rep').value === '40,000');
+pipeline.dealEditUseEstimate(6002);
+ok("[DEFECT-CLOSING · E5] legacy deal: use-estimator is inert (no snapshot to apply)", pe('rep').value === '40,000');
+r6 = await pipeline.saveDealEdits(6002);
+const l6 = savedPayloads.at(-1).find(d => d.id === 6002);
+ok("[DEFECT-CLOSING · E5] legacy save keeps the number, records known-manual ownership, invents no snapshot",
+   l6.data.rep === 40000 && l6.data.repSource === 'manual' && !('repEstimate' in l6.data && l6.data.repEstimate));
+
+// E6 · the analyzer now stamps provenance at the source
+const flipSrc2 = src("docs/src/js/flip.js");
+ok("[DEFECT-CLOSING · E6] analyzeFlip serializes ownership from the DOM law",
+   /repSource: repOwnedByEstimator \? 'estimator' : 'manual'/.test(flipSrc2));
+ok("[DEFECT-CLOSING · E6] analyzeFlip stamps the frozen estimator snapshot",
+   /repEstimate: repairEstimateSnapshot\(sqft\)/.test(flipSrc2));
+ok("[PRESERVATION · E6] estimator bands/discounts untouched by the corrective",
+   /hiredLow:\s*Math\.round\(lo \* 0\.35\)/.test(src("docs/src/js/repair.js"))
+   && /selfLow:\s*Math\.round\(lo \* 0\.62\)/.test(src("docs/src/js/repair.js")));
+
+// ── §F · market association is editable, explicit, and durable (defect 2) ────
+// F1 · the form pre-selects the stored stamp (source law: selected attribute)
+const plSrc2 = src("docs/src/js/pipeline.js");
+ok("[DEFECT-CLOSING · F1] the editor renders a market selector", /select data-pe="market"/.test(plSrc2));
+ok("[DEFECT-CLOSING · F1] the stored stamp pre-selects its option",
+   /o\.id === currentId \? ' selected' : ''/.test(plSrc2));
+ok("[DEFECT-CLOSING · F1] a stamped id outside the catalog is preserved, never dropped",
+   /opts\.unshift\(\{ id: currentId/.test(plSrc2));
+// F2/F3 · legacy deal: explicit selection persists (behavioral, incl. the real target flow)
+pe('name').value = 'Legacy No Provenance';
+pe('market').value = 'lake-murray-sc';
+await pipeline.saveDealEdits(6002);
+let f2 = savedPayloads.at(-1).find(d => d.id === 6002);
+ok("[DEFECT-CLOSING · F2] Edit → select Lake Murray → Save persists the association",
+   f2.market === 'lake-murray-sc' && f2.marketLabel === 'Lake Murray, SC');
+globalThis.__stubSupabase.rpc.get_pipeline = { data: savedPayloads.at(-1), error: null };
+await storage.hydratePipeline();
+ok("[DEFECT-CLOSING · F3] refresh (re-hydration) retains the market",
+   storage.getDeals().find(d => d.id === 6002).market === 'lake-murray-sc');
+// F4 · the read-only detail advertises the association
+ok("[DEFECT-CLOSING · F4] expanded detail renders the Underwritten-in row",
+   /'Underwritten in', v: escapeHtml\(deal\.marketLabel\)/.test(plSrc2));
+// F5 · the ACTIVE market has no say: change it, save again, stamp unmoved
+store.set('activeSlot', '0'); store.set('primaryMarket', 'charlotte-nc');
+await pipeline.saveDealEdits(6002);
+f2 = savedPayloads.at(-1).find(d => d.id === 6002);
+ok("[DEFECT-CLOSING · F5] a different ACTIVE market never rewrites the saved stamp",
+   f2.market === 'lake-murray-sc');
+// F6 · sharing consumes the SAVED association (pure builder takes only the deal)
+const share2 = await import("../docs/src/js/share.js");
+ok("[DEFECT-CLOSING · F6] the share message region comes from the saved deal, not the active market",
+   /in Lake Murray, SC/.test(share2.buildShareMessage(f2, null))
+   && store.get('primaryMarket') === 'charlotte-nc');
+// F7 · deal-name text does not determine market identity
+pe('name').value = 'Somewhere — Asheville';
+pe('market').value = '';
+await pipeline.saveDealEdits(6002);
+f2 = savedPayloads.at(-1).find(d => d.id === 6002);
+ok("[DEFECT-CLOSING · F7] name text never infers a market (cleared selector → null stamp)",
+   f2.market === null && f2.marketLabel === null && /Asheville/.test(f2.name));
 
 console.log(`\ndealedit: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }

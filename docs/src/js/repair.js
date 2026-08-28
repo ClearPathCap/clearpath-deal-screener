@@ -140,6 +140,27 @@ export function repairFieldShouldSelectOnFocus(dataset) {
   return dataset?.autoFilled === '1' && !dataset?.userEdited;
 }
 
+// ─── Pipeline-edit corrective (defect 1) · estimator snapshot ────────────────
+// The analyzer's repair-ownership state (dataset.autoFilled / userEdited) is
+// runtime DOM state — it was never serialized, so a saved deal could not say
+// whether its repair budget was the estimator's or the user's, and the Pipeline
+// editor could not honor the difference. This snapshot captures, AT UNDERWRITING
+// TIME, both governed midpoints (self-perform and hired) for the active scope
+// tier and market ranges — the same formula useRepairEstimate/calcRepair use.
+// A saved deal carrying it can swap self↔hired in the editor with numbers the
+// REAL estimator produced, frozen exactly like the deal's market stamp; band
+// recalibrations later never silently rewrite saved economics.
+export function repairEstimateSnapshot(sqft) {
+  const r = _ranges[currentTierName];
+  if (!r || !sqft) return null;
+  const mid = (lo, hi) => Math.round((sqft * (lo + hi) / 2) / 1000) * 1000;
+  return {
+    tier: currentTierName,
+    selfMid:  mid(r.selfLow,  r.selfHigh),
+    hiredMid: mid(r.hiredLow, r.hiredHigh),
+  };
+}
+
 export function useRepairEstimate() {
   const sqft = +document.getElementById('sqft').value;
   const self = document.getElementById('self-reno')?.checked;

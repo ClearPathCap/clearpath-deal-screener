@@ -9,6 +9,7 @@ import { getLastLtrResult } from './ltr.js';
 import { getLastBrrrResult } from './brrr.js';
 import { getPipelineFundingButtonHTML } from './clearpath.js';
 import { getActiveTier, getActiveMarketId, getMarketLabel } from './tiers.js';
+import { ALL_MARKETS } from './markets.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
 import { computeFlip, computeFlipStress, flipVerdict, validateInputs } from './finance.js';
 
@@ -395,6 +396,22 @@ const peNum   = (card, key, fallback) => {
   return Number.isFinite(v) && el.value.trim() !== '' ? v : fallback;
 };
 
+// Defect-2 corrective: the deal's market association must be EDITABLE, never
+// inferred. Options come from the canonical catalog (sorted by label); an
+// already-stamped id not in the catalog (custom/retired region) is preserved as
+// its own option so opening the editor can never silently drop it.
+function buildMarketOptions(currentId) {
+  const opts = ALL_MARKETS
+    .map(m => ({ id: m.id, label: getMarketLabel(m.id) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  if (currentId && !opts.some(o => o.id === currentId)) {
+    opts.unshift({ id: currentId, label: getMarketLabel(currentId) });
+  }
+  return opts.map(o =>
+    `<option value="${escapeHtml(o.id)}"${o.id === currentId ? ' selected' : ''}>${escapeHtml(o.label)}</option>`
+  ).join('');
+}
+
 function buildFlipEditForm(d) {
   const data = d.data || {};
   const money = (v) => v != null && Number.isFinite(+v) ? (+v).toLocaleString() : '';
@@ -413,7 +430,15 @@ function buildFlipEditForm(d) {
       </div>
       <div class="field-row">
         <div class="field"><label>Repair Costs</label>
-          <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="rep" value="${money(data.rep)}"></div></div>
+          <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="rep"
+            data-rep-owned="${data.repSource === 'estimator' ? 'estimator' : 'manual'}"
+            oninput="this.dataset.repOwned='manual'" value="${money(data.rep)}"></div>
+          ${data.repEstimate
+            ? (data.repSource === 'estimator'
+                ? `<div class="field-hint">Estimator midpoint (${escapeHtml(String(data.repEstimate.tier))} scope) — recalculates when Self-Renovating changes</div>`
+                : `<div class="field-hint">Your number — Self-Renovating won't change it · <a href="#" onclick="dealEditUseEstimate(${d.id});return false;">use estimator midpoint</a></div>`)
+            : `<div class="field-hint">No estimator record on this saved deal — this number is yours and is never changed automatically. Re-analyze in the calculator to re-establish an estimator estimate.</div>`}
+        </div>
         <div class="field"><label>Hold (months)</label>
           <div class="input-wrap"><input type="number" data-pe="hold" value="${data.hold ?? 5}"><span class="sfx">mo</span></div></div>
       </div>
@@ -444,9 +469,15 @@ function buildFlipEditForm(d) {
       <div class="toggle-row deal-edit-toggle">
         <div><div class="toggle-label">Self-Renovating</div>
         <div class="toggle-sub">Only if you perform the renovation labor yourself</div></div>
-        <label class="toggle"><input type="checkbox" data-pe="self" ${data.self ? 'checked' : ''}><div class="toggle-track"></div></label>
+        <label class="toggle"><input type="checkbox" data-pe="self" onchange="dealEditSelfToggled(${d.id})" ${data.self ? 'checked' : ''}><div class="toggle-track"></div></label>
       </div>
-      ${d.marketLabel ? `<div class="detail-row"><span class="dl">Underwritten in</span><span class="dv">${escapeHtml(d.marketLabel)}</span></div>` : ''}
+      <div class="field full"><label>Underwritten in <span>(market/region)</span></label>
+        <select data-pe="market">
+          <option value="">— No region —</option>
+          ${buildMarketOptions(d.market)}
+        </select>
+        ${!d.market ? `<div class="field-hint">This deal was saved before regions were recorded — pick the market it was underwritten against. The deal keeps it even if your active market changes later.</div>` : ''}
+      </div>
       <div class="field full"><label>Notes <span>(optional)</span></label>
         <textarea data-pe="notes">${escapeHtml(d.notes || '')}</textarea></div>
       <div class="detail-actions deal-edit-actions">
@@ -456,6 +487,41 @@ function buildFlipEditForm(d) {
       <div class="redeem-msg" data-pe="msg"></div>
     </div>
   `;
+}
+
+// Defect-1 corrective: the self toggle inside the editor. THE OWNERSHIP LAW:
+//   estimator-owned  → swap to the OTHER governed midpoint from the deal's
+//                      frozen underwriting snapshot (numbers the real estimator
+//                      produced — no recomputation, no band drift);
+//   user-owned       → the dollar amount is the user's; never touch it
+//                      (downstream math still reacts to `self` at Save, e.g.
+//                      the 75%/70% max-offer rule — that is the engine's law);
+//   legacy/unknown   → no snapshot exists; never mutate anything.
+export function dealEditSelfToggled(id) {
+  const deal = getDeals().find(d => d.id === id);
+  const card = document.querySelector('.deal-card[data-id="' + id + '"]');
+  const repEl = peField(card, 'rep');
+  const est = deal?.data?.repEstimate;
+  if (!repEl || !est) return;                              // legacy: hands off
+  if (repEl.dataset.repOwned !== 'estimator') return;      // user-owned: hands off
+  const selfOn = !!peField(card, 'self')?.checked;
+  const mid = selfOn ? est.selfMid : est.hiredMid;
+  if (Number.isFinite(+mid)) repEl.value = (+mid).toLocaleString();
+}
+
+// Explicit re-adoption of the estimator's number (the only way ownership can
+// return to the estimator — never silently). Requires a stored snapshot.
+export function dealEditUseEstimate(id) {
+  const deal = getDeals().find(d => d.id === id);
+  const card = document.querySelector('.deal-card[data-id="' + id + '"]');
+  const repEl = peField(card, 'rep');
+  const est = deal?.data?.repEstimate;
+  if (!repEl || !est) return;
+  const selfOn = !!peField(card, 'self')?.checked;
+  const mid = selfOn ? est.selfMid : est.hiredMid;
+  if (!Number.isFinite(+mid)) return;
+  repEl.value = (+mid).toLocaleString();
+  repEl.dataset.repOwned = 'estimator';
 }
 
 export function startDealEdit(id) {
@@ -526,9 +592,26 @@ export async function saveDealEdits(id) {
     profit: eng.profit, roi: eng.roi, target, maxOffer: eng.maxOffer, marginOfSafety, stressedProfit, self,
   });
 
+  // Defect-1: persist repair ownership. 'estimator' ONLY when the field still
+  // carries estimator ownership AND the dollar equals the snapshot's midpoint
+  // for the chosen self state — anything else is the user's number now. The
+  // snapshot itself always rides forward (it is underwriting history).
+  const repEl = peField(card, 'rep');
+  const est = old.repEstimate;
+  const repSource = (repEl?.dataset?.repOwned === 'estimator' && est
+                     && rep === (self ? est.selfMid : est.hiredMid))
+    ? 'estimator' : 'manual';
+
+  // Defect-2: the deal's market association comes from the EXPLICIT selector —
+  // never from the active market, never from name/address text. A missing
+  // selector (defensive) preserves the existing association unchanged.
+  const mktEl = peField(card, 'market');
+  const market = mktEl ? (mktEl.value || null) : (deal.market ?? null);
+
   const newData = {
     ...old,                       // preserves addr and any legacy extras untouched by the form
     type: 'flip', ask, arv, rep, hold,
+    repSource,
     cc1: cc1W, cc2: cc2W,         // schema convention: whole numbers
     carry, target, sqft, self,
     loan, rate, points,           // schema convention: fractions
@@ -541,6 +624,8 @@ export async function saveDealEdits(id) {
   const updatedDeal = {
     ...deal, name, notes,
     verdict, cls,
+    market,
+    marketLabel: market ? getMarketLabel(market) : null,
     data: newData,
     stats: buildDealStats('flip', newData),
     updatedAt: new Date().toISOString(),

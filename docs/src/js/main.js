@@ -10,7 +10,8 @@ import { setRepairTier, calcRepair, useRepairEstimate,
 import { saveDeal as _saveDeal, renderPipeline,
          filterPipeline, toggleDeal,
          requestDelete, confirmDelete,
-         startDealEdit, cancelDealEdit, saveDealEdits }              from './pipeline.js';
+         startDealEdit, cancelDealEdit, saveDealEdits,
+         dealEditSelfToggled, dealEditUseEstimate }                  from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
@@ -1388,6 +1389,9 @@ Object.assign(window, {
   startDealEdit,
   cancelDealEdit,
   saveDealEdits,
+  // repair-provenance corrective: governed self-toggle swap + explicit estimator re-adopt
+  dealEditSelfToggled,
+  dealEditUseEstimate,
   // share
   openShareApp,
   shareDeal,

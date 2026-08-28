@@ -2,7 +2,7 @@
 
 import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, renderInputIssues } from './format.js';
 import { FLIP_MARKETS, ALL_MARKETS } from './markets.js';
-import { updateRepairRangesForMarket } from './repair.js';
+import { updateRepairRangesForMarket, repairEstimateSnapshot } from './repair.js';
 import { maybeShowFundingButton } from './clearpath.js';
 import { computeFlip, computeFlipStress, flipVerdict, mosLabel, validateInputs } from './finance.js';
 
@@ -147,11 +147,23 @@ export function analyzeFlip() {
     { l: 'Stress-test profit (ARV −5%, rehab +10%, +1mo)', v: fmt(stressedProfit), color: stressedProfit >= 0 ? 'var(--accent)' : 'var(--danger)' },
   ]);
 
+  // Pipeline-edit corrective (defect 1): serialize the repair PROVENANCE the
+  // analyzer has always tracked in DOM state. 'estimator' iff the value on
+  // screen is still the estimator's autofill (same law as select-on-focus).
+  // The snapshot rides along whenever sqft allows one — for estimator-owned
+  // deals it powers the editor's governed self↔hired swap; for manual deals it
+  // powers an explicit "use estimator midpoint" without recomputation drift.
+  const repFieldEl = document.getElementById('f-rep');
+  const repOwnedByEstimator = !!(repFieldEl && repFieldEl.dataset.autoFilled === '1'
+                                 && !repFieldEl.dataset.userEdited);
+
   lastFlipResult = {
     type: 'flip', addr, ask, arv, rep, hold,
     cc1: +document.getElementById('f-cc1').value,
     cc2: +document.getElementById('f-cc2').value,
     carry, target, sqft, self,
+    repSource: repOwnedByEstimator ? 'estimator' : 'manual',
+    repEstimate: repairEstimateSnapshot(sqft),
     loan, rate, points, financed, finCost, loanInt, loanFees, cashIn, ltc,
     profit, roi, ltv: ltvVal, ltvLabel, maxOffer, buyCost, sellCost, holdCost, totalIn,
     marginOfSafety, stressedProfit,

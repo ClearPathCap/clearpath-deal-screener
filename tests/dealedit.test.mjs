@@ -199,6 +199,39 @@ ok("[DEFECT-CLOSING] a user-customized name is never overwritten",
 ok("[DEFECT-CLOSING] street only — no city duplication in the auto name",
    /\.split\(','\)\[0\]\.trim\(\)/.test(mainSrc));
 
+// ── §D · silent-wipe guard at the EDIT surface (hardening ruling 1) ──────────
+// The scenario the guard exists for: a session whose hydration failed holds an
+// empty/stale cache; an edit-save from it would wholesale-replace the server
+// pipeline. Proof: failed hydrate → saveDealEdits refuses honestly with ZERO
+// save RPC; a successful re-hydrate re-arms and the same edit then persists.
+storage.clearPipelineCache();
+globalThis.__stubSupabase = { session, rpc: {
+  get_pipeline: { data: null, error: { message: 'network down' } },
+  save_pipeline: (args) => { savedPayloads.push(args.p_deals); return { data: { ok: true }, error: null }; },
+} };
+await auth.initAuthAndEntitlement();
+await storage.hydratePipeline();                       // fails
+savedPayloads = [];
+pe('name').value = 'x';
+let staleRes = await pipeline.saveDealEdits(4001);
+ok("[DEFECT-CLOSING · WIPE] edit-save after failed hydrate is refused",
+   staleRes.status === 'not-found' || (staleRes.status === 'save-failed' && staleRes.failureClass === 'stale'));
+ok("[DEFECT-CLOSING · WIPE] zero save RPC — server deals cannot be erased", savedPayloads.length === 0);
+// Re-hydrate successfully and prove the path re-arms end to end.
+globalThis.__stubSupabase = { session, rpc: {
+  get_pipeline: { data: [DEAL, OTHER], error: null },
+  save_pipeline: (args) => { savedPayloads.push(args.p_deals); return { data: { ok: true }, error: null }; },
+} };
+await auth.initAuthAndEntitlement();
+await storage.hydratePipeline();
+pe('name').value = 'Re-armed'; pe('cc1').value = '2';
+pe('ask').value = '235,000'; pe('arv').value = '365,000'; pe('rep').value = '82,000';
+staleRes = await pipeline.saveDealEdits(4001);
+ok("[DEFECT-CLOSING · WIPE] successful re-hydrate re-arms the edit path",
+   staleRes.status === 'saved' && savedPayloads.length === 1);
+ok("[DEFECT-CLOSING · WIPE] the re-armed save still carries every other deal",
+   savedPayloads[0].some(d => d.id === 4002));
+
 console.log(`\ndealedit: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Canonical-engine pipeline editing holds ✓");

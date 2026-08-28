@@ -148,6 +148,32 @@ ok("[SAFETY] shared page is noindex", /noindex/.test(sharedHtml));
 ok("[COMPLIANCE] shared page carries the broker-not-lender disclaimer",
    /broker, not a lender/.test(sharedHtml) && /\(est\.\)/.test(sharedHtml));
 
+// ── §F · openShareApp joins the governed behavior (hardening ruling 2) ───────
+// The app-level share was the remaining path that could launch an sms: handler
+// into the Windows "Open Pick an app?" dead end. Same law as the deal path:
+// OS share sheet where supported; WhatsApp / Email / Copy Link fallback; no
+// sms:, no phone-number prompt, anywhere in the file.
+shared = [];
+globalThis.navigator.share = (payload) => { shared.push(payload); return Promise.resolve(); };
+await share.openShareApp();
+ok("[DEFECT-CLOSING · APP] native path invokes the OS share sheet once", shared.length === 1 && !!shared[0].url);
+ok("[DEFECT-CLOSING · APP] no modal on the native path", !el('modal-share-app').classList.contains('active'));
+delete globalThis.navigator.share;
+await share.openShareApp();
+const appHtml = el('share-app-options').innerHTML;
+ok("[DEFECT-CLOSING · APP] fallback modal opens", el('modal-share-app').classList.contains('active'));
+ok("[DEFECT-CLOSING · APP] WhatsApp / Email / Copy Link offered",
+   /wa\.me/.test(appHtml) && /mailto:/.test(appHtml) && /Copy Link/.test(appHtml));
+ok("[DEFECT-CLOSING · APP] no sms: and no Send by Text in the app path",
+   !/sms:/.test(appHtml) && !/Send by Text/.test(appHtml));
+ok("[DEFECT-CLOSING · APP] the sms: PROTOCOL string is gone from share.js entirely",
+   !/['"]sms:/.test(shSrcFinal()));
+// The tombstone COMMENT legitimately names the removed function — strip
+// comments and test the executable text only.
+ok("[DEFECT-CLOSING · APP] the phone-number prompt is gone from share.js entirely",
+   !/promptPhoneAndSend|Enter the phone number/.test(shSrcFinal().replace(/\/\/[^\n]*/g, '')));
+function shSrcFinal() { return src("docs/src/js/share.js"); }
+
 console.log(`\nsharelink: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Share redesign law holds ✓");

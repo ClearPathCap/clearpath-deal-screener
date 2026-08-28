@@ -1,7 +1,7 @@
 // ─── Pipeline: saved deals, render, expand, filter, delete ───────────────────
 
 import { fmt, pct, escapeHtml, parseComma } from './format.js';
-import { getDeals, saveDeals, PIPELINE_ALLOWANCE } from './storage.js';
+import { getDeals, saveDeals, hydratePipeline, PIPELINE_ALLOWANCE } from './storage.js';
 import { isSignedIn } from './auth.js';
 import { getLastFlipResult } from './flip.js';
 import { getLastRentalResult } from './rental.js';
@@ -23,7 +23,9 @@ let pendingDeleteId = null;
 
 // Wave A1 save outcome contract: resolves to {status} where status is exactly one
 // of refused-auth | refused-name | refused-result | refused-cap | refused-busy |
-// saved | save-failed (save-failed adds failureClass:'auth'|'other'). Success
+// saved | save-failed (save-failed adds failureClass:'auth'|'stale'|'other' —
+// 'stale' is the UX-wave silent-wipe guard: hydration unproven, nothing written,
+// recover by rehydrate + retry). Success
 // feedback fires ONLY after the durable server write confirms (await-then-commit).
 export async function saveDeal(type) {
   // Pipeline requires a free account (Option A) — anonymous users can analyze a
@@ -91,6 +93,14 @@ export async function saveDeal(type) {
     window.openUpgrade && window.openUpgrade('save');
     return { status: 'save-failed', failureClass: 'auth' };
   }
+  if (res.reason === 'stale') {
+    // Silent-wipe guard fired: the server was never heard this session, so a
+    // wholesale replace could have erased real deals. Honest + recoverable:
+    // nothing changed, a fresh hydrate is kicked off, the user just retries.
+    window.showToast && window.showToast("Couldn't verify your saved pipeline with the server — nothing was changed. Retry in a moment.", 4200);
+    hydratePipeline().then(() => renderPipeline()).catch(() => {});
+    return { status: 'save-failed', failureClass: 'stale' };
+  }
   window.showToast && window.showToast("Couldn't save this deal — connection or server problem. Try again.", 4200);
   return { status: 'save-failed', failureClass: 'other' };
 }
@@ -110,7 +120,8 @@ export function requestDelete(id, e) {
 
 // Wave A1 delete outcome contract: resolves to {status} where status is exactly
 // one of refused-auth | refused-busy | deleted | delete-failed (delete-failed adds
-// failureClass:'auth'|'other'). The row stays visible until persistence succeeds —
+// failureClass:'auth'|'stale'|'other'; 'stale' = silent-wipe guard, see saveDeal).
+// The row stays visible until persistence succeeds —
 // a failed delete never removes it optimistically.
 export async function confirmDelete() {
   // Entry auth gate (defense in depth — the signed-out UI can't reach this).
@@ -145,6 +156,11 @@ export async function confirmDelete() {
     window.showToast && window.showToast('Your session has expired — sign in again to update your pipeline.', 4200);
     window.openUpgrade && window.openUpgrade('save');
     return { status: 'delete-failed', failureClass: 'auth' };
+  }
+  if (res.reason === 'stale') {
+    window.showToast && window.showToast("Couldn't verify your saved pipeline with the server — nothing was deleted. Retry in a moment.", 4200);
+    hydratePipeline().then(() => renderPipeline()).catch(() => {});
+    return { status: 'delete-failed', failureClass: 'stale' };
   }
   window.showToast && window.showToast("Couldn't delete this deal — connection or server problem. It's still in your pipeline.", 4200);
   return { status: 'delete-failed', failureClass: 'other' };
@@ -543,6 +559,11 @@ export async function saveDealEdits(id) {
   }
   if (res.reason === 'busy') { say('Another pipeline update is in progress.'); return { status: 'refused-busy' }; }
   if (res.reason === 'auth') { say('Your session has expired — sign in again.'); return { status: 'save-failed', failureClass: 'auth' }; }
+  if (res.reason === 'stale') {
+    say("Couldn't verify your saved pipeline with the server — nothing was changed. Retry in a moment.");
+    hydratePipeline().then(() => renderPipeline()).catch(() => {});
+    return { status: 'save-failed', failureClass: 'stale' };
+  }
   say("Couldn't save changes — connection or server problem. Try again.");
   return { status: 'save-failed', failureClass: 'other' };
 }

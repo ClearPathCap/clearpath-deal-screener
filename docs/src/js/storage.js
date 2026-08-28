@@ -25,6 +25,18 @@ export const PIPELINE_ALLOWANCE = 25;
 let _cache = [];  // current pipeline, in memory (source of truth is the server)
 let _mutationInFlight = false;  // at most one unresolved save/delete mutation
 
+// UX wave hardening (silent-wipe): save_pipeline is a WHOLESALE replace, so a
+// candidate built from a cache that never completed a server round-trip could
+// replace real server deals with an empty/partial view — with 200s everywhere.
+// `_hydrated` is proven-knowledge state: it turns true ONLY when get_pipeline
+// resolves without error (a legitimately empty server pipeline IS a successful
+// hydration — the flag distinguishes "server says empty" from "we never heard
+// back"). No mutation may proceed while it is false.
+let _hydrated = false;
+
+// True once this session has a confirmed server round-trip to build saves on.
+export function pipelineHydrationOk() { return _hydrated; }
+
 // Synchronous read for the UI. Returns a copy so callers can't mutate the cache.
 export function getDeals() { return _cache.slice(); }
 
@@ -39,10 +51,16 @@ function classifyMutationFailure(err) {
 
 // Replace the pipeline (await-then-commit). Awaits exactly one save_pipeline RPC
 // on an immutable snapshot of `candidate`; assigns the cache ONLY on confirmed
-// success. Returns {ok:true} | {ok:false, reason:'busy'|'auth'|'other'}.
+// success. Returns {ok:true} | {ok:false, reason:'busy'|'auth'|'stale'|'other'}.
+// 'stale' = hydration never confirmed this session; recover by re-running
+// hydratePipeline and retrying — never by weakening the guard.
 export async function saveDeals(candidate) {
   if (_mutationInFlight) return { ok: false, reason: 'busy' };  // no second RPC
   if (!isSignedIn()) return { ok: false, reason: 'auth' };      // storage-boundary gate
+  // Silent-wipe guard: a wholesale replace may only be built on a cache the
+  // server actually confirmed this session. Refusing here (not in callers)
+  // covers save, edit, delete, and every future mutation path identically.
+  if (!_hydrated) return { ok: false, reason: 'stale' };
   const snapshot = Array.isArray(candidate) ? candidate.slice() : [];
   _mutationInFlight = true;
   try {
@@ -64,16 +82,21 @@ export async function saveDeals(candidate) {
 // Pull the signed-in user's pipeline from the server into the cache. Called on
 // sign-in and at boot when a session is restored. Returns the deals.
 export async function hydratePipeline() {
-  if (!isSignedIn()) { _cache = []; return _cache; }
+  if (!isSignedIn()) { _cache = []; _hydrated = false; return _cache; }
   try {
     const { data, error } = await supabase.rpc('get_pipeline');
     if (error) { console.warn('Pipeline load failed:', error); return _cache; }
+    // Success — including the server truthfully answering "empty". Only here
+    // does the cache become a legitimate base for a wholesale replace.
     _cache = Array.isArray(data) ? data : [];
+    _hydrated = true;
   } catch (e) {
     console.warn('Pipeline load failed:', e);
+    // _hydrated deliberately NOT set: an unheard server never authorizes a save.
   }
   return _cache;
 }
 
 // On sign-out, drop the cache so the next (anonymous) view shows nothing.
-export function clearPipelineCache() { _cache = []; }
+// Hydration knowledge dies with the session it was proven in.
+export function clearPipelineCache() { _cache = []; _hydrated = false; }

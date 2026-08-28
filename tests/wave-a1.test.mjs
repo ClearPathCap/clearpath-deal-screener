@@ -148,6 +148,14 @@ ok(storage.getDeals().length === 0, 'A1 cache untouched');
 
 // A2: success commits ONLY after RPC resolution (gate 7a)
 globalThis.__authState.signedIn = true;
+// RE-PINNED in the UX-wave hardening commit (same-commit law): saveDeals now
+// carries a silent-wipe guard — a wholesale replace may only build on a cache
+// the server confirmed this session. The A-pins therefore hydrate ONCE here
+// (a successful round-trip; okRpc's {data:null} = legitimate empty pipeline)
+// exactly as the real boot chain does via syncPipelineOnAuth. The A9/A10 pins
+// below prove the guard itself.
+okRpc();
+await storage.hydratePipeline();
 let d = deferRpc();
 let p = storage.saveDeals([{ id: 1 }]);
 await tick();
@@ -214,6 +222,22 @@ p = storage.saveDeals(cand);
 cand.push({ id: 'injected' });
 await tick(); d.resolve(); r = await p;
 ok(r.ok === true && storage.getDeals().length === 1 && storage.getDeals()[0].id === 8, 'A8 snapshot immune to caller mutation');
+
+// A9/A10 · UX-wave silent-wipe guard: an unheard server never authorizes a
+// wholesale replace. Sign-out drops hydration knowledge; a FAILED hydrate must
+// leave saveDeals refusing 'stale' with ZERO save RPC (existing server deals
+// cannot be erased); a subsequent SUCCESSFUL hydrate re-arms saves.
+storage.clearPipelineCache();                       // sign-out path: knowledge dies
+globalThis.__rpc = async () => ({ data: null, error: { message: 'hydrate down' } });
+await storage.hydratePipeline();                    // fails — flag must stay false
+rpcCalls = [];
+r = await storage.saveDeals([{ id: 'wipe-attempt' }]);
+ok(r.ok === false && r.reason === 'stale', 'A9 unproven hydration -> {ok:false, stale}');
+ok(rpcCalls.filter(n => n === 'save_pipeline').length === 0, 'A9 zero save RPC — server deals cannot be erased');
+okRpc();
+await storage.hydratePipeline();                    // legit round-trip (empty is fine)
+r = await storage.saveDeals([{ id: 10 }]);
+ok(r.ok === true && storage.getDeals()[0].id === 10, 'A10 successful re-hydrate re-arms saves');
 
 console.log('— §B pipeline.js saveDeal — all seven statuses (real module) —');
 

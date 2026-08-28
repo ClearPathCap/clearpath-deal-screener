@@ -328,18 +328,53 @@ ok("[DEFECT-CLOSING · E4] use-estimator re-applies the governed midpoint for th
 pe('self').checked = false; pipeline.dealEditSelfToggled(6001);
 ok("[DEFECT-CLOSING · E4] subsequent toggles recalc again after re-adoption", pe('rep').value === '157,000');
 
-// E5 · legacy unknown provenance → zero silent mutation
+// E5 · legacy unknown provenance — SAFE BY DEFAULT, ADOPTABLE BY EXPLICIT
+// ACTION (final pre-push ruling): loads unchanged; self-toggle alone never
+// rewrites; but "Use estimator midpoint" WORKS, computing the governed snapshot
+// from the deal's own sqft + saved/selected market — no leaving the Pipeline.
+delete pe('rep').dataset.repSnapshot;
 pe('rep').value = '40,000'; pe('rep').dataset.repOwned = 'manual';
 pe('ask').value = '100,000'; pe('arv').value = '200,000'; pe('name').value = 'Legacy No Provenance';
 pe('market').value = ''; pe('sqft').value = ''; pe('carry').value = '900'; pe('target').value = '40,000';
+pe('loan').value = ''; pe('notes').value = ''; pe('hold').value = '5'; pe('cc1').value = '2'; pe('cc2').value = '5';
+pe('rate').value = '10'; pe('points').value = '3';
 pe('self').checked = true; pipeline.dealEditSelfToggled(6002);
-ok("[DEFECT-CLOSING · E5] legacy deal (no snapshot): toggle mutates nothing", pe('rep').value === '40,000');
+ok("[RULING · E5-1/2] legacy loads unchanged; toggle alone mutates nothing", pe('rep').value === '40,000');
+pe('msg').textContent = '';
 pipeline.dealEditUseEstimate(6002);
-ok("[DEFECT-CLOSING · E5] legacy deal: use-estimator is inert (no snapshot to apply)", pe('rep').value === '40,000');
+ok("[RULING · E5] adoption without sqft refuses with guidance, value untouched",
+   pe('rep').value === '40,000' && /square footage/.test(pe('msg').textContent));
 r6 = await pipeline.saveDealEdits(6002);
-const l6 = savedPayloads.at(-1).find(d => d.id === 6002);
-ok("[DEFECT-CLOSING · E5] legacy save keeps the number, records known-manual ownership, invents no snapshot",
-   l6.data.rep === 40000 && l6.data.repSource === 'manual' && !('repEstimate' in l6.data && l6.data.repEstimate));
+let l6 = savedPayloads.at(-1).find(d => d.id === 6002);
+ok("[RULING · E5] un-adopted legacy save keeps the number, records known-manual, invents no snapshot",
+   l6.data.rep === 40000 && l6.data.repSource === 'manual' && !l6.data.repEstimate);
+
+// E5b · explicit adoption (ruling tests 3–7) — the REAL target path: sqft 2622
+// + Lake Murray (no flip entry → Southeast fallback {38,82} → 98,000/157,000).
+pe('sqft').value = '2622'; pe('market').value = 'lake-murray-sc';
+pe('self').checked = true;
+pipeline.dealEditUseEstimate(6002);
+ok("[RULING · E5b-3/4] adoption computes the governed snapshot from the deal's market+sqft and applies the SELF midpoint",
+   pe('rep').value === '98,000' && pe('rep').dataset.repOwned === 'estimator');
+pe('self').checked = false; pipeline.dealEditSelfToggled(6002);
+ok("[RULING · E5b-6] subsequent toggles swap estimator-owned values", pe('rep').value === '157,000');
+r6 = await pipeline.saveDealEdits(6002);
+l6 = savedPayloads.at(-1).find(d => d.id === 6002);
+const expAdopt = finance.computeFlip({ ask: 100000, arv: 200000, rep: 157000, hold: 5,
+  cc1: 0.02, cc2: 0.05, carry: 900, loan: 0, self: false });
+ok("[RULING · E5b-5] downstream economics recompute through canonical computeFlip",
+   l6.data.profit === expAdopt.profit && l6.data.maxOffer === expAdopt.maxOffer);
+ok("[RULING · E5b] adoption persists estimator ownership AND the governed snapshot",
+   l6.data.repSource === 'estimator'
+   && JSON.stringify(l6.data.repEstimate) === JSON.stringify({ tier: 'mid', selfMid: 98000, hiredMid: 157000 }));
+ok("[RULING · E5b] the deal's saved market drives the snapshot", l6.market === 'lake-murray-sc');
+pe('rep').value = '150,000'; pe('rep').dataset.repOwned = 'manual';
+pe('self').checked = true; pipeline.dealEditSelfToggled(6002);
+ok("[RULING · E5b-7] a manual edit after adoption is protected from automatic changes", pe('rep').value === '150,000');
+r6 = await pipeline.saveDealEdits(6002);
+l6 = savedPayloads.at(-1).find(d => d.id === 6002);
+ok("[RULING · E5b-7] manual ownership persists after adoption-then-override",
+   l6.data.repSource === 'manual' && l6.data.rep === 150000);
 
 // E6 · the analyzer now stamps provenance at the source
 const flipSrc2 = src("docs/src/js/flip.js");

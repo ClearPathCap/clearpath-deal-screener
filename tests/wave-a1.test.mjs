@@ -39,7 +39,7 @@ const STUBS = {
     export const redeemServerCode = async () => ({ ok: false, msg: '' });
     export const syncEntitlement = async () => 'starter';`,
   'flip.js': `export const getLastFlipResult = () => globalThis.__lastResults.flip;
-    export const analyzeFlip=()=>{},setFlipPreset=()=>{},resetFlip=()=>{};`,
+    export const analyzeFlip=()=>{},setFlipPreset=()=>{},resetFlip=()=>{},getFlipMarket=()=>({});`,
   'rental.js': `export const getLastRentalResult = () => globalThis.__lastResults.rental;
     export const analyzeRental=()=>{},setRentalPreset=()=>{},resetRental=()=>{};`,
   'ltr.js': `export const getLastLtrResult = () => globalThis.__lastResults.ltr;
@@ -65,7 +65,9 @@ const STUBS = {
   // Added in the D-1 P2 batch: updateRepairRangesForMarket (M-1's no-market reset)
   // and repairFieldShouldSelectOnFocus (P2-1). Both are inert here; §D only
   // exercises the auth-chip and save-button mappers.
-  'repair.js': `export const setRepairTier=()=>{},calcRepair=()=>{},useRepairEstimate=()=>{},onSelfRenoToggle=()=>{},updateRepairRangesForMarket=()=>{},repairFieldShouldSelectOnFocus=()=>false;`,
+  // + pre-push ruling: getFlipMarket / repairEstimateSnapshotFor feed the
+  // Pipeline editor's explicit legacy estimator adoption — inert here.
+  'repair.js': `export const setRepairTier=()=>{},calcRepair=()=>{},useRepairEstimate=()=>{},onSelfRenoToggle=()=>{},updateRepairRangesForMarket=()=>{},repairFieldShouldSelectOnFocus=()=>false,repairEstimateSnapshot=()=>null,repairEstimateSnapshotFor=()=>null;`,
   'share.js': `export const openShareApp=()=>{},shareDeal=()=>{};`,
   'markets.js': `export const ALL_MARKETS=[],STR_MARKETS={},FLIP_MARKETS={},LTR_MARKETS={};`,
   // UX wave: main.js imports market sync; inert here — §A-§F never exercise it.

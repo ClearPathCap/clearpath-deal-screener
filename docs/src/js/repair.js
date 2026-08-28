@@ -161,6 +161,24 @@ export function repairEstimateSnapshot(sqft) {
   };
 }
 
+// Same governed math for an ARBITRARY context — the Pipeline editor's explicit
+// legacy adoption (final pre-push ruling): a deal saved before provenance
+// existed can adopt an estimator snapshot computed from ITS OWN square footage
+// and ITS OWN market, through the same range derivation and midpoint formula
+// the analyzer uses. `market` is a flip-market object (or null → the governed
+// no-market DEFAULT_RANGES); tier defaults to the estimator's default scope
+// (Mid — the card the analyzer ships active). Never called implicitly.
+export function repairEstimateSnapshotFor(sqft, market, tier = 'mid') {
+  if (!sqft) return null;
+  const ranges = (market && market.repairLow && market.repairHigh)
+    ? computeRangesForMarket(market)
+    : DEFAULT_RANGES;
+  const r = ranges[tier];
+  if (!r) return null;
+  const mid = (lo, hi) => Math.round((sqft * (lo + hi) / 2) / 1000) * 1000;
+  return { tier, selfMid: mid(r.selfLow, r.selfHigh), hiredMid: mid(r.hiredLow, r.hiredHigh) };
+}
+
 export function useRepairEstimate() {
   const sqft = +document.getElementById('sqft').value;
   const self = document.getElementById('self-reno')?.checked;

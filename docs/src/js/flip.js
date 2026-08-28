@@ -17,7 +17,10 @@ const FLIP_REGIONAL_DEFAULTS = {
 };
 const FLIP_NATIONAL_DEFAULT = FLIP_REGIONAL_DEFAULTS['Southeast'];
 
-function getFlipMarket(slug) {
+// Exported (pre-push ruling): the Pipeline editor's legacy estimator adoption
+// resolves a deal's saved market through THIS one canonical resolver — exact
+// flip data, else regional fallback, else Southeast — never a second copy.
+export function getFlipMarket(slug) {
   if (FLIP_MARKETS[slug]) return FLIP_MARKETS[slug];
   const entry  = ALL_MARKETS.find(m => m.id === slug);
   const region = entry?.region || 'Southeast';

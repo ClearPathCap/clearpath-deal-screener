@@ -3,7 +3,8 @@
 import { fmt, pct, escapeHtml, parseComma } from './format.js';
 import { getDeals, saveDeals, hydratePipeline, PIPELINE_ALLOWANCE } from './storage.js';
 import { isSignedIn } from './auth.js';
-import { getLastFlipResult } from './flip.js';
+import { getLastFlipResult, getFlipMarket } from './flip.js';
+import { repairEstimateSnapshotFor } from './repair.js';
 import { getLastRentalResult } from './rental.js';
 import { getLastLtrResult } from './ltr.js';
 import { getLastBrrrResult } from './brrr.js';
@@ -437,7 +438,7 @@ function buildFlipEditForm(d) {
             ? (data.repSource === 'estimator'
                 ? `<div class="field-hint">Estimator midpoint (${escapeHtml(String(data.repEstimate.tier))} scope) — recalculates when Self-Renovating changes</div>`
                 : `<div class="field-hint">Your number — Self-Renovating won't change it · <a href="#" onclick="dealEditUseEstimate(${d.id});return false;">use estimator midpoint</a></div>`)
-            : `<div class="field-hint">No estimator record on this saved deal — this number is yours and is never changed automatically. Re-analyze in the calculator to re-establish an estimator estimate.</div>`}
+            : `<div class="field-hint">No estimator record is stored for this older deal, so DealFit won't change this repair budget automatically. · <a href="#" onclick="dealEditUseEstimate(${d.id});return false;">Use estimator midpoint</a></div>`}
         </div>
         <div class="field"><label>Hold (months)</label>
           <div class="input-wrap"><input type="number" data-pe="hold" value="${data.hold ?? 5}"><span class="sfx">mo</span></div></div>
@@ -497,26 +498,59 @@ function buildFlipEditForm(d) {
 //                      (downstream math still reacts to `self` at Save, e.g.
 //                      the 75%/70% max-offer rule — that is the engine's law);
 //   legacy/unknown   → no snapshot exists; never mutate anything.
+// The snapshot governing THIS edit session: one explicitly adopted during the
+// session (stashed as JSON on the field by dealEditUseEstimate) outranks the
+// deal's stored one — that is what lets a legacy deal behave like an
+// estimator-owned deal the moment the user adopts, before Save persists it.
+function sessionSnapshot(repEl, deal) {
+  if (repEl?.dataset?.repSnapshot) {
+    try { return JSON.parse(repEl.dataset.repSnapshot); } catch { /* fall through */ }
+  }
+  return deal?.data?.repEstimate || null;
+}
+
 export function dealEditSelfToggled(id) {
   const deal = getDeals().find(d => d.id === id);
   const card = document.querySelector('.deal-card[data-id="' + id + '"]');
   const repEl = peField(card, 'rep');
-  const est = deal?.data?.repEstimate;
-  if (!repEl || !est) return;                              // legacy: hands off
+  const est = sessionSnapshot(repEl, deal);
+  if (!repEl || !est) return;                              // no snapshot: hands off
   if (repEl.dataset.repOwned !== 'estimator') return;      // user-owned: hands off
   const selfOn = !!peField(card, 'self')?.checked;
   const mid = selfOn ? est.selfMid : est.hiredMid;
   if (Number.isFinite(+mid)) repEl.value = (+mid).toLocaleString();
 }
 
-// Explicit re-adoption of the estimator's number (the only way ownership can
-// return to the estimator — never silently). Requires a stored snapshot.
+// Explicit estimator adoption — the ONLY way ownership becomes (or returns to)
+// the estimator, never inference. Pre-push ruling: this must ALSO work for
+// legacy deals with no stored snapshot, computed by the EXISTING governed
+// estimator from the deal's own square footage and its saved/selected market —
+// without leaving the Pipeline. Explicit user action, so the no-silent-rewrite
+// law is intact: nothing here runs unless the user clicks it.
 export function dealEditUseEstimate(id) {
   const deal = getDeals().find(d => d.id === id);
   const card = document.querySelector('.deal-card[data-id="' + id + '"]');
   const repEl = peField(card, 'rep');
-  const est = deal?.data?.repEstimate;
-  if (!repEl || !est) return;
+  if (!repEl || !deal) return;
+  const msgEl = peField(card, 'msg');
+
+  let est = sessionSnapshot(repEl, deal);
+  if (!est) {
+    // Legacy adoption: sqft and market come from the FORM first (the user may
+    // have just corrected them), falling back to the saved deal.
+    const sqft = peNum(card, 'sqft', deal.data?.sqft ?? 0) || 0;
+    if (!sqft) {
+      if (msgEl) { msgEl.textContent = 'Enter square footage first — the estimator needs it.'; msgEl.className = 'redeem-msg err'; }
+      return;
+    }
+    const mktEl = peField(card, 'market');
+    const marketId = mktEl ? (mktEl.value || null) : (deal.market ?? null);
+    est = repairEstimateSnapshotFor(sqft, marketId ? getFlipMarket(marketId) : null);
+    if (!est) return;
+    repEl.dataset.repSnapshot = JSON.stringify(est);   // Save persists this adoption
+    if (msgEl) { msgEl.textContent = ''; msgEl.className = 'redeem-msg'; }
+  }
+
   const selfOn = !!peField(card, 'self')?.checked;
   const mid = selfOn ? est.selfMid : est.hiredMid;
   if (!Number.isFinite(+mid)) return;
@@ -594,10 +628,12 @@ export async function saveDealEdits(id) {
 
   // Defect-1: persist repair ownership. 'estimator' ONLY when the field still
   // carries estimator ownership AND the dollar equals the snapshot's midpoint
-  // for the chosen self state — anything else is the user's number now. The
-  // snapshot itself always rides forward (it is underwriting history).
+  // for the chosen self state — anything else is the user's number now. A
+  // snapshot adopted THIS session (legacy adoption, pre-push ruling) outranks
+  // the stored one and is what gets persisted; otherwise the stored snapshot
+  // rides forward as underwriting history.
   const repEl = peField(card, 'rep');
-  const est = old.repEstimate;
+  const est = sessionSnapshot(repEl, deal);
   const repSource = (repEl?.dataset?.repOwned === 'estimator' && est
                      && rep === (self ? est.selfMid : est.hiredMid))
     ? 'estimator' : 'manual';
@@ -612,6 +648,8 @@ export async function saveDealEdits(id) {
     ...old,                       // preserves addr and any legacy extras untouched by the form
     type: 'flip', ask, arv, rep, hold,
     repSource,
+    ...(est ? { repEstimate: est } : {}),   // an adopted snapshot persists; absent stays absent
+
     cc1: cc1W, cc2: cc2W,         // schema convention: whole numbers
     carry, target, sqft, self,
     loan, rate, points,           // schema convention: fractions

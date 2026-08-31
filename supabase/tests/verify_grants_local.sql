@@ -125,7 +125,10 @@ begin
   -- MAY be permanent. generic_investor could not be used this way — its NULL
   -- expiry raises. Permanence is intentional here, not incidental.
   select code into v_code from public.issue_comp_code('generic_pro', null, 'local-test-1');
-  assert v_code like 'CPC-G-%', 'issue: code format';
+  -- RE-PINNED (0015 friendly codes): default format is now <POOL>-XXXX-XXXX
+  -- from the unambiguous alphabet — the 26-char hex format was the proven
+  -- adoption blocker. verify_comp_ux_local.sql owns the full format law.
+  assert v_code ~ '^PRO-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$', 'issue: friendly code format';
   assert (select count(*) from public.campaign_slots where pool = 'generic_pro' and state = 'issued') = 1,
     'issue: one slot issued';
   -- Rotation reuses the slot, consumes nothing.
@@ -134,10 +137,11 @@ begin
   assert v_code2 <> v_code, 'rotate: new credential';
   assert (select count(*) from public.campaign_slots where pool = 'generic_pro' and state = 'issued') = 1,
     'rotate: still exactly one issued slot';
-  assert (select active from public.comp_codes_v2 where code_hash = public.hash_comp_code(v_code)) = false,
+  -- RE-PINNED (0015): new issuance stores hash_comp_code_v2, not the legacy hash.
+  assert (select active from public.comp_codes_v2 where code_hash = public.hash_comp_code_v2(v_code)) = false,
     'rotate: old code deactivated';
   -- Atomic one-time claim: first claim wins, second gets zero rows.
-  v_hash := public.hash_comp_code(v_code2);
+  v_hash := public.hash_comp_code_v2(v_code2);   -- RE-PINNED (0015)
   update public.comp_codes_v2 c set redeemed_count = c.redeemed_count + 1
    where c.code_hash = v_hash and c.active and (c.expires_at is null or now() < c.expires_at)
      and c.redeemed_count < c.max_redemptions;
@@ -154,10 +158,10 @@ begin
   -- normalize to 00:00:00Z (it guarantees "through December 31, 2026" in
   -- every U.S. timezone).
   select code into v_code from public.issue_comp_code('aspire', null, 'local-aspire');
-  assert (select expires_at from public.comp_codes_v2 where code_hash = public.hash_comp_code(v_code))
+  assert (select expires_at from public.comp_codes_v2 where code_hash = public.hash_comp_code_v2(v_code))
          = timestamptz '2027-01-01T10:00:00Z', 'aspire: forced expiry is the governed instant';
   select code into v_code from public.issue_comp_code('aspire', timestamptz '2028-06-01T00:00:00Z', 'local-aspire-override');
-  assert (select expires_at from public.comp_codes_v2 where code_hash = public.hash_comp_code(v_code))
+  assert (select expires_at from public.comp_codes_v2 where code_hash = public.hash_comp_code_v2(v_code))
          = timestamptz '2027-01-01T10:00:00Z', 'aspire: caller-supplied expiry is ignored';
 
   -- Pool ceilings: issuing beyond the governed 25 aspire slots must fail
@@ -311,9 +315,9 @@ begin
     '4.1: every redemption-created grant carries its code hash';
 
   -- ── privilege posture (pin 4) ──────────────────────────────────────────────
-  assert not has_function_privilege('anon', 'public.issue_comp_code(text,timestamptz,text)', 'execute'),
+  assert not has_function_privilege('anon', 'public.issue_comp_code(text,timestamptz,text,text)', 'execute'),
     'priv: anon cannot issue';
-  assert not has_function_privilege('authenticated', 'public.issue_comp_code(text,timestamptz,text)', 'execute'),
+  assert not has_function_privilege('authenticated', 'public.issue_comp_code(text,timestamptz,text,text)', 'execute'),
     'priv: authenticated cannot issue';
   -- K-5 (0012): apply_stripe_grant is now the 12-arg returns-text form; the
   -- trailing params default so existing 10-argument calls resolve unchanged.
@@ -351,9 +355,9 @@ begin
     '4.1#1: service_role CAN expire attempts';
   assert has_function_privilege('service_role', 'public.upsert_stripe_customer(uuid,text,text)', 'execute'),
     '4.1#1: service_role CAN upsert customer mapping';
-  assert not has_function_privilege('service_role', 'public.issue_comp_code(text,timestamptz,text)', 'execute'),
+  assert not has_function_privilege('service_role', 'public.issue_comp_code(text,timestamptz,text,text)', 'execute'),
     '4.1#1: service_role can NOT issue business codes';
-  assert not has_function_privilege('service_role', 'public.rotate_comp_code(text,integer)', 'execute'),
+  assert not has_function_privilege('service_role', 'public.rotate_comp_code(text,integer,text)', 'execute'),
     '4.1#1: service_role can NOT rotate codes';
   assert not has_function_privilege('service_role', 'public.revoke_grant(uuid)', 'execute'),
     '4.1#1: service_role can NOT revoke grants';

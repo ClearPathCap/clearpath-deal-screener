@@ -338,7 +338,17 @@ function buildDealCard(d) {
             ${address}
             <div class="deal-region">${dealRegionLabel(d.type)}</div>
           </div>
-          <div class="deal-badge ${insP ? 'warm' : d.cls}">${insP ? insP.tag : d.verdict}</div>
+          ${(d.type === 'flip' && !insP && data.maxOffer > 0)
+            /* LIVE DEFECT FIX: the verdict badge was an inert div inside the
+               header's toggleDeal delegation, so tapping "COUNTER AT MAX
+               OFFER" only expanded the card. A flip verdict with a governed
+               scenario is now a real button: native Enter/Space activation,
+               and stopPropagation so activation never reaches the card
+               toggle. All other badges stay inert divs. */
+            ? `<button type="button" class="deal-badge ${d.cls} badge-action" aria-haspopup="dialog"
+                 title="See this deal at DealFit's max offer"
+                 onclick="event.stopPropagation();showMaxOfferScenario(${d.id})">${d.verdict}</button>`
+            : `<div class="deal-badge ${insP ? 'warm' : d.cls}">${insP ? insP.tag : d.verdict}</div>`}
         </div>
         <div class="deal-stats">
           ${shownStats.map(s => `<div class="deal-stat"><div class="dsl">${s.l}</div><div class="dsv${s.cls ? ' ' + s.cls : ''}">${s.v}</div></div>`).join('')}

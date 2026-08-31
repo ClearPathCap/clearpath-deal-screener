@@ -164,6 +164,46 @@ for (const [name, s] of [["pipeline.js", pipeJs], ["share.js", src("docs/src/js/
      /window\.openModal\s*\|\|/.test(s) && /window\.closeModal\s*\|\|/.test(s));
 }
 
+// ── §Badge · LIVE DEFECT: interactive verdict badge (pipeline max-offer) ─────
+// Proven live failure: the verdict badge was an inert div inside
+// `.deal-header onclick="toggleDeal(...)"`, so tapping "COUNTER AT MAX OFFER"
+// only expanded/collapsed the card. Event model now under pin: a flip verdict
+// with a governed scenario is a REAL <button> whose inline handler stops
+// propagation BEFORE opening the scenario — activation (mouse, touch, and
+// native keyboard Enter/Space) can never reach the card toggle.
+const badgeBtn = (pipeJs.match(/<button type="button" class="deal-badge[\s\S]*?<\/button>`/) || [''])[0];
+ok("BADGE-A: scenario verdict renders as a semantic <button type=\"button\">",
+   badgeBtn.length > 0 && /type="button"/.test(badgeBtn) && /aria-haspopup="dialog"/.test(badgeBtn));
+ok("BADGE-A2: the button is gated to flip deals WITH a governed scenario",
+   /d\.type === 'flip' && !insP && data\.maxOffer > 0/.test(pipeJs));
+ok("BADGE-A3: every other badge stays an inert div (no scenario, no control)",
+   /<div class="deal-badge \$\{insP \? 'warm' : d\.cls\}">/.test(pipeJs));
+ok("BADGE-B: activation stops propagation FIRST, then opens the scenario — never the card toggle",
+   /onclick="event\.stopPropagation\(\);showMaxOfferScenario\(\$\{d\.id\}\)"/.test(badgeBtn));
+ok("BADGE-D: keyboard law — native button semantics (Enter/Space fire the same isolated click)",
+   /type="button"/.test(badgeBtn));
+ok("BADGE-E: ordinary header space still expands/collapses via the card handler",
+   /<div class="deal-header" onclick="toggleDeal\(\$\{d\.id\}\)">/.test(pipeJs));
+ok("BADGE-F: the chevron affordance remains inside the toggling header",
+   /class="expand-arrow"/.test(pipeJs.slice(pipeJs.indexOf('deal-header'), pipeJs.indexOf('deal-detail'))));
+ok("BADGE-G: Delete/Edit/Share remain their own isolated controls",
+   /event\.stopPropagation\(\);requestDelete\(/.test(pipeJs) &&
+   /event\.stopPropagation\(\);startDealEdit\(/.test(pipeJs) &&
+   /event\.stopPropagation\(\);shareDeal\(/.test(pipeJs));
+ok("BADGE-H: badge routes into the ONE renderer already proven non-persisting — no duplicate handlers",
+   (mainJs.match(/function showMaxOfferScenario/g) || []).length === 1 &&
+   !/function showMaxOfferScenario/.test(pipeJs) &&
+   !/function showMaxOfferScenario/.test(flipJs));
+// (H's persistence teeth are the §D-wiring pins above: the renderer writes only
+// into #maxoffer-body and calls no save/RPC path; I is the frozen-input proof.)
+const cssBadge = src("docs/src/css/styles.css");
+ok("BADGE-desktop: hover + cursor make the control unmistakable",
+   /\.badge-action\{cursor:pointer/.test(cssBadge) && /\.badge-action:hover\{filter:brightness/.test(cssBadge));
+ok("BADGE-desktop: focus-visible ring exists for keyboard users",
+   /\.badge-action:focus-visible\{outline:2px solid var\(--accent\)/.test(cssBadge));
+ok("BADGE-font: button variant keeps the app font (buttons don't inherit)",
+   /button\.deal-badge\{font-family:var\(--font\)\}/.test(cssBadge));
+
 // ── report ───────────────────────────────────────────────────────────────────
 console.log(`dealsignal: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log('  FAIL: ' + f)); process.exit(1); }

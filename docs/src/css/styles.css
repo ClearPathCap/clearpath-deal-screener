@@ -669,3 +669,14 @@ body.beginner-mode .tier-desc-long{display:block}
   .detail-row{gap:10px}
   .detail-row .dv{text-align:right}
 }
+
+/* ── LIVE DEFECT FIX · interactive verdict badge (max-offer scenario) ─────────
+   The flip verdict badge is now a real <button> when a governed scenario
+   exists. Buttons don't inherit font; everything else comes from the shared
+   .deal-badge + verdict-class rules. Desktop gets an unmistakable hover and a
+   focus-visible ring; activation is isolated from the card toggle in the
+   markup (stopPropagation), not here. */
+button.deal-badge{font-family:var(--font)}
+.badge-action{cursor:pointer;transition:filter .15s}
+.badge-action:hover{filter:brightness(1.3)}
+.badge-action:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

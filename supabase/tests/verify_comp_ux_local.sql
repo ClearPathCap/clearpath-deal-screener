@@ -3,11 +3,12 @@
 -- Run against a LOCAL stack AFTER applying 0001–0015. One transaction, ends in
 -- ROLLBACK — zero persistent state. NEVER run against the live project.
 --
--- Law under test: friendly <POOL>-XXXX-XXXX defaults (unambiguous alphabet);
--- optional vanity codes with a 10-alphanumeric floor and PK-enforced
--- uniqueness; forgiving redemption (case/space/dash-insensitive) via
--- hash_comp_code_v2 with a LEGACY-hash fallback so pre-0015 codes still
--- redeem; rotation shares the one canonical builder; every K-1/K-2 law and the
+-- Law under test (security-amended): friendly <POOL>-XXXX-XXXX defaults;
+-- PERSONALIZED codes = owner prefix + '-' + EXACTLY 4 random unambiguous chars
+-- (never a fully predictable bearer string); forgiving redemption
+-- (case/space/dash-insensitive) via hash_comp_code_v2 with a LEGACY-hash
+-- fallback; per-user failed-attempt throttle (10/hour) on the redeem surface;
+-- rotation shares the one canonical builder; every K-1/K-2 law and the
 -- owner-only posture unchanged.
 -- ───────────────────────────────────────────────────────────────────────────
 begin;
@@ -42,24 +43,21 @@ begin
   select count(*) into n from public.campaign_slots where pool = 'aspire' and state = 'redeemed';
   assert n = 1, 'F2c: slot consumed exactly once';
 
-  -- ══ 3. vanity codes: owner wording, floor, uniqueness ══════════════════════
-  select code into v_code from public.issue_comp_code('aspire', null, 'ux:aspire-2', 'Aspire-Investor-TestFive');
-  assert v_code = 'Aspire-Investor-TestFive', 'F3a: vanity returns the owner''s wording';
+  -- ══ 3. personalized codes: prefix + EXACTLY 4 random chars (amended law) ═══
+  select code into v_code from public.issue_comp_code('aspire', null, 'ux:aspire-2', 'Ryan');
+  assert v_code ~ '^Ryan-[A-HJ-NP-Z2-9]{4}$', 'F3a: personalized = prefix + 4 random unambiguous chars';
+  select code into v_code2 from public.issue_comp_code('aspire', null, 'ux:aspire-3', 'Ryan');
+  assert v_code2 ~ '^Ryan-[A-HJ-NP-Z2-9]{4}$' and v_code2 <> v_code,
+    'F3b: same prefix twice → different random suffixes (the suffix is the secret)';
   begin
-    perform public.issue_comp_code('aspire', null, 'ux:aspire-dup', 'aspire investor testfive');
-    raise exception 'F3b FAIL: normalization-equal vanity accepted twice';
-  exception when others then
-    if position('already in use' in sqlerrm) = 0 then raise; end if;
-  end;
-  begin
-    perform public.issue_comp_code('aspire', null, 'ux:aspire-short', 'Ryan-1');
-    raise exception 'F3c FAIL: sub-floor vanity accepted';
+    perform public.issue_comp_code('aspire', null, 'ux:aspire-short', 'R');
+    raise exception 'F3c FAIL: sub-floor prefix accepted';
   exception when others then
     if position('too short' in sqlerrm) = 0 then raise; end if;
   end;
   perform set_config('request.jwt.claim.sub', u2::text, true);
-  v := public.redeem_comp_code('  aspire INVESTOR test-five ');
-  assert (v->>'ok')::boolean, 'F3d: sloppy vanity input redeems';
+  v := public.redeem_comp_code('  ryan ' || lower(substr(v_code, 6)) || ' ');
+  assert (v->>'ok')::boolean, 'F3d: sloppy personalized input redeems (case/space/dash-insensitive)';
 
   -- ══ 4. LEGACY pre-0015 codes still redeem (dual-hash fallback) ═════════════
   -- Simulate an old row exactly as 0013 stored it: legacy hash (upper/trim,
@@ -85,16 +83,38 @@ begin
   select code into v_code2 from public.rotate_comp_code('generic_pro', n);
   assert v_code2 ~ '^PRO-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$', 'F6a: rotation mints friendly format';
   assert v_code2 <> v_code, 'F6b: rotation is a new credential';
-  select code into v_code2 from public.rotate_comp_code('generic_pro', n, 'Pro-Partner-Replacement');
-  assert v_code2 = 'Pro-Partner-Replacement', 'F6c: rotation accepts vanity wording';
+  select code into v_code2 from public.rotate_comp_code('generic_pro', n, 'Partner');
+  assert v_code2 ~ '^Partner-[A-HJ-NP-Z2-9]{4}$', 'F6c: rotation personalizes with the same prefix+4 law';
 
   -- ══ 7. K-2 laws hold through the 4-arg signature ═══════════════════════════
   begin
-    perform public.issue_comp_code('generic_investor', null, 'ux:k2', 'Investor-Vanity-Check');
-    raise exception 'F7 FAIL: generic_investor NULL expiry accepted via vanity path';
+    perform public.issue_comp_code('generic_investor', null, 'ux:k2', 'Partner');
+    raise exception 'F7 FAIL: generic_investor NULL expiry accepted via personalized path';
   exception when others then
     if position('requires an explicit expiry' in sqlerrm) = 0 then raise; end if;
   end;
+
+  -- ══ 7b. brute-force throttle: 10 failures/hour per user, uniform message ═══
+  perform set_config('request.jwt.claim.sub', u3::text, true);
+  for i in 1..10 loop
+    v := public.redeem_comp_code('WRONG-GUESS-' || i::text || 'X');
+    assert (v->>'ok')::boolean = false, 'F7b: guess refused';
+  end loop;
+  v := public.redeem_comp_code('WRONG-GUESS-FINAL');
+  assert (v->>'ok')::boolean = false and position('Too many attempts' in (v->>'msg')) > 0,
+    'F7c: 11th failed attempt inside the window is throttled';
+  -- Even a VALID code is refused while throttled — the gate is per-user, hard,
+  -- and non-oracling. (u3 already redeemed the legacy code in F4; use a fresh
+  -- unredeemed one minted for exactly this proof.)
+  select code into v_code from public.issue_comp_code('qa', null, 'qa:throttle-proof');
+  v := public.redeem_comp_code(v_code);
+  assert position('Too many attempts' in (v->>'msg')) > 0,
+    'F7d: throttle gates valid codes too while tripped';
+  -- Aging out restores service: backdate the failures past the window.
+  update public.comp_redeem_failures set attempted_at = now() - interval '2 hours'
+   where user_id = u3;
+  v := public.redeem_comp_code(v_code);
+  assert (v->>'ok')::boolean, 'F7e: window expiry restores redemption (valid code now succeeds)';
 
   -- ══ 8. owner-only posture on every touched function ════════════════════════
   assert not has_function_privilege('authenticated', 'public.issue_comp_code(text, timestamptz, text, text)', 'execute'),
@@ -109,6 +129,11 @@ begin
     'F8e: redeem stays authenticated';
   assert not has_function_privilege('anon', 'public.redeem_comp_code(text)', 'execute'),
     'F8f: redeem never anon';
+  -- Throttle ledger is invisible to every API role (RLS on, zero policies).
+  assert (select relrowsecurity from pg_class c join pg_namespace ns on ns.oid=c.relnamespace
+          where ns.nspname='public' and c.relname='comp_redeem_failures'), 'F8g: failure ledger RLS on';
+  assert (select count(*) from pg_policies where schemaname='public' and tablename='comp_redeem_failures') = 0,
+    'F8h: failure ledger has zero policies — API-invisible';
 
   raise notice 'verify_comp_ux_local: ALL ASSERTIONS PASSED';
 end $$;

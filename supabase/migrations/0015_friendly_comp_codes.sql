@@ -9,16 +9,24 @@
 --      8 characters from an unambiguous alphabet (no I/L/O/0/1): ~39.6 bits of
 --      entropy, still far beyond online-guessing reach behind the
 --      authenticated, non-oracling redeem RPC — and actually typeable.
---   2. VANITY CODES — issue_comp_code gains OPTIONAL p_code so the owner can
---      mint e.g. 'Aspire-Investor-Ryan'. Guessing floor: at least 10
---      alphanumerics after normalization. Uniqueness enforced by the existing
---      code_hash primary key.
+--   2. PERSONALIZED CODES (security-amended) — issue_comp_code/rotate_comp_code
+--      gain OPTIONAL p_code treated as a FRIENDLY PREFIX, never the whole
+--      secret: the server appends '-' + EXACTLY 4 random unambiguous chars
+--      (owner ruling), e.g. p_code 'Ryan' → 'Ryan-7KDM'. The prefix makes the
+--      code recognizable; the random suffix remains the secret. Uniqueness via
+--      the code_hash primary key, with generation retried on collision.
 --   3. FORGIVING REDEMPTION — matching now ignores case, spaces, and dashes
 --      ('aspire investor ryan' redeems 'Aspire-Investor-Ryan'). Implemented as
 --      a NEW normalization (hash_comp_code_v2: strip every non-alphanumeric,
 --      uppercase, sha256) used for all NEW issuance, with redemption falling
 --      back to the legacy hash (upper/trim only) so every already-issued code
 --      keeps working unchanged. hash_comp_code itself is untouched.
+--   4. BRUTE-FORCE THROTTLE (material-finding remediation): with 4-char random
+--      suffixes (~923k combinations per known prefix) the un-throttled redeem
+--      RPC would permit practical online guessing from any free account. Failed
+--      redemptions are now counted per user; more than 10 failures in an hour
+--      refuses further attempts with a uniform message. 240 guesses/day/account
+--      pushes expected time-to-hit past a decade per prefix per account.
 --
 -- Unchanged, deliberately: pool inventory (25/10/10), tier mappings, the K-1
 -- forced Aspire expiry, the K-2 generic-expiry laws, slot mechanics, the
@@ -40,8 +48,10 @@ $$;
 revoke all on function public.hash_comp_code_v2(text) from public, anon, authenticated, service_role;
 
 -- ── ONE canonical plaintext builder (issuance AND rotation call this) ────────
--- p_code null → friendly generated <POOL>-XXXX-XXXX; p_code given → validated
--- vanity. No second copy of either rule may exist anywhere.
+-- p_code null  → friendly generated <POOL>-XXXX-XXXX (8 random chars).
+-- p_code given → FRIENDLY PREFIX + '-' + exactly 4 random chars (owner ruling:
+--                RYAN-7KDM, never a fully predictable bearer string).
+-- No second copy of either rule may exist anywhere.
 create or replace function public.comp_code_plaintext(p_pool text, p_code text default null)
 returns text language plpgsql
 set search_path = ''
@@ -52,25 +62,29 @@ declare
   v_alpha constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';  -- no I/L/O/0/1
   v_bytes bytea;
   v_body  text := '';
+  v_len   integer;
 begin
-  if p_code is not null then
-    v_norm := upper(regexp_replace(p_code, '[^A-Za-z0-9]', '', 'g'));
-    if length(v_norm) < 10 then
-      raise exception 'vanity code too short — need at least 10 letters/digits (got %)', length(v_norm);
-    end if;
-    if length(v_norm) > 40 then
-      raise exception 'vanity code too long — at most 40 letters/digits';
-    end if;
-    return trim(p_code);
-  end if;
-  v_word  := case p_pool when 'aspire' then 'ASPIRE'
-                         when 'generic_investor' then 'INVESTOR'
-                         when 'generic_pro' then 'PRO'
-                         else 'QA' end;
-  v_bytes := extensions.gen_random_bytes(8);
-  for i in 0..7 loop
+  v_len := case when p_code is not null then 4 else 8 end;
+  v_bytes := extensions.gen_random_bytes(v_len);
+  for i in 0..(v_len - 1) loop
     v_body := v_body || substr(v_alpha, (get_byte(v_bytes, i) % length(v_alpha)) + 1, 1);
   end loop;
+
+  if p_code is not null then
+    v_norm := upper(regexp_replace(p_code, '[^A-Za-z0-9]', '', 'g'));
+    if length(v_norm) < 2 then
+      raise exception 'personalized prefix too short — need at least 2 letters/digits';
+    end if;
+    if length(v_norm) > 30 then
+      raise exception 'personalized prefix too long — at most 30 letters/digits';
+    end if;
+    return trim(p_code) || '-' || v_body;
+  end if;
+
+  v_word := case p_pool when 'aspire' then 'ASPIRE'
+                        when 'generic_investor' then 'INVESTOR'
+                        when 'generic_pro' then 'PRO'
+                        else 'QA' end;
   return v_word || '-' || substr(v_body, 1, 4) || '-' || substr(v_body, 5, 4);
 end;
 $$;
@@ -135,15 +149,21 @@ begin
     end if;
   end if;
 
-  v_plain := public.comp_code_plaintext(p_pool, p_code);
-  v_hash  := public.hash_comp_code_v2(v_plain);
-
-  begin
-    insert into public.comp_codes_v2 (code_hash, tier, pool, active, max_redemptions, expires_at, label)
-    values (v_hash, v_tier, p_pool, true, 1, v_expires, p_label);
-  exception when unique_violation then
-    raise exception 'that code is already in use — pick different wording';
-  end;
+  -- Every minted code carries a random component, so a hash collision is a
+  -- re-roll, never a user error. Three attempts is astronomically sufficient.
+  for attempt in 1..3 loop
+    v_plain := public.comp_code_plaintext(p_pool, p_code);
+    v_hash  := public.hash_comp_code_v2(v_plain);
+    begin
+      insert into public.comp_codes_v2 (code_hash, tier, pool, active, max_redemptions, expires_at, label)
+      values (v_hash, v_tier, p_pool, true, 1, v_expires, p_label);
+      exit;
+    exception when unique_violation then
+      if attempt = 3 then
+        raise exception 'could not mint a unique code after 3 attempts';
+      end if;
+    end;
+  end loop;
 
   if p_pool <> 'qa' then
     update public.campaign_slots s
@@ -184,14 +204,19 @@ begin
 
   update public.comp_codes_v2 set active = false where code_hash = v_old.code_hash;
 
-  v_plain := public.comp_code_plaintext(p_pool, p_code);
-  v_hash  := public.hash_comp_code_v2(v_plain);
-  begin
-    insert into public.comp_codes_v2 (code_hash, tier, pool, active, max_redemptions, expires_at, label)
-    values (v_hash, v_old.tier, v_old.pool, true, 1, v_old.expires_at, v_old.label);
-  exception when unique_violation then
-    raise exception 'that code is already in use — pick different wording';
-  end;
+  for attempt in 1..3 loop
+    v_plain := public.comp_code_plaintext(p_pool, p_code);
+    v_hash  := public.hash_comp_code_v2(v_plain);
+    begin
+      insert into public.comp_codes_v2 (code_hash, tier, pool, active, max_redemptions, expires_at, label)
+      values (v_hash, v_old.tier, v_old.pool, true, 1, v_old.expires_at, v_old.label);
+      exit;
+    exception when unique_violation then
+      if attempt = 3 then
+        raise exception 'could not mint a unique code after 3 attempts';
+      end if;
+    end;
+  end loop;
 
   update public.campaign_slots s
      set current_code_hash = v_hash, updated_at = now()
@@ -201,6 +226,16 @@ begin
 end;
 $$;
 revoke all on function public.rotate_comp_code(text, integer, text) from public, anon, authenticated, service_role;
+
+-- ── brute-force throttle ledger (material-finding remediation) ───────────────
+-- Written ONLY by the definer redeem path; no client role can touch it. RLS on
+-- with zero policies = invisible through the API surface entirely.
+create table if not exists public.comp_redeem_failures (
+  user_id      uuid not null,
+  attempted_at timestamptz not null default now()
+);
+create index if not exists crf_user_time on public.comp_redeem_failures (user_id, attempted_at);
+alter table public.comp_redeem_failures enable row level security;
 
 -- ── redemption: new normalization first, legacy fallback second ──────────────
 -- Every pre-0015 code was stored under hash_comp_code (upper/trim, dashes
@@ -218,6 +253,15 @@ declare
 begin
   if v_user is null then
     return jsonb_build_object('ok', false, 'msg', 'Sign in first to redeem a code.');
+  end if;
+
+  -- Throttle: with 4-char personalized suffixes, unbounded guessing from a free
+  -- account would be practical. Opportunistic cleanup, then a hard per-user cap
+  -- of 10 FAILED attempts per hour. Uniform message — no oracle.
+  delete from public.comp_redeem_failures f
+   where f.user_id = v_user and f.attempted_at < now() - interval '1 hour';
+  if (select count(*) from public.comp_redeem_failures f where f.user_id = v_user) >= 10 then
+    return jsonb_build_object('ok', false, 'msg', 'Too many attempts — wait a few minutes and try again.');
   end if;
 
   -- Resolve which stored hash this input names: v2 normalization preferred,
@@ -252,6 +296,7 @@ begin
 
   if not found then
     -- Deliberately one generic message: do not oracle which check failed.
+    insert into public.comp_redeem_failures (user_id) values (v_user);
     return jsonb_build_object('ok', false, 'msg', 'That code isn''t valid.');
   end if;
 

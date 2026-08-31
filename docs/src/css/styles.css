@@ -584,3 +584,88 @@ body.beginner-mode .tier-desc-long{display:block}
 .cpc-footer{display:flex;align-items:center;justify-content:center;gap:9px;padding:20px 20px 6px;font-size:11px;color:var(--muted);text-decoration:none;letter-spacing:.04em}
 .cpc-footer:hover{color:var(--text)}
 .cpc-footer img{height:32px;width:auto;display:block}
+
+/* ═══ REAL-OPERATOR FINAL CORRECTIVE ══════════════════════════════════════════ */
+
+/* ── Track C · Fix & Flip profit signal (display law, verdict math untouched) ──
+   flipProfitClass() decides good/warn/bad from the user's own Min Profit
+   Target; these rules only map the class onto the existing semantic tokens.
+   Covers: pipeline card stat values (.dsv), expanded-detail + max-offer modal
+   values (.dv), and the shared read-only page (span inside .dv). */
+.dsv.good{color:var(--accent)}
+.dsv.warn{color:var(--warn)}
+.dsv.bad{color:var(--danger)}
+.detail-row .dv.good{color:var(--accent)}
+.detail-row .dv.warn{color:var(--warn)}
+.detail-row .dv.bad{color:var(--danger)}
+.detail-row .dv .good{color:var(--accent)}
+.detail-row .dv .warn{color:var(--warn)}
+.detail-row .dv .bad{color:var(--danger)}
+
+/* ── Track D · "Counter at Max Offer" what-if affordances ────────────────────
+   Both entry points are full-width ≥44px tap targets in DealFit's accent
+   treatment (never browser-default blue on the dark UI — same law as
+   .rep-action). The verdict button lives inside the colored verdict block, so
+   it gets its own bordered pill; the pipeline link matches inline actions. */
+.verdict-whatif{display:block;width:100%;margin-top:10px;min-height:44px;padding:10px 12px;
+  background:rgba(0,0,0,.18);border:1px solid currentColor;border-radius:10px;
+  color:inherit;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer}
+.verdict-whatif:hover{background:rgba(0,0,0,.3)}
+.whatif-link{display:block;width:100%;margin:10px 0 2px;min-height:44px;padding:10px 12px;
+  background:var(--accent-dim);border:1px solid var(--accent);border-radius:10px;
+  color:var(--accent);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;text-align:left}
+.whatif-link:hover{opacity:.85}
+.maxoffer-note{margin-bottom:10px}
+
+/* ── Tracks A1 + A2 · iOS Safari modal viewport + scroll law ─────────────────
+   Root causes on device: (A1) the centered picker/modal is sized in large-
+   viewport vh, which iOS measures with its chrome RETRACTED — with the chrome
+   expanded the top of a 90vh box (the "Choose Your Primary Market" heading)
+   sits under the URL bar; (A2) on top of that, the sign-in modal had no body
+   scroll lock, so touch scrolls fought the page behind it.
+   Fixes: dvh sizing where supported (tracks the REAL visible viewport, no
+   pixel offsets); safe-area padding on the backdrop; overscroll containment so
+   the modal is the ONE scrolling surface; sticky dismissal so "Not now" is
+   always reachable. The body lock + per-open scroll reset live in main.js. */
+@supports (height:1dvh){
+  .modal{max-height:90dvh}
+  .modal-picker{max-height:82dvh}
+  .market-grid{max-height:52dvh}
+}
+.modal-backdrop{
+  padding:calc(20px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+          calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left))}
+.modal,.modal-picker,.picker-list{overscroll-behavior:contain}
+/* Sign-in/upgrade modal: the dismissal row rides the bottom edge of the scroll
+   area (-22px cancels the modal's own padding), painted on the modal surface
+   so plan cards scroll away beneath it — "Not now" is reachable at any scroll
+   position without hunting for the end of the sheet. */
+.modal-upgrade .modal-actions{position:sticky;bottom:-22px;z-index:2;
+  background:var(--surface);padding:10px 0 14px;margin-bottom:-14px}
+
+/* ── Track B · pipeline card header responds to AVAILABLE CARD WIDTH ─────────
+   The app shell is a 500px column (body max-width) with 20px page padding, so
+   a card's inline size tops out near 458px at EVERY viewport ≥500 — the same
+   width band where title/badge collisions were proven on device. Keying the
+   stack on viewport width (the 480px block above) therefore flips layout on an
+   ~18px sliver: viewports 481px+ went side-by-side at essentially the same
+   card width that stacks on a phone. The container query keys on the card's
+   OWN width instead: below coexist width (620px) the title takes the full
+   first row and the verdict drops beneath it. In the current shell that is
+   every viewport — uniformly — and if a future layout ever gives cards real
+   width (side panel, two-pane tablet), side-by-side returns by itself.
+   The 480px media block stays as the fallback for engines without container
+   queries; these rules mirror it exactly. */
+.deal-card{container-type:inline-size}
+@container (max-width:620px){
+  .deal-card-top{display:block;padding-right:0}
+  .deal-card-top > div:first-child{padding-right:30px}   /* clear the expand arrow */
+  .deal-badge{display:inline-block;margin-top:8px;max-width:100%;white-space:normal;text-align:left}
+  .deal-stats{gap:12px;row-gap:8px}
+  .deal-stat{flex:1 1 28%;min-width:86px}
+  .deal-stat .dsv{font-size:15px}
+  .detail-actions{flex-wrap:wrap}
+  .btn-action{flex:1 1 46%;min-height:44px}
+  .detail-row{gap:10px}
+  .detail-row .dv{text-align:right}
+}

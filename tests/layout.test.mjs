@@ -206,6 +206,53 @@ ok("self-renovating means the LABOR, and a GC/partner doesn't count",
 ok("repair-band constants untouched by the copy work (finding 8 boundary)",
    /\$12–22\/sf/.test(html) && /\$28–48\/sf/.test(html) && /\$60–95\/sf/.test(html));
 
+// ── REAL-OPERATOR FINAL CORRECTIVE · CSS layout law pins ─────────────────────
+// A1/A2 · iOS modal viewport law: dvh sizing where supported (the large-vh
+// sizing under dynamic browser chrome was the root cause of BOTH the clipped
+// "Choose Your Primary Market" heading and the buried "Not now"), safe-area
+// padding on the backdrop, overscroll containment (ONE scrolling surface), and
+// a sticky dismissal row on the sign-in/upgrade modal.
+ok("A1: modal max-height re-sized in dvh under @supports", /@supports \(height:1dvh\)\{[^{}]*\.modal\{max-height:90dvh\}/.test(css));
+ok("A1: market picker re-sized in dvh", /\.modal-picker\{max-height:82dvh\}/.test(css));
+ok("A1: vh fallbacks retained for engines without dvh",
+   /\.modal\{[^}]*max-height:90vh/.test(css) && /\.modal-picker\{[^}]*max-height:82vh/.test(css));
+ok("A1: backdrop padding respects the iOS safe areas",
+   /\.modal-backdrop\{\s*padding:calc\(20px \+ env\(safe-area-inset-top\)\)/.test(css));
+ok("A2: modal surfaces contain their overscroll (no body-scroll fight)",
+   /\.modal,\.modal-picker,\.picker-list\{overscroll-behavior:contain\}/.test(css));
+ok("A2: the sign-in modal's dismissal row is sticky — 'Not now' always reachable",
+   /\.modal-upgrade \.modal-actions\{position:sticky;bottom:-22px/.test(css) &&
+   /background:var\(--surface\)/.test((css.match(/\.modal-upgrade \.modal-actions\{[^}]*\}/) || [""])[0]));
+ok("A2: no brittle pixel offsets were introduced for the iOS chrome",
+   !/padding-top:\s*(44|47|50|59)px/.test(css.slice(css.indexOf("REAL-OPERATOR FINAL CORRECTIVE"))));
+
+// B · pipeline card header keys on AVAILABLE CARD WIDTH, not viewport width.
+ok("B: deal cards are inline-size query containers", /\.deal-card\{container-type:inline-size\}/.test(css));
+const cq = (css.match(/@container \(max-width:620px\)\{[\s\S]*?\n\}/) || [""])[0];
+ok("B: the container block stacks the header (title full row, badge beneath)",
+   /\.deal-card-top\{display:block;padding-right:0\}/.test(cq) &&
+   /\.deal-badge\{display:inline-block;margin-top:8px/.test(cq));
+ok("B: the container block mirrors the proven phone rules (stats/actions/rows)",
+   /\.deal-stat \.dsv\{font-size:15px\}/.test(cq) && /\.btn-action\{flex:1 1 46%;min-height:44px\}/.test(cq) &&
+   /\.detail-row \.dv\{text-align:right\}/.test(cq));
+ok("B: the 480px viewport block SURVIVES as the no-container-query fallback",
+   /@media \(max-width:480px\)\{\s*\.deal-card-top\{display:block;padding-right:0\}/.test(css));
+
+// C · profit signal classes exist on every surface the law names.
+ok("C: pipeline stat values take the signal classes",
+   /\.dsv\.good\{color:var\(--accent\)\}/.test(css) && /\.dsv\.warn\{color:var\(--warn\)\}/.test(css) && /\.dsv\.bad\{color:var\(--danger\)\}/.test(css));
+ok("C: detail rows take the signal classes",
+   /\.detail-row \.dv\.good\{color:var\(--accent\)\}/.test(css) && /\.detail-row \.dv\.bad\{color:var\(--danger\)\}/.test(css));
+ok("C: the shared read-only page's span form is styled",
+   /\.detail-row \.dv \.good\{color:var\(--accent\)\}/.test(css) && /\.detail-row \.dv \.warn\{color:var\(--warn\)\}/.test(css));
+
+// D · what-if affordances: DealFit accent treatment, ≥44px tap targets.
+ok("D: verdict what-if button styled as a full-width tap target",
+   /\.verdict-whatif\{[^}]*min-height:44px/.test(css) && /\.verdict-whatif\{[^}]*cursor:pointer/.test(css));
+ok("D: pipeline what-if link uses the accent treatment (never browser blue)",
+   /\.whatif-link\{[^}]*background:var\(--accent-dim\)/.test(css) && /\.whatif-link\{[^}]*color:var\(--accent\)/.test(css) &&
+   /\.whatif-link\{[^}]*min-height:44px/.test(css));
+
 console.log(`\nlayout: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Nav-lock invariants hold ✓");

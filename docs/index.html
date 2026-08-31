@@ -219,6 +219,10 @@
       <div class="vtag" id="fvtag"></div>
       <div class="vlabel" id="fvlabel"></div>
       <div class="vsub" id="fvsub"></div>
+      <!-- Track D: non-mutating max-offer what-if — flip.js fills the label and
+           shows it only when maxOffer > 0; nothing on the form changes. -->
+      <button class="verdict-whatif" id="fv-whatif" style="display:none"
+        onclick="showMaxOfferScenario('analyzer')"></button>
     </div>
     <div class="metrics" id="flip-metrics"></div>
     <div class="breakdown"><div class="btitle">Cost Breakdown</div><div id="flip-breakdown"></div></div>
@@ -1055,6 +1059,19 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('modal-market-confirm')">Cancel</button>
       <button class="btn-confirm accent" onclick="confirmMarketChange()">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Track D: "Counter at Max Offer" what-if scenario (read-only; main.js renders
+     #maxoffer-body from canonical computeFlip — no deal or form is mutated) -->
+<div class="modal-backdrop" id="modal-maxoffer">
+  <div class="modal">
+    <h3>At the Max Offer</h3>
+    <p class="maxoffer-note">What this deal looks like if the seller accepts your max offer. Nothing is saved — your deal and analysis stay exactly as they are.</p>
+    <div class="detail-section" id="maxoffer-body"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modal-maxoffer')">Close</button>
     </div>
   </div>
 </div>

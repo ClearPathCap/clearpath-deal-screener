@@ -7,6 +7,7 @@
 
 import { supabase } from './supabaseClient.js';
 import { fmt, pct, escapeHtml } from './format.js';
+import { flipProfitClass } from './finance.js';
 
 const money = (v) => (v == null ? '—' : fmt(v));
 const perc  = (v) => (v == null ? '—' : pct(v));
@@ -27,7 +28,8 @@ export function buildSharedDealHTML(deal) {
     ['Hold period', d.hold ? d.hold + ' months' : '—'],
     ['Buying costs / Selling costs', (d.cc1 ?? '?') + '% / ' + (d.cc2 ?? '?') + '%'],
     ['Carrying cost/mo', money(d.carry)],
-    ['Net profit (est.)', money(d.profit)],
+    // Track C: same presentation helper as the app — signal, not new math.
+    ['Net profit (est.)', `<span class="${flipProfitClass(d.profit, d.target)}">${money(d.profit)}</span>`],
     ['Cash-on-Cash ROI (est.)', perc(d.roi)],
     ['Max offer', money(d.maxOffer)],
     ['Total project cost incl. selling costs (est.)',

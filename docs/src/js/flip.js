@@ -4,7 +4,7 @@ import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, renderInputIssue
 import { FLIP_MARKETS, ALL_MARKETS } from './markets.js';
 import { updateRepairRangesForMarket, repairEstimateSnapshot } from './repair.js';
 import { maybeShowFundingButton } from './clearpath.js';
-import { computeFlip, computeFlipStress, flipVerdict, mosLabel, validateInputs } from './finance.js';
+import { computeFlip, computeFlipStress, flipVerdict, mosLabel, validateInputs, flipProfitClass } from './finance.js';
 
 // ─── Regional fallback defaults (Task 3) ──────────────────────────────────────
 const FLIP_REGIONAL_DEFAULTS = {
@@ -121,8 +121,23 @@ export function analyzeFlip() {
   document.getElementById('fvlabel').textContent = verdict;
   document.getElementById('fvsub').textContent   = vsub + (cls === 'hot' && marginOfSafety === 'tight' ? ' Strong signal, thin cushion.' : '');
 
+  // Track D: the verdict recommendation becomes explorable — a NON-MUTATING
+  // what-if at DealFit's own max offer. Only offered when a positive purchase
+  // price can hit the target.
+  const whatifBtn = document.getElementById('fv-whatif');
+  if (whatifBtn) {
+    if (maxOffer > 0) {
+      whatifBtn.style.display = '';
+      whatifBtn.textContent = 'See this deal at the ' + fmt(Math.round(maxOffer)) + ' max offer →';
+    } else {
+      whatifBtn.style.display = 'none';
+    }
+  }
+
   document.getElementById('flip-metrics').innerHTML = buildMetrics([
-    { label: 'Net Profit', val: fmt(profit),   cls: cls === 'hot' ? 'good' : cls === 'warm' ? 'warn' : 'bad' },
+    // Track C: profit signal scales with the user's own Min Profit Target —
+    // display law only, verdict math untouched.
+    { label: 'Net Profit', val: fmt(profit),   cls: flipProfitClass(profit, target) },
     { label: '<span class="pro-only">ROI</span><span class="beginner-only">Cash-on-Cash ROI</span>', val: pct(roi), cls: cClass(roi, 15, 10) },
     { label: 'Margin of Safety', val: mos.label, cls: mos.cls },
     { label: 'Max Offer',  val: fmt(Math.max(0, maxOffer)),  cls: 'neutral' },
@@ -146,7 +161,7 @@ export function analyzeFlip() {
     // all-in') read as a contradiction on the same deal; both are now named by
     // what they actually are. Formulas untouched.
     { l: financed ? 'Cash invested (before resale)' : 'Cash required before resale', v: fmt(cashIn) },
-    { l: 'Net profit', v: fmt(profit), tot: true, color: profit >= 0 ? 'var(--accent)' : 'var(--danger)' },
+    { l: 'Net profit', v: fmt(profit), tot: true, color: 'var(--' + ({ good: 'accent', warn: 'warn', bad: 'danger' })[flipProfitClass(profit, target)] + ')' },
     { l: 'Stress-test profit (ARV −5%, rehab +10%, +1mo)', v: fmt(stressedProfit), color: stressedProfit >= 0 ? 'var(--accent)' : 'var(--danger)' },
   ]);
 

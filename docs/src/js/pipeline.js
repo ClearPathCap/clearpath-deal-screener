@@ -12,11 +12,14 @@ import { getPipelineFundingButtonHTML } from './clearpath.js';
 import { getActiveTier, getActiveMarketId, getMarketLabel } from './tiers.js';
 import { ALL_MARKETS } from './markets.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
-import { computeFlip, computeFlipStress, flipVerdict, validateInputs } from './finance.js';
+import { computeFlip, computeFlipStress, flipVerdict, validateInputs, flipProfitClass } from './finance.js';
 
 // Local modal helpers — avoids circular dep with main.js
-const openModal  = id => document.getElementById(id).classList.add('active');
-const closeModal = id => document.getElementById(id).classList.remove('active');
+// Track A2: modals must go through the central lock-aware helpers (body
+// scroll-lock + restore + scroll reset). window.openModal is published by
+// main.js; the bare-class fallback keeps Node test harnesses working.
+const openModal  = id => (window.openModal  || (i => document.getElementById(i).classList.add('active')))(id);
+const closeModal = id => (window.closeModal || (i => document.getElementById(i).classList.remove('active')))(id);
 
 let pipelineFilter = 'all';
 let pendingDeleteId = null;
@@ -219,7 +222,8 @@ function dealRegionLabel(type) {
 // Card stat row (3 headline metrics) per analyzer type.
 function buildDealStats(type, r) {
   if (type === 'flip') return [
-    { l: 'Profit', v: fmt(r.profit) },
+    // Track C: display-law class, scaled by the user's own Min Profit Target.
+    { l: 'Profit', v: fmt(r.profit), cls: flipProfitClass(r.profit, r.target) },
     // P2-2: this figure is the cash-on-cash return, not a generic ROI. Adopts the
     // label the results screen already uses in Guide mode (flip.js). The value and
     // the formula behind it are untouched — only the word changes.
@@ -311,6 +315,11 @@ function buildDealCard(d) {
   // Phase A: unresolved-insurance overlay for the stored badge/stats (LTR/BRRR only).
   const insP       = unresolvedInsPresentation(d.type, data);
   const cardStats  = insP ? pendingDealStats(d) : d.stats;
+  // Track C at render time: legacy deals have no baked class — derive it live
+  // for flip cards (never while an insurance/tax pend overlay is active).
+  const shownStats = (d.type === 'flip' && !insP && data.profit != null && cardStats.length)
+    ? [{ ...cardStats[0], cls: flipProfitClass(data.profit, data.target) }, ...cardStats.slice(1)]
+    : cardStats;
   const address    = data.addr ? `<div class="deal-address">${escapeHtml(data.addr)}</div>` : '';
   const detailRows = d.type === 'flip' ? buildFlipDetail(data, d)
     : d.type === 'ltr'  ? buildLtrDetail(data)
@@ -332,7 +341,7 @@ function buildDealCard(d) {
           <div class="deal-badge ${insP ? 'warm' : d.cls}">${insP ? insP.tag : d.verdict}</div>
         </div>
         <div class="deal-stats">
-          ${cardStats.map(s => `<div class="deal-stat"><div class="dsl">${s.l}</div><div class="dsv">${s.v}</div></div>`).join('')}
+          ${shownStats.map(s => `<div class="deal-stat"><div class="dsl">${s.l}</div><div class="dsv${s.cls ? ' ' + s.cls : ''}">${s.v}</div></div>`).join('')}
         </div>
         <div class="deal-footer">
           <div class="deal-date">Saved ${d.date}${d.updated ? ' · Updated ' + d.updated : ''}</div>
@@ -751,7 +760,8 @@ function buildFlipDetail(d, deal) {
     ...(deal && deal.marketLabel ? [{ l: 'Underwritten in', v: escapeHtml(deal.marketLabel) }] : []),
   ];
   const metrics = [
-    { l: 'Net profit',             v: d.profit   != null ? fmt(d.profit)   : '—' },
+    { l: 'Net profit',             v: d.profit   != null ? fmt(d.profit)   : '—',
+      cls: d.profit != null ? flipProfitClass(d.profit, d.target) : null },
     // P2-2: same figure, same formula — named precisely on the expanded surface too.
     { l: 'Cash-on-Cash ROI',       v: d.roi      != null ? pct(d.roi)      : '—' },
     { l: 'Max offer (your number)',v: d.maxOffer != null ? fmt(d.maxOffer) : '—' },
@@ -768,8 +778,9 @@ function buildFlipDetail(d, deal) {
     </div>
     <div class="detail-section">
       <div class="detail-title">Key Numbers</div>
-      ${metrics.map(r => `<div class="detail-row"><span class="dl">${r.l}</span><span class="dv">${r.v}</span></div>`).join('')}
+      ${metrics.map(r => `<div class="detail-row"><span class="dl">${r.l}</span><span class="dv${r.cls ? ' ' + r.cls : ''}">${r.v}</span></div>`).join('')}
     </div>
+    ${deal && d.maxOffer > 0 ? `<button class="whatif-link" onclick="event.stopPropagation();showMaxOfferScenario(${deal.id})">What if you paid the ${fmt(Math.round(d.maxOffer))} max offer? →</button>` : ''}
   `;
 }
 
@@ -802,7 +813,8 @@ function buildRentalDetail(d) {
     </div>
     <div class="detail-section">
       <div class="detail-title">Key Numbers</div>
-      ${metrics.map(r => `<div class="detail-row"><span class="dl">${r.l}</span><span class="dv">${r.v}</span></div>`).join('')}
+      ${metrics.map(r => `<div class="detail-row"><span class="dl">${r.l}</span><span class="dv${r.cls ? ' ' + r.cls : ''}">${r.v}</span></div>`).join('')}
     </div>
+    ${deal && d.maxOffer > 0 ? `<button class="whatif-link" onclick="event.stopPropagation();showMaxOfferScenario(${deal.id})">What if you paid the ${fmt(Math.round(d.maxOffer))} max offer? →</button>` : ''}
   `;
 }

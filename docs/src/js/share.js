@@ -11,8 +11,11 @@ import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from '
 const APP_URL = (typeof location !== 'undefined' ? location.href : '').split('#')[0];
 
 // Local modal helpers
-const openModal  = id => document.getElementById(id).classList.add('active');
-const closeModal = id => document.getElementById(id).classList.remove('active');
+// Track A2: modals must go through the central lock-aware helpers (body
+// scroll-lock + restore + scroll reset). window.openModal is published by
+// main.js; the bare-class fallback keeps Node test harnesses working.
+const openModal  = id => (window.openModal  || (i => document.getElementById(i).classList.add('active')))(id);
+const closeModal = id => (window.closeModal || (i => document.getElementById(i).classList.remove('active')))(id);
 
 // ─── Share app ────────────────────────────────────────────────────────────────
 
@@ -66,13 +69,16 @@ export async function openShareApp() {
 const SHARE_VIEW_URL = APP_URL.replace(/[^/]*$/, '') + 'shared.html';
 
 // Pure message builder (exported for tests). With a url: the full opportunity
-// message. Without (link unavailable / native share carries url separately):
-// the same copy minus the link block. Region comes from the market stamped on
-// the deal at save time; legacy deals without one just omit it.
+// message. Without (native share carries the url separately): the same copy
+// with the tap cue — recipients were opening the text and stopping because
+// nothing told them the link IS the deal. "Tap", not "Click": these arrive in
+// Messages on a phone. Region comes from the market stamped on the deal at
+// save time; legacy deals without one just omit it.
 export function buildShareMessage(d, url) {
   const region = d.marketLabel ? ' in ' + d.marketLabel : '';
   const lines = ['Potential investment opportunity' + region, '', d.name];
-  if (url) lines.push('', 'Click below to view the deal in DealFit:', url);
+  if (url) lines.push('', 'Tap to view the deal in DealFit:', url);
+  else lines.push('', 'Tap to view the deal in DealFit.');
   return lines.join('\n');
 }
 

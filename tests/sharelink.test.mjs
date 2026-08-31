@@ -67,17 +67,20 @@ await storage.hydratePipeline();
 const TOKEN_URL = 'https://dealfit.clearpathcapfunding.com/shared.html?d=' + 'a'.repeat(32);
 
 // ── §A · the concise opportunity message (pure builder goldens) ──────────────
+// Track F re-pin (same-commit law): "Click below" → "Tap" (recipients open
+// these in Messages on a phone), and the native-sheet variant gains the cue —
+// texts were arriving with nothing telling the recipient the link IS the deal.
 const msg = share.buildShareMessage(DEAL, TOKEN_URL);
 ok("[DEFECT-CLOSING] message follows the governed structure exactly",
-   msg === 'Potential investment opportunity in Lake Murray SC\n\n417 Saddlebrooke Rd — Lake Murray\n\nClick below to view the deal in DealFit:\n' + TOKEN_URL);
+   msg === 'Potential investment opportunity in Lake Murray SC\n\n417 Saddlebrooke Rd — Lake Murray\n\nTap to view the deal in DealFit:\n' + TOKEN_URL);
 ok("[DEFECT-CLOSING] no underwriting dump in the message",
    !/ARV|Repairs|Profit|ROI|Max offer|\$/.test(msg));
 ok("[DEFECT-CLOSING] notes never enter the share message", !/private/.test(msg));
 const noRegion = share.buildShareMessage({ ...DEAL, marketLabel: null }, TOKEN_URL);
 ok("[GRACEFUL] a legacy deal without a market omits the region cleanly",
    noRegion.startsWith('Potential investment opportunity\n\n'));
-ok("[GRACEFUL] native-share variant carries the copy without the link block",
-   share.buildShareMessage(DEAL, null) === 'Potential investment opportunity in Lake Murray SC\n\n417 Saddlebrooke Rd — Lake Murray');
+ok("[GRACEFUL] native-share variant carries the tap cue without a duplicate link",
+   share.buildShareMessage(DEAL, null) === 'Potential investment opportunity in Lake Murray SC\n\n417 Saddlebrooke Rd — Lake Murray\n\nTap to view the deal in DealFit.');
 
 // ── §B · navigator.share environments: the OS sheet, directly ────────────────
 let shared = [];

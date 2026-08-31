@@ -179,6 +179,47 @@ export function computeFlip({ ask, arv, rep, hold, cc1, cc2, carry, loan = 0, ra
            cashIn, totalIn, profit, roi, maxOffer, ltvVal, ltvLabel, ltc };
 }
 
+// ── Fix & Flip profit visual law (Track C — flip ONLY; display, not verdict) ─
+// Scales with the investor's own Min Profit Target instead of treating every
+// investor identically:
+//   bad  (red):   profit <= 0, or below min($10,000, target)
+//   warn (amber): clears the red floor but is below the target
+//   good (green): meets the target
+// With Aaron's $28,000 target: loss→red, $5,000→red, $15,000→amber, $28,000+→green.
+export function flipProfitClass(profit, target) {
+  const t = Number.isFinite(+target) && +target > 0 ? +target : 40000;
+  if (profit <= 0 || profit < Math.min(10000, t)) return 'bad';
+  if (profit < t) return 'warn';
+  return 'good';
+}
+
+// ── "Counter at Max Offer" what-if (Track D) — PURE and NON-MUTATING ─────────
+// Answers: "even if the seller accepted DealFit's max offer, is this worth
+// pursuing?" Input is the saved-deal data schema (cc1/cc2 whole numbers,
+// rate/points fractions). Everything runs through canonical computeFlip /
+// computeFlipStress — no second formula set, and nothing here writes anywhere.
+// Returns null when no positive purchase price hits the target (maxOffer <= 0).
+export function computeMaxOfferScenario(d) {
+  const cc1 = (d.cc1 ?? 2) / 100, cc2 = (d.cc2 ?? 5) / 100;
+  const rate = d.rate ?? 0.10, points = d.points ?? 0.03;
+  const loan = d.loan || 0, target = d.target ?? 40000;
+  const base = computeFlip({ ask: d.ask, arv: d.arv, rep: d.rep, hold: d.hold,
+    cc1, cc2, carry: d.carry, loan, rate, points, self: !!d.self });
+  const offer = Math.round(base.maxOffer);
+  if (!(offer > 0)) return null;
+  const eng = computeFlip({ ask: offer, arv: d.arv, rep: d.rep, hold: d.hold,
+    cc1, cc2, carry: d.carry, loan, rate, points, self: !!d.self });
+  const stress = computeFlipStress({ ask: offer, arv: d.arv, rep: d.rep,
+    cc1, cc2, carry: d.carry, hold: d.hold, financed: loan > 0, loan, rate, points, target });
+  return {
+    originalAsk: d.ask, offer,
+    profit: eng.profit, roi: eng.roi,
+    cashIn: eng.cashIn, totalProject: eng.totalIn + eng.sellCost,
+    target, targetMet: eng.profit >= target,
+    stressedProfit: stress.stressedProfit, marginOfSafety: stress.marginOfSafety,
+  };
+}
+
 // ── Flip stress test: ARV −5%, rehab +10%, hold +1 month → net profit ≥ 0 ──
 // Inputs are flip base numbers (cc1/cc2/rate/points as FRACTIONS). Pure so flip.js
 // and the tests share it. The stressed profit is the canonical engine run on the

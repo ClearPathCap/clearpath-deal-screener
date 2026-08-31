@@ -16,8 +16,9 @@ import { saveDeal as _saveDeal, renderPipeline,
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
-import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency } from './format.js';
-import { propertyBand, BAND_RULES }                                 from './finance.js';
+import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct } from './format.js';
+import { propertyBand, BAND_RULES,
+         computeMaxOfferScenario, flipProfitClass, mosLabel }         from './finance.js';
 import { handlePipelineFundingClick }                               from './clearpath.js';
 import { hydrateMarketsOnAuth, pushMarketChange }                   from './marketSync.js';
 import {
@@ -39,7 +40,7 @@ import {
 } from './auth.js';
 import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
-import { hydratePipeline, clearPipelineCache } from './storage.js';
+import { hydratePipeline, clearPipelineCache, getDeals } from './storage.js';
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -400,10 +401,21 @@ function handleSlotClick(slotIndex, currentMarketId) {
     return;
   }
 
-  // POPULATED + ALREADY ACTIVE → cooldown/replace flow
-  // Pro: no confirmation, open picker directly
+  // POPULATED + ALREADY ACTIVE → replace flow
+  // Track E: replacing an OCCUPIED slot always warns first — Pro included.
+  // This is an accidental-change guard, NOT a cooldown/cap: Pro keeps
+  // unlimited switching, and switching BETWEEN configured slots above stays
+  // the instant fade. Saved deals keep their own underwritten region.
   if (tier === 'pro') {
-    openMarketPicker(slotIndex, false);
+    const label = getMarketLabel(currentMarketId);
+    const msgEl = document.getElementById('market-confirm-text');
+    if (msgEl) msgEl.textContent =
+      `Replace ${label}? Choosing another region will replace this market slot. ` +
+      `Deals already underwritten in ${label} will keep their saved region.`;
+    const confirmBtn = document.querySelector('#modal-market-confirm .btn-confirm');
+    if (confirmBtn) confirmBtn.textContent = 'Choose another region';
+    _pendingSlotChange = slotIndex;
+    openModal('modal-market-confirm');
     return;
   }
 
@@ -422,6 +434,8 @@ function handleSlotClick(slotIndex, currentMarketId) {
   if (msgEl) {
     msgEl.textContent = `Changing a Market Region locks that slot for ${cooldownDays} days. Your next change will be available on ${willLockUntil}. Continue?`;
   }
+  const confirmBtn2 = document.querySelector('#modal-market-confirm .btn-confirm');
+  if (confirmBtn2) confirmBtn2.textContent = 'Continue';
   _pendingSlotChange = slotIndex;
   openModal('modal-market-confirm');
 }
@@ -804,13 +818,99 @@ function showPage(id, btn) {
 }
 
 // ─── Modals ───────────────────────────────────────────────────────────────────
+// Track A2 (real external-user onboarding blocker): iOS Safari had THREE
+// interacting failures in the auth/plan modal — (1) no body-scroll lock, so
+// the page behind rubber-banded and fought the modal for every swipe; (2) the
+// modal was sized in large-viewport vh, putting "Not now" beyond the visible
+// dynamic viewport under collapsed browser chrome; (3) scrollTop persisted
+// across opens, so a reopened modal started mid-content. The law now:
+//   · opening ANY modal position-fixes the body at its current scroll (the
+//     one true iOS body lock) and remembers the offset;
+//   · closing the LAST open modal restores the exact page scroll position;
+//   · every open resets the modal's own scrollTop to 0 — one scrolling
+//     surface, always starting at the top (P1-B's account-first order intact);
+//   · sizing/sticky-footer fixes live in CSS (dvh + sticky .modal-actions).
+let _scrollLockY = 0;
+let _openModalCount = 0;
 
-function openModal(id)  { document.getElementById(id)?.classList.add('active'); }
-function closeModal(id) { document.getElementById(id)?.classList.remove('active'); }
+function openModal(id)  {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!el.classList.contains('active')) {
+    if (_openModalCount === 0) {
+      _scrollLockY = window.scrollY || 0;
+      const b = document.body.style;
+      b.position = 'fixed'; b.top = (-_scrollLockY) + 'px';
+      b.left = '0'; b.right = '0'; b.width = '100%';
+    }
+    _openModalCount++;
+  }
+  el.classList.add('active');
+  const surface = el.querySelector('.modal, .modal-picker');
+  if (surface) surface.scrollTop = 0;           // no stale scroll on reopen
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.classList.contains('active')) {
+    _openModalCount = Math.max(0, _openModalCount - 1);
+    if (_openModalCount === 0) {
+      const b = document.body.style;
+      b.position = ''; b.top = ''; b.left = ''; b.right = ''; b.width = '';
+      window.scrollTo(0, _scrollLockY);         // page returns exactly where it was
+    }
+  }
+  el.classList.remove('active');
+}
+
+// ─── Track D · "Counter at Max Offer" what-if (NON-MUTATING) ─────────────────
+// One renderer, two entry points: the analyzer verdict button reads the live
+// lastFlipResult ('analyzer'); a Pipeline link passes the saved deal id. All
+// numbers come from canonical computeFlip/computeFlipStress via
+// computeMaxOfferScenario — nothing is written to the form, the result, or the
+// saved deal, and closing simply closes.
+function showMaxOfferScenario(ref) {
+  // Analyzer results always carry type:'flip'; saved deals carry type at the
+  // DEAL level (legacy data blobs may not), so each path checks its own field.
+  let data = null;
+  if (ref === 'analyzer') {
+    const r = getLastFlipResult();
+    if (r && r.type === 'flip') data = r;
+  } else {
+    const deal = getDeals().find(x => x.id === ref && x.type === 'flip');
+    if (deal) data = deal.data;
+  }
+  if (!data) return;
+  const sc = computeMaxOfferScenario(data);
+  const body = document.getElementById('maxoffer-body');
+  if (!body) return;
+  if (!sc) {
+    body.innerHTML = '<p>Repairs exceed the ARV ceiling — no purchase price reaches your target, so there is no max-offer scenario to run.</p>';
+    openModal('modal-maxoffer');
+    return;
+  }
+  const pCls = flipProfitClass(sc.profit, sc.target);
+  const mos  = mosLabel(sc.marginOfSafety);
+  const row  = (l, v, cls) => `<div class="detail-row"><span class="dl">${l}</span><span class="dv${cls ? ' ' + cls : ''}">${v}</span></div>`;
+  body.innerHTML = [
+    row('Original asking price', fmt(sc.originalAsk)),
+    row('DealFit max-offer price', fmt(sc.offer)),
+    row('Net profit at max offer', fmt(sc.profit), pCls),
+    row('Cash-on-Cash ROI at max offer', pct(sc.roi), pCls),
+    row('Total project cost (incl. selling costs)', fmt(Math.round(sc.totalProject))),
+    row('Your Min Profit Target', fmt(sc.target)),
+    row('Target met at max offer', sc.targetMet ? 'Yes' : 'No — ' + fmt(sc.target - sc.profit) + ' short', sc.targetMet ? 'good' : 'bad'),
+    row('Stress-test profit (ARV −5%, rehab +10%, +1mo)', fmt(Math.round(sc.stressedProfit)), sc.stressedProfit >= 0 ? 'good' : 'bad'),
+    row('Margin of safety', mos.label, mos.cls),
+  ].join('');
+  openModal('modal-maxoffer');
+}
 
 document.querySelectorAll('.modal-backdrop').forEach(m => {
   m.addEventListener('click', e => {
-    if (e.target === m && !m.dataset.required) m.classList.remove('active');
+    // Through closeModal, never a bare class removal — otherwise the body
+    // lock leaks and the page stays frozen after a backdrop dismiss.
+    if (e.target === m && !m.dataset.required) closeModal(m.id);
   });
 });
 
@@ -1393,6 +1493,8 @@ Object.assign(window, {
   // repair-provenance corrective: governed self-toggle swap + explicit estimator re-adopt
   dealEditSelfToggled,
   dealEditUseEstimate,
+  // Track D: non-mutating max-offer what-if (analyzer + pipeline entry points)
+  showMaxOfferScenario,
   dealEditMarketChanged,
   dealEditRepTouched,
   // share

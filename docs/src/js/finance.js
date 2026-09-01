@@ -193,30 +193,174 @@ export function flipProfitClass(profit, target) {
   return 'good';
 }
 
-// ── "Counter at Max Offer" what-if (Track D) — PURE and NON-MUTATING ─────────
-// Answers: "even if the seller accepted DealFit's max offer, is this worth
-// pursuing?" Input is the saved-deal data schema (cc1/cc2 whole numbers,
-// rate/points fractions). Everything runs through canonical computeFlip /
-// computeFlipStress — no second formula set, and nothing here writes anywhere.
-// Returns null when no positive purchase price hits the target (maxOffer <= 0).
-export function computeMaxOfferScenario(d) {
-  const cc1 = (d.cc1 ?? 2) / 100, cc2 = (d.cc2 ?? 5) / 100;
-  const rate = d.rate ?? 0.10, points = d.points ?? 0.03;
-  const loan = d.loan || 0, target = d.target ?? 40000;
-  const base = computeFlip({ ask: d.ask, arv: d.arv, rep: d.rep, hold: d.hold,
-    cc1, cc2, carry: d.carry, loan, rate, points, self: !!d.self });
-  const offer = Math.round(base.maxOffer);
-  if (!(offer > 0)) return null;
-  const eng = computeFlip({ ask: offer, arv: d.arv, rep: d.rep, hold: d.hold,
-    cc1, cc2, carry: d.carry, loan, rate, points, self: !!d.self });
-  const stress = computeFlipStress({ ask: offer, arv: d.arv, rep: d.rep,
-    cc1, cc2, carry: d.carry, hold: d.hold, financed: loan > 0, loan, rate, points, target });
+// ── Underwriting design wave · DealFit profit guidance + negotiation model ───
+// GOVERNED v1 (owner dispatch, 2026-08-31). Everything here is DERIVED
+// guidance layered around canonical computeFlip — no second profit formula
+// exists anywhere in this block: every price→profit question is answered by
+// calling computeFlip itself. The user's own Min Profit Target remains
+// authoritative for the walk-away; DealFit's suggested range is educational.
+
+// §B/§C · DealFit suggested PROJECT profit (apples-to-apples with the user's
+// target and the projected profit — labor allowance is ADDED to the
+// investment-return band so all three speak the same unit).
+// Engine-unit inputs: arv/rep dollars, hold months, self boolean.
+// Returns null when the inputs can't support a recommendation (§G4).
+export function flipProfitGuidance({ arv, rep, hold, self }) {
+  if (!Number.isFinite(arv) || arv <= 0 ||
+      !Number.isFinite(rep) || rep < 0 ||
+      !Number.isFinite(hold) || hold <= 0) return null;
+  const rehabRatio = rep / arv;
+  // Rehab-intensity multiplier (governed v1 boundaries: <10 / 10–<20 / 20–30 / >30 %):
+  const intensity = rehabRatio < 0.10 ? 1.00
+    : rehabRatio < 0.20 ? 1.10
+    : rehabRatio <= 0.30 ? 1.20
+    : 1.35;
+  // Hold multiplier (governed v1: ≤4 / 5–6 / 7–9 / 10–12 / >12 months):
+  const holdMult = hold <= 4 ? 1.00
+    : hold <= 6 ? 1.05
+    : hold <= 9 ? 1.15
+    : hold <= 12 ? 1.25
+    : 1.35;
+  // Investment-return point: max($25K floor, 10% ARV × intensity × hold).
+  const investmentPoint = Math.max(25000, 0.10 * arv * intensity * holdMult);
+  // Owner-labor allowance: an EDUCATIONAL proxy (5% ARV, aligned with the
+  // governed 75-vs-70 acquisition-rule delta) — never described as a wage.
+  const laborAllowance = self ? 0.05 * arv : 0;
+  const lowRaw  = investmentPoint * 0.90 + laborAllowance;
+  const highRaw = investmentPoint * 1.10 + laborAllowance;
+  const midRaw  = investmentPoint + laborAllowance;
   return {
-    originalAsk: d.ask, offer,
-    profit: eng.profit, roi: eng.roi,
-    cashIn: eng.cashIn, totalProject: eng.totalIn + eng.sellCost,
-    target, targetMet: eng.profit >= target,
-    stressedProfit: stress.stressedProfit, marginOfSafety: stress.marginOfSafety,
+    arv, rep, hold, self: !!self,   // input echo for display ("Based on: …")
+    rehabRatio, intensity, holdMult, investmentPoint, laborAllowance,
+    lowRaw, highRaw, midRaw,
+    // Display rounding: range outward to $1K, midpoint nearest $1K.
+    low:  Math.floor(lowRaw  / 1000) * 1000,
+    high: Math.ceil(highRaw / 1000) * 1000,
+    mid:  Math.round(midRaw / 1000) * 1000,
+  };
+}
+
+// §D · derived-price solver — computeFlip IS the law. profit(P) is strictly
+// decreasing in price (each extra $1 of price costs 1 + cc1 of profit), so a
+// bracket + binary search on the canonical engine finds the highest INTEGER
+// price whose engine profit still meets the threshold. No closed form is used
+// in production. Returns null when not even $1 reaches the threshold.
+// `d` carries engine-unit inputs; price is the only free variable.
+export function solveMaxPriceForProfit(d, threshold) {
+  if (!Number.isFinite(threshold)) return null;
+  const profitAt = (P) => computeFlip({
+    arv: d.arv, rep: d.rep, hold: d.hold, cc1: d.cc1, cc2: d.cc2,
+    carry: d.carry, loan: d.loan || 0, rate: d.rate ?? 0.10,
+    points: d.points ?? 0.03, self: !!d.self, ask: P,
+  }).profit;
+  if (!(profitAt(1) >= threshold)) return null;
+  let lo = 1, hi = 2;
+  while (profitAt(hi) >= threshold) { lo = hi; hi *= 2; if (hi > 1e12) return null; }
+  // invariant: profitAt(lo) >= threshold > profitAt(hi)
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (profitAt(mid) >= threshold) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+
+// §D/§E/§F · negotiation guidance around the canonical engine.
+// Engine-unit inputs (cc1/cc2/rate/points fractions) + ask + target.
+// - rule ceiling: computeFlip's OWN maxOffer (the existing 70/75 law, read
+//   from the engine — not re-coded here)
+// - user-target ceiling: solver against the user's Min Profit Target
+// - walk-away: MIN of the two (the stricter constraint protects the user)
+// - conservative ceiling (educational): solver against the DealFit low bound
+// - suggested counter: comfortable price for the DealFit high bound, clamped
+//   into the governed 92–97% cushion below the USER walk-away, then rounded
+//   DOWN to a practical increment ($5K when walk-away ≥ $100K, else $1K),
+//   never above asking. The cushion is a DealFit v1 product heuristic — not a
+//   claim about typical market spreads, and never a promise of acceptance.
+// Returns null when guidance itself is unavailable (§G4).
+export function flipNegotiationGuidance(d) {
+  const guidance = flipProfitGuidance({ arv: d.arv, rep: d.rep, hold: d.hold, self: !!d.self });
+  if (!guidance) return null;
+  const ruleCeiling = computeFlip({ ...d, ask: d.ask ?? 0, loan: d.loan || 0 }).maxOffer;
+  const target = Number.isFinite(+d.target) && +d.target > 0 ? +d.target : 40000;
+  const userCeiling = solveMaxPriceForProfit(d, target);
+  // §G1 · no workable price: the user's own target is unreachable at ANY
+  // positive price, or the acquisition rule leaves no positive ceiling.
+  const walkAwayRaw = userCeiling === null ? null : Math.min(ruleCeiling, userCeiling);
+  if (walkAwayRaw === null || !(walkAwayRaw > 0)) {
+    return { guidance, ruleCeiling, userCeiling, target, walkAway: null, ruleBound: null,
+             conservativeCeiling: null, counterComfortRaw: null, counter: null,
+             cushionDollars: null, cushionPct: null,
+             highUnachievable: false, noWorkablePrice: true, askBelowWalkAway: false };
+  }
+  const walkAway = walkAwayRaw;
+  const ruleBound = ruleCeiling <= userCeiling;
+  // §E · educational conservative ceiling (DealFit low bound; raw model value):
+  const conservativeCeiling = solveMaxPriceForProfit(d, guidance.lowRaw);
+  // §F · comfortable price for the DealFit high bound (raw model value):
+  const counterComfortRaw = solveMaxPriceForProfit(d, guidance.highRaw);
+  // §G3 · if the high bound is unreachable at any positive price, do NOT
+  // fabricate a counter from the cushion clamp.
+  let counter = null, highUnachievable = false;
+  if (counterComfortRaw === null) {
+    highUnachievable = true;
+  } else {
+    const lower = walkAway * 0.92, upper = walkAway * 0.97;
+    let candidate = Math.min(Math.max(counterComfortRaw, lower), upper);
+    if (Number.isFinite(d.ask) && d.ask > 0) candidate = Math.min(candidate, d.ask);
+    const inc = walkAway >= 100000 ? 5000 : 1000;
+    counter = Math.floor(candidate / inc) * inc;
+  }
+  const askBelowWalkAway = Number.isFinite(d.ask) && d.ask > 0 && d.ask <= walkAway;   // §G2
+  return {
+    guidance, ruleCeiling, userCeiling, target, walkAway, ruleBound,
+    conservativeCeiling, counterComfortRaw, counter,
+    cushionDollars: counter !== null ? walkAway - counter : null,
+    cushionPct: counter !== null ? ((walkAway - counter) / walkAway) * 100 : null,
+    highUnachievable, noWorkablePrice: false, askBelowWalkAway,
+  };
+}
+
+// Compact card money: "$175K" for clean thousands, exact otherwise. The
+// expanded detail always keeps exact dollars — this is card-level only.
+export function moneyCompact(n) {
+  const v = Math.round(n);
+  return v % 1000 === 0 ? '$' + (v / 1000) + 'K' : money(v);
+}
+
+// §J · negotiation what-if scenario — PURE and NON-MUTATING. Input is the
+// saved-deal data schema (cc1/cc2 whole numbers, rate/points fractions), the
+// same shape the old max-offer what-if consumed. Every number runs through
+// canonical computeFlip / computeFlipStress; nothing here writes anywhere.
+export function computeNegotiationScenario(d) {
+  const eng = {
+    ask: d.ask, arv: d.arv, rep: d.rep, hold: d.hold,
+    cc1: (d.cc1 ?? 2) / 100, cc2: (d.cc2 ?? 5) / 100,
+    carry: d.carry, loan: d.loan || 0,
+    rate: d.rate ?? 0.10, points: d.points ?? 0.03,
+    self: !!d.self, target: d.target,
+  };
+  const nego = flipNegotiationGuidance(eng);
+  if (!nego) return null;
+  const at = (price) => {
+    if (!(price > 0)) return null;
+    const e = computeFlip({ ...eng, ask: price });
+    const s = computeFlipStress({ ask: price, arv: eng.arv, rep: eng.rep,
+      cc1: eng.cc1, cc2: eng.cc2, carry: eng.carry, hold: eng.hold,
+      financed: eng.loan > 0, loan: eng.loan, rate: eng.rate, points: eng.points,
+      target: nego.target });
+    const g = nego.guidance;
+    return {
+      price, profit: e.profit, roi: e.roi, cashIn: e.cashIn,
+      totalProject: e.totalIn + e.sellCost,
+      targetMet: e.profit >= nego.target,
+      rangeStatus: e.profit < g.low ? 'below' : e.profit > g.high ? 'above' : 'in',
+      stressedProfit: s.stressedProfit, marginOfSafety: s.marginOfSafety,
+    };
+  };
+  return {
+    originalAsk: d.ask, ...nego,
+    atCounter: nego.counter !== null ? at(nego.counter) : null,
+    atWalkAway: nego.walkAway !== null ? at(nego.walkAway) : null,
   };
 }
 
@@ -238,7 +382,12 @@ export function computeFlipStress({ ask, arv, rep, cc1, cc2, carry, hold, financ
 // Flip verdict (SPEC_VERDICT §63). HOT: profit ≥ max($50K, target) AND ROI ≥ 15%
 // AND maxOffer > 0 AND survives stress. COLD: profit < $25K base, maxOffer ≤ 0, or
 // loses money under stress. WARM: works at base case but misses a HOT bar.
-export function flipVerdict({ profit, roi, target, maxOffer, marginOfSafety, stressedProfit, self }) {
+// Design wave: `ask` and `nego` (flipNegotiationGuidance result) are OPTIONAL —
+// legacy calls without them get the exact pre-wave verdicts. With them, the
+// pass-branch counter verdict becomes the dynamic negotiation instruction
+// (§I: "COUNTER AT $X — WALK ABOVE $Y") and §G1's no-workable-price verdict
+// exists. Verdict CLASS boundaries (hot/warm/pass) are unchanged.
+export function flipVerdict({ profit, roi, target, maxOffer, marginOfSafety, stressedProfit, self, ask, nego }) {
   const survives = marginOfSafety !== 'fails';
   const hotDollar = Math.max(50000, target || 0);
   let cls, verdict, vsub;
@@ -253,11 +402,31 @@ export function flipVerdict({ profit, roi, target, maxOffer, marginOfSafety, str
       ' Verify ARV with comps before committing.';
   } else if (profit < 25000 || maxOffer <= 0 || !survives) {
     cls = 'pass';
-    verdict = 'Counter at Max Offer — Walk Away';
+    // §I · the counter instruction: opening offer and economic ceiling are
+    // DIFFERENT numbers. Fires only when the ask actually exceeds the user's
+    // walk-away and a governed counter exists; §G2 keeps the legacy verdict
+    // when the ask is already at/below the walk-away; §G1 names the truth
+    // when no positive price can meet the user's target.
+    const dyn = nego && !nego.noWorkablePrice && nego.counter !== null &&
+                Number.isFinite(ask) && ask > nego.walkAway;
+    if (nego && nego.noWorkablePrice) {
+      verdict = 'No Workable Price — Walk Away';
+    } else if (dyn) {
+      verdict = 'Counter at ' + moneyCompact(nego.counter) + ' — Walk Above ' + money(nego.walkAway);
+    } else {
+      verdict = 'Counter at Max Offer — Walk Away';
+    }
     if (maxOffer <= 0) {
       vsub = 'Repairs exceed the ' + (self ? '75' : '70') + '% ARV ceiling — no purchase price hits your target. Walk away.';
+    } else if (nego && nego.noWorkablePrice) {
+      vsub = 'No purchase price reaches your ' + money(nego.target) + ' profit target on this deal. Lower the target only if the numbers truly support it — otherwise walk away.';
     } else if (!survives) {
-      vsub = 'Net profit goes negative under a modest stress test (ARV −5%, rehab +10%, +1 month → ' + money(stressedProfit) + '). Too little margin of safety — renegotiate hard or walk.';
+      vsub = 'Net profit goes negative under a modest stress test (ARV −5%, rehab +10%, +1 month → ' + money(stressedProfit) + '). Too little margin of safety — renegotiate hard or walk.'
+        + (dyn ? ' If you engage at all: counter at ' + money(nego.counter) + ' and walk above ' + money(nego.walkAway) + '.' : '');
+    } else if (dyn) {
+      vsub = 'Net profit ' + money(profit) + ' at the ask is below where this flip\'s risk is worth it. Open at ' + money(nego.counter) + ' and walk above ' + money(nego.walkAway) + ' — '
+        + (nego.ruleBound ? 'your ceiling under the ' + (self ? '75' : '70') + '% acquisition rule.'
+                          : 'the highest price that still clears your own profit target.');
     } else {
       vsub = 'Net profit ' + money(profit) + ' is below the $25K floor where a flip\'s risk is worth it. Max offer ' + money(Math.max(0, maxOffer)) + ' — counter hard or walk.';
     }

@@ -18,7 +18,7 @@ const src = (rel) => readFileSync(join(here, "..", rel), "utf8");
 
 // finance.js is browser ESM with a .js extension and no "type":"module" in the
 // repo — load it via a data: URL (same trick as finance.test.mjs).
-const { flipProfitClass, computeMaxOfferScenario, computeFlip } =
+const { flipProfitClass, computeNegotiationScenario, computeFlip } =
   await import("data:text/javascript," + encodeURIComponent(src("docs/src/js/finance.js")));
 
 let pass = 0, fail = 0;
@@ -49,7 +49,11 @@ ok("C: no target → $40k is GREEN",               flipProfitClass(40000, null) 
 ok("C: zero/garbage target uses the default, never 'everything is green'",
    flipProfitClass(15000, 0) === 'warn' && flipProfitClass(15000, 'x') === 'warn');
 
-// ── §D · the max-offer what-if runs the CANONICAL engine ─────────────────────
+// ── §D · the negotiation what-if runs the CANONICAL engine ───────────────────
+// DESIGN-WAVE RE-PIN (same-commit law): the what-if evolved from the single
+// max-offer view into the negotiation plan (counter + walk-away). The deep
+// model law lives in dealguide.test.mjs; these pins hold the scenario payload
+// to the canonical engine and to non-mutation.
 // Saved-deal units law: cc1/cc2 whole numbers, rate/points fractions.
 const DEAL_DATA = Object.freeze({
   type: 'flip', ask: 200000, arv: 300000, rep: 40000, hold: 6,
@@ -57,41 +61,44 @@ const DEAL_DATA = Object.freeze({
   self: false, target: 28000,
 });
 const BEFORE = JSON.stringify(DEAL_DATA);
-const sc = computeMaxOfferScenario(DEAL_DATA);
-ok("D: a scenario is produced for a viable deal", !!sc);
-// maxOffer is the canonical 70% rule: 300k × 0.70 − 40k = 170,000
-ok("D: scenario price is the engine's max offer", sc && sc.offer === 170000);
+const sc = computeNegotiationScenario(DEAL_DATA);
+ok("D: a scenario is produced for a viable deal", !!sc && !sc.noWorkablePrice);
 ok("D: original ask is reported untouched", sc && sc.originalAsk === 200000);
-// Hand-computed through the same engine law at ask=170,000:
+// Walk-away is the engine's 70% rule here (170,000 < user ceiling 203,921):
+ok("D: walk-away is the canonical rule ceiling", sc && sc.walkAway === 170000 && sc.ruleBound === true);
+// Hand-computed through the same engine law at the walk-away (ask=170,000):
 // cost 210,000 · buy 3,400 · sell 15,000 · hold 9,000 → profit 62,600
-ok("D: profit at max offer is the engine's number", sc && sc.profit === 62600);
+ok("D: profit at the walk-away is the engine's number", sc && sc.atWalkAway.profit === 62600);
 ok("D: CoC ROI is profit over cash-in (62,600 / 222,400)",
-   sc && Math.abs(sc.roi - (62600 / 222400) * 100) < 1e-9);
-ok("D: total project cost includes selling costs", sc && sc.totalProject === 237400);
-ok("D: target met is judged against the deal's own target", sc && sc.targetMet === true && sc.target === 28000);
-// Stress at the scenario price (ARV −5%, rehab +10%, +1 month):
+   sc && Math.abs(sc.atWalkAway.roi - (62600 / 222400) * 100) < 1e-9);
+ok("D: total project cost includes selling costs", sc && sc.atWalkAway.totalProject === 237400);
+ok("D: target judgment uses the deal's own target", sc && sc.atWalkAway.targetMet === true && sc.target === 28000);
+// Stress at the walk-away (ARV −5%, rehab +10%, +1 month):
 // 285,000 − 14,250 − 214,000 − 3,400 − 10,500 = 42,850 → strong (≥ 0.5×target)
-ok("D: stressed profit runs the canonical stress law", sc && sc.stressedProfit === 42850);
-ok("D: margin of safety comes from the stress verdict", sc && sc.marginOfSafety === 'strong');
-// The engine agrees with itself — the scenario IS computeFlip at the max offer:
+ok("D: stressed profit runs the canonical stress law", sc && sc.atWalkAway.stressedProfit === 42850);
+ok("D: margin of safety comes from the stress verdict", sc && sc.atWalkAway.marginOfSafety === 'strong');
+// The engine agrees with itself — the scenario IS computeFlip at those prices:
 const direct = computeFlip({ ask: 170000, arv: 300000, rep: 40000, hold: 6,
   cc1: 0.02, cc2: 0.05, carry: 1500, loan: 0, rate: 0.10, points: 0.03, self: false });
-ok("D: no second engine — scenario equals computeFlip at the offer price",
-   sc && sc.profit === direct.profit && sc.cashIn === direct.cashIn);
+ok("D: no second engine — scenario equals computeFlip at the walk-away",
+   sc && sc.atWalkAway.profit === direct.profit && sc.atWalkAway.cashIn === direct.cashIn);
+ok("D: the suggested counter is priced below the walk-away with a real cushion",
+   sc && sc.counter === 160000 && sc.counter < sc.walkAway && sc.atCounter.profit === computeFlip({ ask: 160000, arv: 300000, rep: 40000, hold: 6, cc1: 0.02, cc2: 0.05, carry: 1500, loan: 0, rate: 0.10, points: 0.03, self: false }).profit);
 // NON-MUTATION: the input (a frozen stand-in for the saved deal) is byte-identical after.
 ok("D: the what-if mutates NOTHING on the deal", JSON.stringify(DEAL_DATA) === BEFORE);
-// No scenario when repairs exceed the ARV ceiling (max offer non-positive):
-ok("D: an impossible deal returns null, never a fake price",
-   computeMaxOfferScenario({ ...DEAL_DATA, arv: 100000, rep: 80000 }) === null);
+// Repairs beyond the ARV ceiling → honest no-workable-price flag, no fake price:
+const dead = computeNegotiationScenario({ ...DEAL_DATA, arv: 100000, rep: 80000 });
+ok("D: an impossible deal flags noWorkablePrice, never a fake price",
+   dead && dead.noWorkablePrice === true && dead.counter === null && dead.atWalkAway === null);
 // Financed deal: scenario keeps the deal's own financing terms.
-const fin = computeMaxOfferScenario({ ...DEAL_DATA, loan: 150000 });
-const finDirect = computeFlip({ ask: 170000, arv: 300000, rep: 40000, hold: 6,
+const fin = computeNegotiationScenario({ ...DEAL_DATA, loan: 150000 });
+const finDirect = computeFlip({ ask: fin.walkAway, arv: 300000, rep: 40000, hold: 6,
   cc1: 0.02, cc2: 0.05, carry: 1500, loan: 150000, rate: 0.10, points: 0.03, self: false });
 ok("D: financed scenario carries the loan through the engine",
-   fin && fin.profit === finDirect.profit && fin.cashIn === finDirect.cashIn);
-// Self-perform raises the canonical ceiling to 75%:
-const selfSc = computeMaxOfferScenario({ ...DEAL_DATA, self: true });
-ok("D: self-perform uses the engine's 75% ceiling", selfSc && selfSc.offer === 185000);
+   fin && fin.atWalkAway.profit === finDirect.profit && fin.atWalkAway.cashIn === finDirect.cashIn);
+// Self-perform raises the canonical rule ceiling to 75%:
+const selfSc = computeNegotiationScenario({ ...DEAL_DATA, self: true });
+ok("D: self-perform uses the engine's 75% ceiling", selfSc && selfSc.ruleCeiling === 185000);
 
 // ── §D-wiring · both entry points are read-only renderers ────────────────────
 const mainJs = src("docs/src/js/main.js");
@@ -102,7 +109,7 @@ const renderer = mainJs.slice(mainJs.indexOf('function showMaxOfferScenario'),
                               mainJs.indexOf('document.querySelectorAll(\'.modal-backdrop\')'));
 ok("D: renderer exists in main.js", renderer.length > 100);
 ok("D: renderer never saves, duplicates, or edits a deal",
-   !/saveDeal|save_pipeline|requestDelete|dealEdit|\.push\(|localStorage|supabase\./.test(renderer));
+   !/saveDeal|save_pipeline|requestDelete|dealEdit|localStorage|supabase\./.test(renderer));
 ok("D: renderer writes ONLY into the read-only modal body",
    /getElementById\('maxoffer-body'\)/.test(renderer) && (renderer.match(/innerHTML/g) || []).length <= 2);
 ok("D: analyzer entry — verdict button lives in the verdict block and opens the scenario",

@@ -204,7 +204,20 @@
     <div class="field">
       <label>Min Profit Target</label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-target" class="has-pfx" value="40,000" placeholder="40,000" data-currency></div>
+      <div class="field-hint">Your minimum acceptable project profit. Leave room for overruns, delays, partner splits, and the value of your time.</div>
     </div>
+  </div>
+  <!-- Design wave · DealFit suggested project profit — EDUCATIONAL guidance in
+       the same unit as the target. flip.js fills and shows it after a valid
+       analysis; the adopt button just sets the target and re-analyzes. -->
+  <div class="flip-guide" id="flip-guide" style="display:none">
+    <div class="fg-label">DealFit suggested project profit</div>
+    <div class="fg-range" id="fg-range"></div>
+    <div class="fg-line" id="fg-labor" style="display:none"></div>
+    <div class="fg-line" id="fg-basis"></div>
+    <div class="fg-soft" id="fg-soft" style="display:none">Below DealFit&#8217;s suggested range — thin for this project&#8217;s size and risk.</div>
+    <button type="button" class="fg-adopt" id="fg-adopt"></button>
+    <div class="fg-qualifier">DealFit estimate only. Not a guarantee or lender requirement.</div>
   </div>
   <!-- item 10: TOTAL HOLD COST label + carry total — moved here from above -->
   <div class="calc-label" id="hold-cost-label" style="display:none">Total Hold Cost</div>
@@ -1067,8 +1080,8 @@
      #maxoffer-body from canonical computeFlip — no deal or form is mutated) -->
 <div class="modal-backdrop" id="modal-maxoffer">
   <div class="modal">
-    <h3>At the Max Offer</h3>
-    <p class="maxoffer-note">What this deal looks like if the seller accepts your max offer. Nothing is saved — your deal and analysis stay exactly as they are.</p>
+    <h3>Your Negotiation Plan</h3>
+    <p class="maxoffer-note">Where to open and where to walk. Nothing is saved — your deal and analysis stay exactly as they are.</p>
     <div class="detail-section" id="maxoffer-body"></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('modal-maxoffer')">Close</button>

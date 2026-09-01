@@ -18,7 +18,7 @@ import { openInstall, triggerInstall, initInstallHint }             from './inst
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
 import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct } from './format.js';
 import { propertyBand, BAND_RULES,
-         computeMaxOfferScenario, flipProfitClass, mosLabel }         from './finance.js';
+         computeNegotiationScenario, flipProfitClass, mosLabel }      from './finance.js';
 import { handlePipelineFundingClick }                               from './clearpath.js';
 import { hydrateMarketsOnAuth, pushMarketChange }                   from './marketSync.js';
 import {
@@ -863,12 +863,15 @@ function closeModal(id) {
   el.classList.remove('active');
 }
 
-// ─── Track D · "Counter at Max Offer" what-if (NON-MUTATING) ─────────────────
+// ─── Design wave · negotiation plan what-if (NON-MUTATING) ───────────────────
 // One renderer, two entry points: the analyzer verdict button reads the live
-// lastFlipResult ('analyzer'); a Pipeline link passes the saved deal id. All
-// numbers come from canonical computeFlip/computeFlipStress via
-// computeMaxOfferScenario — nothing is written to the form, the result, or the
-// saved deal, and closing simply closes.
+// lastFlipResult ('analyzer'); a Pipeline link/badge passes the saved deal id.
+// Every number comes from canonical computeFlip/computeFlipStress via
+// computeNegotiationScenario — nothing is written to the form, the result, or
+// the saved deal, and closing simply closes. Edge law: §G1 no-workable-price
+// and repairs-exceed-ceiling get honest copy, §G2 shows the ceiling
+// educationally when the ask is already at/below it, §G3 never fabricates a
+// counter when DealFit's high range is unreachable.
 function showMaxOfferScenario(ref) {
   // Analyzer results always carry type:'flip'; saved deals carry type at the
   // DEAL level (legacy data blobs may not), so each path checks its own field.
@@ -881,28 +884,64 @@ function showMaxOfferScenario(ref) {
     if (deal) data = deal.data;
   }
   if (!data) return;
-  const sc = computeMaxOfferScenario(data);
+  const sc = computeNegotiationScenario(data);
   const body = document.getElementById('maxoffer-body');
   if (!body) return;
-  if (!sc) {
-    body.innerHTML = '<p>Repairs exceed the ARV ceiling — no purchase price reaches your target, so there is no max-offer scenario to run.</p>';
+  const row   = (l, v, cls) => `<div class="detail-row"><span class="dl">${l}</span><span class="dv${cls ? ' ' + cls : ''}">${v}</span></div>`;
+  const title = (t) => `<div class="detail-title" style="margin-top:12px">${t}</div>`;
+  const scenarioRows = (a) => {
+    const pCls = flipProfitClass(a.profit, sc.target);
+    const mos  = mosLabel(a.marginOfSafety);
+    const range = a.rangeStatus === 'in' ? 'Inside DealFit range'
+      : a.rangeStatus === 'above' ? 'Above DealFit range' : 'Below DealFit range';
+    return [
+      row('Projected profit', fmt(a.profit), pCls),
+      row('Cash-on-Cash ROI', pct(a.roi), pCls),
+      row('Total project cost (incl. selling costs)', fmt(Math.round(a.totalProject))),
+      row('Your Min Profit Target', a.targetMet ? 'PASS' : 'FAIL — ' + fmt(sc.target - a.profit) + ' short', a.targetMet ? 'good' : 'bad'),
+      row('DealFit suggested range', range, a.rangeStatus === 'below' ? 'warn' : 'good'),
+      row('Stress-test profit (ARV −5%, rehab +10%, +1mo)', fmt(Math.round(a.stressedProfit)), a.stressedProfit >= 0 ? 'good' : 'bad'),
+      row('Margin of safety', mos.label, mos.cls),
+    ].join('');
+  };
+  if (!sc || sc.noWorkablePrice) {
+    body.innerHTML = (sc && sc.ruleCeiling <= 0)
+      ? '<p>Repairs exceed the ARV ceiling — no purchase price works on this deal. Walk away.</p>'
+      : '<p>No purchase price reaches your ' + (sc ? fmt(sc.target) : 'profit') + ' Min Profit Target on this deal. Lower the target only if the numbers truly support it — otherwise walk away.</p>';
     openModal('modal-maxoffer');
     return;
   }
-  const pCls = flipProfitClass(sc.profit, sc.target);
-  const mos  = mosLabel(sc.marginOfSafety);
-  const row  = (l, v, cls) => `<div class="detail-row"><span class="dl">${l}</span><span class="dv${cls ? ' ' + cls : ''}">${v}</span></div>`;
-  body.innerHTML = [
-    row('Original asking price', fmt(sc.originalAsk)),
-    row('DealFit max-offer price', fmt(sc.offer)),
-    row('Net profit at max offer', fmt(sc.profit), pCls),
-    row('Cash-on-Cash ROI at max offer', pct(sc.roi), pCls),
-    row('Total project cost (incl. selling costs)', fmt(Math.round(sc.totalProject))),
-    row('Your Min Profit Target', fmt(sc.target)),
-    row('Target met at max offer', sc.targetMet ? 'Yes' : 'No — ' + fmt(sc.target - sc.profit) + ' short', sc.targetMet ? 'good' : 'bad'),
-    row('Stress-test profit (ARV −5%, rehab +10%, +1mo)', fmt(Math.round(sc.stressedProfit)), sc.stressedProfit >= 0 ? 'good' : 'bad'),
-    row('Margin of safety', mos.label, mos.cls),
-  ].join('');
+  const g = sc.guidance;
+  const parts = [
+    row('Current ask', fmt(sc.originalAsk)),
+  ];
+  if (sc.askBelowWalkAway) {
+    // §G2: the ask already clears the user's ceiling — no counter required.
+    parts.push(row('Walk-away ceiling', fmt(sc.walkAway)));
+    parts.push('<p style="margin:10px 0 0">The asking price is already at or below your walk-away ceiling — negotiate from the ask; no counter is required. The ceiling is shown for reference.</p>');
+  } else if (sc.counter === null) {
+    // §G3: DealFit high range unreachable — show the walk-away, say so plainly.
+    parts.push(row('Walk-away ceiling', fmt(sc.walkAway)));
+    parts.push('<p style="margin:10px 0 0">DealFit&#8217;s suggested project-profit range is not achievable under current assumptions, so no comfortable counter is suggested. Your walk-away ceiling above still holds.</p>');
+  } else {
+    parts.push(row('Suggested counter', fmt(sc.counter)));
+    parts.push(row('Walk-away ceiling', fmt(sc.walkAway)));
+    parts.push(row('Cushion to ceiling', fmt(sc.cushionDollars) + ' / ' + (Math.round(sc.cushionPct * 10) / 10) + '%'));
+  }
+  if (sc.atCounter && !sc.askBelowWalkAway && sc.counter !== null) {
+    parts.push(title('At the suggested counter — ' + fmt(sc.counter)));
+    parts.push(scenarioRows(sc.atCounter));
+  }
+  if (sc.atWalkAway) {
+    parts.push(title('At the walk-away ceiling — ' + fmt(sc.walkAway)));
+    parts.push(scenarioRows(sc.atWalkAway));
+  }
+  parts.push(title('Your numbers vs DealFit'));
+  parts.push(row('Your Min Profit Target', fmt(sc.target)));
+  parts.push(row('DealFit suggested project profit', fmt(g.low) + '–' + fmt(g.high) + ' (est.)'));
+  if (g.laborAllowance > 0) parts.push(row('Owner-labor allowance (est.)', fmt(Math.round(g.laborAllowance))));
+  parts.push('<p style="margin:10px 0 0;font-size:11px">DealFit estimate only. Not a guarantee, an offer, or a lender requirement — sellers accept or reject on their own terms.</p>');
+  body.innerHTML = parts.join('');
   openModal('modal-maxoffer');
 }
 

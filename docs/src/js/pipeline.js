@@ -12,7 +12,8 @@ import { getPipelineFundingButtonHTML } from './clearpath.js';
 import { getActiveTier, getActiveMarketId, getMarketLabel } from './tiers.js';
 import { ALL_MARKETS } from './markets.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
-import { computeFlip, computeFlipStress, flipVerdict, validateInputs, flipProfitClass } from './finance.js';
+import { computeFlip, computeFlipStress, flipVerdict, validateInputs, flipProfitClass,
+         flipNegotiationGuidance } from './finance.js';
 
 // Local modal helpers — avoids circular dep with main.js
 // Track A2: modals must go through the central lock-aware helpers (body
@@ -688,8 +689,11 @@ export async function saveDealEdits(id) {
   const { stressedProfit, marginOfSafety } = computeFlipStress({
     ask, arv, rep, cc1, cc2, carry, hold, financed: eng.financed, loan, rate, points, target,
   });
+  // Design wave: same derived negotiation guidance as the analyzer, so an
+  // edited deal re-derives the SAME dynamic counter verdict — one law.
+  const nego = flipNegotiationGuidance({ ask, arv, rep, hold, cc1, cc2, carry, loan, rate, points, self, target });
   const { cls, verdict } = flipVerdict({
-    profit: eng.profit, roi: eng.roi, target, maxOffer: eng.maxOffer, marginOfSafety, stressedProfit, self,
+    profit: eng.profit, roi: eng.roi, target, maxOffer: eng.maxOffer, marginOfSafety, stressedProfit, self, ask, nego,
   });
 
   // Defect-1: persist repair ownership. 'estimator' ONLY when the field still
@@ -790,7 +794,7 @@ function buildFlipDetail(d, deal) {
       <div class="detail-title">Key Numbers</div>
       ${metrics.map(r => `<div class="detail-row"><span class="dl">${r.l}</span><span class="dv${r.cls ? ' ' + r.cls : ''}">${r.v}</span></div>`).join('')}
     </div>
-    ${deal && d.maxOffer > 0 ? `<button class="whatif-link" onclick="event.stopPropagation();showMaxOfferScenario(${deal.id})">What if you paid the ${fmt(Math.round(d.maxOffer))} max offer? →</button>` : ''}
+    ${deal && d.maxOffer > 0 ? `<button class="whatif-link" onclick="event.stopPropagation();showMaxOfferScenario(${deal.id})">Plan the counter & walk-away →</button>` : ''}
   `;
 }
 
@@ -825,6 +829,6 @@ function buildRentalDetail(d) {
       <div class="detail-title">Key Numbers</div>
       ${metrics.map(r => `<div class="detail-row"><span class="dl">${r.l}</span><span class="dv${r.cls ? ' ' + r.cls : ''}">${r.v}</span></div>`).join('')}
     </div>
-    ${deal && d.maxOffer > 0 ? `<button class="whatif-link" onclick="event.stopPropagation();showMaxOfferScenario(${deal.id})">What if you paid the ${fmt(Math.round(d.maxOffer))} max offer? →</button>` : ''}
+    ${deal && d.maxOffer > 0 ? `<button class="whatif-link" onclick="event.stopPropagation();showMaxOfferScenario(${deal.id})">Plan the counter & walk-away →</button>` : ''}
   `;
 }

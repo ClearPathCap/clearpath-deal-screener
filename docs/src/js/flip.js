@@ -4,7 +4,8 @@ import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, renderInputIssue
 import { FLIP_MARKETS, ALL_MARKETS } from './markets.js';
 import { updateRepairRangesForMarket, repairEstimateSnapshot } from './repair.js';
 import { maybeShowFundingButton } from './clearpath.js';
-import { computeFlip, computeFlipStress, flipVerdict, mosLabel, validateInputs, flipProfitClass } from './finance.js';
+import { computeFlip, computeFlipStress, flipVerdict, mosLabel, validateInputs, flipProfitClass,
+         flipNegotiationGuidance } from './finance.js';
 
 // ─── Regional fallback defaults (Task 3) ──────────────────────────────────────
 const FLIP_REGIONAL_DEFAULTS = {
@@ -111,24 +112,33 @@ export function analyzeFlip() {
   const { stressedProfit, marginOfSafety } = computeFlipStress({
     ask, arv, rep, cc1, cc2, carry, hold, financed, loan, rate, points, target,
   });
+  // Design wave: derived negotiation guidance around the same canonical
+  // engine — powers the dynamic counter verdict, the guidance block by the
+  // Min Profit Target, and the what-if detail. Educational; never overrides
+  // the user's own target.
+  const nego = flipNegotiationGuidance({ ask, arv, rep, hold, cc1, cc2, carry, loan, rate, points, self, target });
   const { cls, verdict, vsub } = flipVerdict({
-    profit, roi, target, maxOffer, marginOfSafety, stressedProfit, self,
+    profit, roi, target, maxOffer, marginOfSafety, stressedProfit, self, ask, nego,
   });
   const mos = mosLabel(marginOfSafety);
+  refreshFlipGuide(nego, target);
 
   document.getElementById('flip-verdict').className = 'verdict ' + cls;
   document.getElementById('fvtag').textContent   = cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
   document.getElementById('fvlabel').textContent = verdict;
   document.getElementById('fvsub').textContent   = vsub + (cls === 'hot' && marginOfSafety === 'tight' ? ' Strong signal, thin cushion.' : '');
 
-  // Track D: the verdict recommendation becomes explorable — a NON-MUTATING
-  // what-if at DealFit's own max offer. Only offered when a positive purchase
-  // price can hit the target.
+  // Track D → design wave: the verdict is explorable — a NON-MUTATING
+  // negotiation plan (counter, walk-away, both scenarios). Offered whenever a
+  // positive purchase price exists under the acquisition rule; the modal
+  // itself explains the no-workable-price cases honestly.
   const whatifBtn = document.getElementById('fv-whatif');
   if (whatifBtn) {
     if (maxOffer > 0) {
       whatifBtn.style.display = '';
-      whatifBtn.textContent = 'See this deal at the ' + fmt(Math.round(maxOffer)) + ' max offer →';
+      whatifBtn.textContent = (nego && !nego.noWorkablePrice && nego.counter !== null && ask > nego.walkAway)
+        ? 'Plan it: counter ' + fmt(nego.counter) + ' · walk above ' + fmt(nego.walkAway) + ' →'
+        : 'Open your negotiation plan →';
     } else {
       whatifBtn.style.display = 'none';
     }
@@ -201,4 +211,63 @@ export function resetFlip() {
   document.getElementById('flip-notes').value = '';
   document.getElementById('flip-funding-btn').innerHTML = '';
   lastFlipResult = null;
+}
+
+// ─── Design wave · DealFit profit guidance block (by the Min Profit Target) ──
+// EDUCATIONAL only: shows DealFit's suggested project-profit range for this
+// project's size, rehab exposure, hold and owner labor — in the SAME unit as
+// the user's target. It never overrides the target; the user can voluntarily
+// adopt the midpoint, which simply sets the field and re-runs the canonical
+// analysis. Hidden until a valid analysis produces guidance (§G4).
+let _lastGuide = null;
+
+function guideBasisLine(g) {
+  const arvK = g.arv >= 1000 ? '$' + Math.round(g.arv / 1000) + 'K' : fmt(g.arv);
+  return 'Based on: ' + arvK + ' ARV · ' + Math.round(g.rehabRatio * 100) + '% rehab intensity · '
+    + g.hold + '-month hold' + (g.laborAllowance > 0 ? ' · self-renovating' : '');
+}
+
+function updateGuideSoftState() {
+  const soft = document.getElementById('fg-soft');
+  if (!soft || !_lastGuide) return;
+  const t = parseComma(document.getElementById('f-target')?.value || '') || 0;
+  soft.style.display = (t > 0 && t < _lastGuide.low) ? '' : 'none';
+}
+
+function refreshFlipGuide(nego) {
+  const box = document.getElementById('flip-guide');
+  if (!box) return;
+  const g = nego && nego.guidance;
+  if (!g) { box.style.display = 'none'; _lastGuide = null; return; }
+  _lastGuide = g;
+  box.style.display = '';
+  document.getElementById('fg-range').textContent = fmt(g.low) + '–' + fmt(g.high) + ' (est.)';
+  const labor = document.getElementById('fg-labor');
+  if (labor) {
+    labor.style.display = g.laborAllowance > 0 ? '' : 'none';
+    if (g.laborAllowance > 0) labor.textContent =
+      'Includes about ' + fmt(Math.round(g.laborAllowance)) + ' of owner-labor allowance (est.)';
+  }
+  const basis = document.getElementById('fg-basis');
+  if (basis) basis.textContent = guideBasisLine(g);
+  const adopt = document.getElementById('fg-adopt');
+  if (adopt) adopt.textContent = 'Use DealFit midpoint: ' + fmt(g.mid);
+  updateGuideSoftState();
+}
+
+// Voluntary adoption (§E): the midpoint becomes the user's new Min Profit
+// Target and the normal canonical recalculation follows. Nothing else changes.
+export function adoptDealFitTarget() {
+  if (!_lastGuide) return;
+  const t = document.getElementById('f-target');
+  if (!t) return;
+  t.value = _lastGuide.mid.toLocaleString();
+  analyzeFlip();
+}
+
+if (typeof document !== 'undefined' && document.getElementById) {
+  const t = document.getElementById('f-target');
+  if (t && t.addEventListener) t.addEventListener('input', updateGuideSoftState);
+  const a = document.getElementById('fg-adopt');
+  if (a && a.addEventListener) a.addEventListener('click', adoptDealFitTarget);
 }

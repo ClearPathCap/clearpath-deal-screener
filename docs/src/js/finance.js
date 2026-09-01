@@ -409,17 +409,13 @@ export function flipVerdict({ profit, roi, target, maxOffer, marginOfSafety, str
     // when no positive price can meet the user's target.
     const dyn = nego && !nego.noWorkablePrice && nego.counter !== null &&
                 Number.isFinite(ask) && ask > nego.walkAway;
-    if (nego && nego.noWorkablePrice) {
-      verdict = 'No Workable Price — Walk Away';
-    } else if (dyn) {
+    if (dyn) {
       verdict = 'Counter at ' + moneyCompact(nego.counter) + ' — Walk Above ' + money(nego.walkAway);
     } else {
       verdict = 'Counter at Max Offer — Walk Away';
     }
     if (maxOffer <= 0) {
       vsub = 'Repairs exceed the ' + (self ? '75' : '70') + '% ARV ceiling — no purchase price hits your target. Walk away.';
-    } else if (nego && nego.noWorkablePrice) {
-      vsub = 'No purchase price reaches your ' + money(nego.target) + ' profit target on this deal. Lower the target only if the numbers truly support it — otherwise walk away.';
     } else if (!survives) {
       vsub = 'Net profit goes negative under a modest stress test (ARV −5%, rehab +10%, +1 month → ' + money(stressedProfit) + '). Too little margin of safety — renegotiate hard or walk.'
         + (dyn ? ' If you engage at all: counter at ' + money(nego.counter) + ' and walk above ' + money(nego.walkAway) + '.' : '');
@@ -439,6 +435,24 @@ export function flipVerdict({ profit, roi, target, maxOffer, marginOfSafety, str
         ? 'ROI ' + (Math.round(roi * 10) / 10) + '% is under the 15% bar'
         : 'the stress-test margin is thin';
     vsub = 'Workable, but ' + miss + '. Counter at ' + money(Math.max(0, maxOffer)) + ' max offer' + (self ? ' — your labor advantage could close the gap.' : '.');
+  }
+
+  // §G1 (GPT review ruling on 3336faa): when required inputs are valid and the
+  // canonical solver proves NO positive purchase price reaches the user's Min
+  // Profit Target, the PRICE/NEGOTIATION guidance says exactly that —
+  // regardless of the deal grade. The grade (cls: hot/warm/pass and its badge
+  // tag) is deliberately NOT touched: grade and price guidance are separate
+  // signals. If price cannot solve the problem, negotiation cannot either.
+  // (A HOT grade cannot mathematically coexist with an unreachable target —
+  // hot requires profit ≥ max($50K, target), so the ask itself satisfies the
+  // solver; the override is still unconditional as defense in depth.)
+  // Rule-side impossibility (maxOffer ≤ 0) keeps its repairs-exceed-ceiling
+  // explanation, which already carries the same walk-away instruction.
+  if (nego && nego.noWorkablePrice) {
+    verdict = 'No Workable Price — Walk Away';
+    if (maxOffer > 0) {
+      vsub = 'No purchase price above $0 meets your ' + money(nego.target) + ' minimum-profit target under the current assumptions. Adjust the underwriting only if the numbers truly support it — otherwise walk away.';
+    }
   }
   return { cls, verdict, vsub };
 }

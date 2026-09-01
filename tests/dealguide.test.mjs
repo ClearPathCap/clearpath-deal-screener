@@ -121,8 +121,59 @@ const g1s = F.computeFlipStress({ ...BASE, ask: 210000, financed: false, target:
 const g1v = F.flipVerdict({ profit: g1e.profit, roi: g1e.roi, target: 500000, maxOffer: g1e.maxOffer,
   marginOfSafety: g1s.marginOfSafety, stressedProfit: g1s.stressedProfit, self: false, ask: 210000, nego: g1b });
 ok("N12: verdict names the truth — No Workable Price — Walk Away",
-   g1v.verdict === 'No Workable Price — Walk Away' && /No purchase price reaches your \$500,000 profit target/.test(g1v.vsub));
+   g1v.verdict === 'No Workable Price — Walk Away' &&
+   /No purchase price above \$0 meets your \$500,000 minimum-profit target under the current assumptions\./.test(g1v.vsub));
 ok("N12: no counter is invented", g1b.counter === null && g1b.cushionDollars === null);
+
+// ── §G1 corrective (GPT review of 3336faa) · guidance overrides EVERY grade ──
+// Grade and price guidance are separate signals: the grade class survives,
+// the negotiation line names the truth.
+// A · HOT + unreachable target is mathematically impossible — hot requires
+//     profit ≥ max($50K, target), so the ask itself satisfies the solver.
+//     Lemma: a hot-classified deal can never carry noWorkablePrice.
+const hotD = { ...BASE, ask: 150000, target: 28000 };  // profit(150k)=83,000 ≥ 50k, roi 41%, survives
+const hotN = F.flipNegotiationGuidance(hotD);
+const hotE = F.computeFlip(hotD);
+const hotS = F.computeFlipStress({ ...hotD, financed: false });
+const hotV = F.flipVerdict({ profit: hotE.profit, roi: hotE.roi, target: 28000, maxOffer: hotE.maxOffer,
+  marginOfSafety: hotS.marginOfSafety, stressedProfit: hotS.stressedProfit, self: false, ask: 150000, nego: hotN });
+ok("G1-A: hot lemma — hot profit ≥ target means the solver always succeeds",
+   hotV.cls === 'hot' && hotN.noWorkablePrice === false && hotN.userCeiling >= 150000);
+ok("G1-A: hot verdict untouched by the override", hotV.verdict === 'Strong Flip Play');
+// B · WARM grade + unreachable target → grade stays warm, guidance says the truth.
+const warmD = { ...BASE, ask: 200000, target: 500000 };  // profit 32,000: ≥25k, < hotDollar(500k), survives → warm
+const warmN = F.flipNegotiationGuidance(warmD);
+const warmE = F.computeFlip(warmD);
+const warmS = F.computeFlipStress({ ...warmD, financed: false, target: 500000 });
+const warmV = F.flipVerdict({ profit: warmE.profit, roi: warmE.roi, target: 500000, maxOffer: warmE.maxOffer,
+  marginOfSafety: warmS.marginOfSafety, stressedProfit: warmS.stressedProfit, self: false, ask: 200000, nego: warmN });
+ok("G1-B: the deal grade remains WARM (class + architecture untouched)", warmV.cls === 'warm');
+ok("G1-B: the negotiation guidance is still No Workable Price — Walk Away",
+   warmV.verdict === 'No Workable Price — Walk Away');
+ok("G1-B/E: expanded copy uses the approved conditional wording",
+   /No purchase price above \$0 meets your \$500,000 minimum-profit target under the current assumptions\./.test(warmV.vsub));
+// C · WARM grade + reachable target → existing Dig Deeper behavior unchanged.
+const warmOkN = F.flipNegotiationGuidance({ ...BASE, ask: 200000, target: 40000 });
+const warmOkS = F.computeFlipStress({ ...BASE, ask: 200000, financed: false, target: 40000 });
+const warmOkV = F.flipVerdict({ profit: warmE.profit, roi: warmE.roi, target: 40000, maxOffer: warmE.maxOffer,
+  marginOfSafety: warmOkS.marginOfSafety, stressedProfit: warmOkS.stressedProfit, self: false, ask: 200000, nego: warmOkN });
+ok("G1-C: reachable-target warm keeps Dig Deeper & Negotiate verbatim",
+   warmOkV.cls === 'warm' && warmOkV.verdict === 'Dig Deeper & Negotiate' && /Workable, but/.test(warmOkV.vsub));
+// D · the no-positive-price boundary is the CANONICAL solver's, exactly.
+//     profit(1) for the base fixture is 235,998.98 — one dollar of target
+//     across that line flips the flag.
+ok("G1-D: reachable at target = floor(profit($1))",
+   F.flipNegotiationGuidance({ ...BASE, ask: 200000, target: 235998 }).noWorkablePrice === false);
+ok("G1-D: unreachable one dollar above the canonical boundary",
+   F.flipNegotiationGuidance({ ...BASE, ask: 200000, target: 235999 }).noWorkablePrice === true);
+ok("G1-D: the boundary is computeFlip's own number, not a re-derivation",
+   Math.floor(F.computeFlip({ ...BASE, ask: 1 }).profit) === 235998);
+// Rule-side impossibility keeps its own precise explanation:
+const ruleV = F.flipVerdict({ profit: -50000, roi: -10, target: 28000, maxOffer: -5000,
+  marginOfSafety: 'fails', stressedProfit: -60000, self: false, ask: 90000,
+  nego: F.flipNegotiationGuidance({ ...BASE, arv: 100000, rep: 80000, ask: 90000, target: 28000 }) });
+ok("G1: rule-side (repairs exceed ceiling) keeps the repairs explanation under the same verdict",
+   ruleV.verdict === 'No Workable Price — Walk Away' && /Repairs exceed the 70% ARV ceiling/.test(ruleV.vsub));
 
 // ── §N13 · DealFit high range unattainable (§G3) ─────────────────────────────
 const g3 = F.flipNegotiationGuidance({ arv: 100000, rep: 60000, hold: 6, cc1: 0.02, cc2: 0.05,

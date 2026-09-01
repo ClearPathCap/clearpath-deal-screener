@@ -907,7 +907,7 @@ function showMaxOfferScenario(ref) {
   if (!sc || sc.noWorkablePrice) {
     body.innerHTML = (sc && sc.ruleCeiling <= 0)
       ? '<p>Repairs exceed the ARV ceiling — no purchase price works on this deal. Walk away.</p>'
-      : '<p>No purchase price reaches your ' + (sc ? fmt(sc.target) : 'profit') + ' Min Profit Target on this deal. Lower the target only if the numbers truly support it — otherwise walk away.</p>';
+      : '<p>No purchase price above $0 meets your ' + (sc ? fmt(sc.target) : '') + ' minimum-profit target under the current assumptions. Adjust the underwriting only if the numbers truly support it — otherwise walk away.</p>';
     openModal('modal-maxoffer');
     return;
   }

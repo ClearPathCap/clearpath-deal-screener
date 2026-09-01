@@ -311,10 +311,48 @@ function buildBrrrDetail(d) {
   ]);
 }
 
+// ─── Render-time canonical verdict (stale-badge corrective) ──────────────────
+// LIVE DEFECT: the badge printed the verdict STRING persisted at save time, so
+// a deal saved before the guidance wave kept showing "Counter at Max Offer —
+// Walk Away" while the negotiation modal (which derives fresh) already knew
+// "Counter at $175K — Walk Above $185,750". The badge now re-derives the
+// CURRENT verdict from the saved underwriting inputs through the same
+// canonical chain the analyzer runs — computeFlip → computeFlipStress →
+// flipNegotiationGuidance → flipVerdict — at render time. Nothing is written
+// back to the record (stored text remains underwriting history); legacy or
+// incomplete data falls back to the stored text unchanged. No second finance
+// formula exists here. Exported for the Node suites.
+export function liveFlipVerdict(data) {
+  try {
+    const eng = {
+      ask: data.ask, arv: data.arv, rep: data.rep, hold: data.hold,
+      cc1: (data.cc1 ?? 2) / 100, cc2: (data.cc2 ?? 5) / 100, carry: data.carry,
+      loan: data.loan || 0, rate: data.rate ?? 0.10, points: data.points ?? 0.03,
+      self: !!data.self, target: data.target,
+    };
+    if (![eng.ask, eng.arv, eng.rep, eng.hold, eng.carry].every(Number.isFinite)) return null;
+    const nego = flipNegotiationGuidance(eng);
+    if (!nego) return null;
+    const e = computeFlip(eng);
+    const s = computeFlipStress({ ...eng, financed: eng.loan > 0, target: nego.target });
+    return flipVerdict({
+      profit: e.profit, roi: e.roi, target: nego.target, maxOffer: e.maxOffer,
+      marginOfSafety: s.marginOfSafety, stressedProfit: s.stressedProfit,
+      self: eng.self, ask: eng.ask, nego,
+    });
+  } catch { return null; }
+}
+
 function buildDealCard(d) {
   const data       = d.data || {};
   // Phase A: unresolved-insurance overlay for the stored badge/stats (LTR/BRRR only).
   const insP       = unresolvedInsPresentation(d.type, data);
+  // Stale-badge corrective: the ONE header badge (visible collapsed AND
+  // expanded) shows the current canonical signal when derivable; the stored
+  // verdict/cls remain the fallback and the persisted record is untouched.
+  const live       = (d.type === 'flip' && !insP) ? liveFlipVerdict(data) : null;
+  const badgeCls   = live ? live.cls : (insP ? 'warm' : d.cls);
+  const badgeText  = live ? live.verdict : (insP ? insP.tag : d.verdict);
   const cardStats  = insP ? pendingDealStats(d) : d.stats;
   // Track C at render time: legacy deals have no baked class — derive it live
   // for flip cards (never while an insurance/tax pend overlay is active).
@@ -346,10 +384,10 @@ function buildDealCard(d) {
                scenario is now a real button: native Enter/Space activation,
                and stopPropagation so activation never reaches the card
                toggle. All other badges stay inert divs. */
-            ? `<button type="button" class="deal-badge ${d.cls} badge-action" aria-haspopup="dialog"
+            ? `<button type="button" class="deal-badge ${badgeCls} badge-action" aria-haspopup="dialog"
                  title="See this deal at DealFit's max offer"
-                 onclick="event.stopPropagation();showMaxOfferScenario(${d.id})">${d.verdict}</button>`
-            : `<div class="deal-badge ${insP ? 'warm' : d.cls}">${insP ? insP.tag : d.verdict}</div>`}
+                 onclick="event.stopPropagation();showMaxOfferScenario(${d.id})">${badgeText}</button>`
+            : `<div class="deal-badge ${badgeCls}">${badgeText}</div>`}
         </div>
         <div class="deal-stats">
           ${shownStats.map(s => `<div class="deal-stat"><div class="dsl">${s.l}</div><div class="dsv${s.cls ? ' ' + s.cls : ''}">${s.v}</div></div>`).join('')}

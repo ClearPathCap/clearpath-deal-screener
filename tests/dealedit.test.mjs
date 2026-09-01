@@ -527,6 +527,59 @@ ok("[RULING · G12] no bare estimator-action anchor remains",
 ok("[RULING · G12] the accent rule exists in the stylesheet",
    /\.rep-action\{color:var\(--accent\);text-decoration:underline/.test(src("docs/src/css/styles.css")));
 
+// ── §BADGE-REFRESH · stale stored verdict vs render-time canonical signal ────
+// LIVE DEFECT (owner screenshots): a pre-wave saved deal kept its persisted
+// "Counter at Max Offer — Walk Away" badge while the plan modal derived the
+// current guidance. The badge now re-derives through the canonical chain at
+// render; the stored record is NEVER rewritten for display.
+const STALE = {
+  id: 5101, name: 'Badge Refresh Fixture', type: 'flip',
+  verdict: 'Counter at Max Offer — Walk Away', cls: 'pass', notes: '',
+  date: 'Aug 20, 2026', data: { type: 'flip', ask: 289000, arv: 365000, rep: 88000,
+    hold: 5, cc1: 2, cc2: 5, carry: 2150, target: 28000, self: true,
+    loan: 0, rate: 0.10, points: 0.03, profit: -46780, roi: -11.9, maxOffer: 185750 },
+  stats: [{ l: 'Profit', v: '$-46,780' }],
+};
+const G1DEAL = { ...STALE, id: 5102, name: 'G1 Fixture',
+  data: { ...STALE.data, target: 5000000 } };
+const G2DEAL = { ...STALE, id: 5103, name: 'G2 Fixture',
+  data: { type: 'flip', ask: 120000, arv: 300000, rep: 40000, hold: 6, cc1: 2, cc2: 5,
+    carry: 15000, target: 28000, self: false, loan: 0, rate: 0.10, points: 0.03, maxOffer: 170000 } };
+const LEGACY = { ...STALE, id: 5104, name: 'Legacy Fixture',
+  verdict: 'Legacy Stored Verdict', cls: 'warm',
+  data: { type: 'flip', ask: 289000, arv: 365000, rep: 98000, self: true, profit: -56780, maxOffer: 175750 } };
+let refreshSaves = [];
+globalThis.__stubSupabase = { session, rpc: {
+  get_pipeline: { data: [STALE, G1DEAL, G2DEAL, LEGACY], error: null },
+  save_pipeline: (args) => { refreshSaves.push(args); return { data: { ok: true }, error: null }; },
+} };
+await storage.hydratePipeline();
+pipeline.renderPipeline();
+const listHtml = el('pipeline-list').innerHTML;
+ok("[DEFECT-CLOSING] Saddlebrooke-current inputs render the governed negotiation badge",
+   /Counter at \$175K — Walk Above \$185,750/.test(listHtml));
+ok("[DEFECT-CLOSING] the stale stored text cannot override current guidance on that card",
+   (listHtml.match(/Counter at Max Offer — Walk Away/g) || []).length === 1 /* only the G2 card, below */);
+ok("[DEFECT-CLOSING] no save was needed to refresh the wording (zero save_pipeline on render)",
+   refreshSaves.length === 0);
+ok("[PRESERVATION] the persisted record still carries its historical verdict text",
+   storage.getDeals().find(d => d.id === 5101).verdict === 'Counter at Max Offer — Walk Away');
+ok("[G1] unreachable target renders No Workable Price — Walk Away",
+   /No Workable Price — Walk Away/.test(listHtml));
+ok("[G2] ask at/below the walk-away keeps the legacy verdict — no manufactured counter",
+   /Counter at Max Offer — Walk Away/.test(listHtml) &&
+   !/Counter at \$1[0-9]{2}K — Walk Above \$1[0-9]{2},[0-9]{3}[\s\S]{0,80}G2 Fixture/.test(listHtml));
+ok("[GRACEFUL] legacy data without full inputs falls back to the stored text unchanged",
+   /Legacy Stored Verdict/.test(listHtml));
+ok("[LAW] direct liveFlipVerdict: derives the exact governed line from saved inputs",
+   pipeline.liveFlipVerdict(STALE.data).verdict === 'Counter at $175K — Walk Above $185,750');
+ok("[LAW] direct liveFlipVerdict: null on incomplete inputs (fallback path)",
+   pipeline.liveFlipVerdict(LEGACY.data) === null);
+ok("[LAW] G1 grade separation — cls stays the grade while the verdict names the truth",
+   pipeline.liveFlipVerdict(G1DEAL.data).verdict === 'No Workable Price — Walk Away');
+ok("[INTERACTION] the refreshed badge is still the isolated scenario button",
+   /<button type="button" class="deal-badge pass badge-action"[\s\S]{0,200}showMaxOfferScenario\(5101\)/.test(listHtml));
+
 console.log(`\ndealedit: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Canonical-engine pipeline editing holds ✓");

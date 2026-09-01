@@ -888,7 +888,10 @@ function showMaxOfferScenario(ref) {
   const body = document.getElementById('maxoffer-body');
   if (!body) return;
   const row   = (l, v, cls) => `<div class="detail-row"><span class="dl">${l}</span><span class="dv${cls ? ' ' + cls : ''}">${v}</span></div>`;
-  const title = (t) => `<div class="detail-title" style="margin-top:12px">${t}</div>`;
+  // UX corrective: plan sections must scan as distinct blocks — dedicated
+  // heading class (divider + spacing + brighter weight) instead of the muted
+  // in-card detail-title. Content and ordering unchanged.
+  const title = (t) => `<div class="plan-sec-title">${t}</div>`;
   const scenarioRows = (a) => {
     const pCls = flipProfitClass(a.profit, sc.target);
     const mos  = mosLabel(a.marginOfSafety);

@@ -253,6 +253,21 @@ ok("D: pipeline what-if link uses the accent treatment (never browser blue)",
    /\.whatif-link\{[^}]*background:var\(--accent-dim\)/.test(css) && /\.whatif-link\{[^}]*color:var\(--accent\)/.test(css) &&
    /\.whatif-link\{[^}]*min-height:44px/.test(css));
 
+// ── UX corrective · negotiation-plan section hierarchy pins ──────────────────
+// Real-user feedback: the plan's three blocks blended together. Sections open
+// with a divider + spacing + a brighter/bolder heading; the Close row is
+// sticky at the modal's bottom edge (same law as the sign-in modal).
+ok("plan sections use the dedicated heading class in the renderer",
+   /class="plan-sec-title"/.test(mainJs) && !/detail-title" style="margin-top:12px"/.test(mainJs));
+const pst = (css.match(/\.plan-sec-title\{[^}]*\}/) || [''])[0];
+ok("plan heading opens with a subtle divider", /border-top:1px solid var\(--border\)/.test(pst));
+ok("plan heading has section breathing room", /margin-top:18px/.test(pst) && /padding-top:14px/.test(pst));
+ok("plan heading is brighter and bolder than row labels",
+   /color:var\(--text\)/.test(pst) && /font-weight:800/.test(pst));
+ok("plan Close row is sticky and reachable while scrolling",
+   /#modal-maxoffer \.modal-actions\{position:sticky;bottom:-22px/.test(css) &&
+   /background:var\(--surface\)/.test((css.match(/#modal-maxoffer \.modal-actions\{[^}]*\}/) || [''])[0]));
+
 console.log(`\nlayout: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Nav-lock invariants hold ✓");

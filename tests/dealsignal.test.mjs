@@ -183,8 +183,23 @@ ok("BADGE-A: scenario verdict renders as a semantic <button type=\"button\">",
    badgeBtn.length > 0 && /type="button"/.test(badgeBtn) && /aria-haspopup="dialog"/.test(badgeBtn));
 ok("BADGE-A2: the button is gated to flip deals WITH a governed scenario",
    /d\.type === 'flip' && !insP && data\.maxOffer > 0/.test(pipeJs));
+// Stale-badge corrective re-pin: badge class/text now come from the render-time
+// canonical derivation (liveFlipVerdict), stored values as fallback.
 ok("BADGE-A3: every other badge stays an inert div (no scenario, no control)",
-   /<div class="deal-badge \$\{insP \? 'warm' : d\.cls\}">/.test(pipeJs));
+   /<div class="deal-badge \$\{badgeCls\}">\$\{badgeText\}<\/div>/.test(pipeJs));
+ok("BADGE-CURRENT: badge text derives at render time from the canonical chain",
+   /export function liveFlipVerdict/.test(pipeJs) &&
+   /const nego = flipNegotiationGuidance\(eng\);/.test(pipeJs.slice(pipeJs.indexOf('function liveFlipVerdict'))) &&
+   /badgeText\s*=\s*live \? live\.verdict/.test(pipeJs));
+ok("BADGE-CURRENT: card badge and negotiation modal share ONE guidance law",
+   /flipNegotiationGuidance\(eng\)/.test(src("docs/src/js/finance.js").slice(
+     src("docs/src/js/finance.js").indexOf('function computeNegotiationScenario'))) &&
+   /flipNegotiationGuidance\(eng\)/.test(pipeJs.slice(pipeJs.indexOf('function liveFlipVerdict'))));
+ok("BADGE-CURRENT: ONE badge slot per card — collapsed and expanded share it",
+   (pipeJs.slice(pipeJs.indexOf('function buildDealCard')).match(/class="deal-badge/g) || []).length === 2);
+ok("BADGE-CURRENT: render derivation never writes back to the record",
+   !/saveDeals|save_pipeline|d\.verdict\s*=|data\.verdict\s*=/.test(
+     pipeJs.slice(pipeJs.indexOf('function liveFlipVerdict'), pipeJs.indexOf('function buildDealCard'))));
 ok("BADGE-B: activation stops propagation FIRST, then opens the scenario — never the card toggle",
    /onclick="event\.stopPropagation\(\);showMaxOfferScenario\(\$\{d\.id\}\)"/.test(badgeBtn));
 ok("BADGE-D: keyboard law — native button semantics (Enter/Space fire the same isolated click)",

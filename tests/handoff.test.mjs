@@ -261,8 +261,13 @@ eq("flip summary only unguarded Verdict (STR gated by F-6)", (cpSrc.match(/'Verd
 
 // pipeline.js — saved-deal render path gated (badge, stats, LTR/BRRR details)
 has("pipeline imports readiness", plSrc, "from './insuranceReadiness.js'");
-has("pipeline badge cls gated", plSrc, "${insP ? 'warm' : d.cls}");
-has("pipeline badge text gated", plSrc, "${insP ? insP.tag : d.verdict}");
+// RE-PINNED (stale-badge corrective, same-commit law): the insurance-pend
+// gate moved into the badgeCls/badgeText derivation — a pend overlay still
+// forces the warm badge + pend tag because the live derivation is skipped
+// whenever insP is set. Same Phase A law, one indirection.
+has("pipeline badge cls gated", plSrc, "badgeCls   = live ? live.cls : (insP ? 'warm' : d.cls)");
+has("pipeline badge text gated", plSrc, "badgeText  = live ? live.verdict : (insP ? insP.tag : d.verdict)");
+has("pipeline badge live-derivation skipped under a pend overlay", plSrc, "(d.type === 'flip' && !insP) ? liveFlipVerdict(data) : null");
 has("pipeline stats gated", plSrc, "const cardStats  = insP ? pendingDealStats(d) : d.stats;");
 truthy("pipeline detail rows gated (>=7 Pending gates)", (plSrc.match(/pend \? 'Pending' :/g) || []).length >= 5 && (plSrc.match(/'Pending'/g) || []).length >= 10);
 not("pipeline: unguarded stats render gone", plSrc, "${d.stats.map(");

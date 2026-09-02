@@ -36,8 +36,12 @@
   <button class="icon-btn" title="Share app" onclick="openShareApp()" aria-label="Share app">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
   </button>
-  <button class="icon-btn" title="Install as app" onclick="openInstall()" aria-label="Install as app">
+  <!-- INSTALL UX: labeled CTA. Where the browser offers the native PWA prompt
+       this opens a one-question confirm; elsewhere the guided steps. install.js
+       hides it when DealFit is already running installed. -->
+  <button class="get-app-btn" id="btn-get-app" type="button" onclick="openInstall()" aria-label="Get the DealFit app">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+    Get the App
   </button>
 </div>
 
@@ -970,15 +974,28 @@
   </div>
 </div>
 
-<!-- Install as app -->
+<!-- INSTALL UX · native path: one question, zero instructions. [Install] hands
+     off to the BROWSER'S native PWA dialog, which performs the actual install. -->
+<div class="modal-backdrop" id="modal-install-confirm">
+  <div class="modal">
+    <h3>Install DealFit on this device?</h3>
+    <p>Adds the DealFit icon so it launches full-screen like a real app. Your browser will confirm the install.</p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modal-install-confirm')">Cancel</button>
+      <button class="btn-confirm accent" onclick="triggerInstall()">Install</button>
+    </div>
+  </div>
+</div>
+
+<!-- INSTALL UX · fallback path: guided per-platform steps (iOS can never be
+     auto-installed by any website — Apple platform rule). -->
 <div class="modal-backdrop" id="modal-install">
   <div class="modal">
-    <h3>Install as App</h3>
+    <h3>Get the App</h3>
     <p>Pin DealFit to your home screen so it launches full-screen like a real app.</p>
     <div class="install-steps" id="install-steps"></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('modal-install')">Got it</button>
-      <button class="btn-confirm accent" id="btn-install-prompt" style="display:none" onclick="triggerInstall()">Install Now</button>
     </div>
   </div>
 </div>

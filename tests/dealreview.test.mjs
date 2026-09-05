@@ -483,7 +483,11 @@ ok(F.ltrGuidance(savedU.data).current.util === 1200 && near(F.ltrGuidance(savedU
 globalThis.cancelDealReview('ltr');
 const shareSrc2 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'share.js'), 'utf8');
 const cpSrc2 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'clearpath.js'), 'utf8');
-ok(/Owner-paid utilities: ' \+ money\(data\.util\)/.test(shareSrc2) && /Owner-Paid Utilities \(annual\): \$/.test(cpSrc2) && !/annualUtilities/.test(cpSrc2), 'J15 share text + clipboard summaries carry the expense; the CPC URL contract is untouched');
+// Contract wave 2026-09-05 (owner dispatch): the CPC URL now ITEMIZES the expense
+// as `annualUtilities` (LTR/BRRRR/STR; F&F untouched) — the URL-level proof lives
+// in tests/handoffutil.test.mjs. This pin keeps the share/clipboard law and
+// confirms the itemization is wired through the one handoff helper only.
+ok(/Owner-paid utilities: ' \+ money\(data\.util\)/.test(shareSrc2) && /Owner-Paid Utilities \(annual\): \$/.test(cpSrc2) && (cpSrc2.match(/annualUtilities: utilitiesHandoff\(r\.util\)/g) || []).length === 2, 'J15 share text + clipboard summaries carry the expense; the CPC URL contract itemizes it via utilitiesHandoff (LTR/BRRRR + STR)');
 
 // ── §K · stale-result indicator ──────────────────────────────────────────────
 console.log('— §K stale result —');

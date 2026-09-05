@@ -21,6 +21,21 @@ function parseCityState(addr) {
   return { city: m[1].trim(), state };
 }
 
+// ─── Owner-paid utilities (annual) — itemized handoff field ──────────────────
+// Contract wave 2026-09-05: LTR / BRRRR / STR send the RAW annual utilities input
+// (`annualUtilities`) so CPC can itemize it. The screener's NOI figures are
+// ALREADY utilities-adjusted (finance.js incomeBlock / strFinance.js subtract
+// util above NOI), so this field is transparency for CPC's own itemized
+// reconstruction — never a second subtraction from screenerNoi. Style mirrors
+// monthlyHoa: an absent value (legacy saved record) is omitted from the URL, an
+// explicit 0 travels as "0", and only a finite nonnegative number is ever sent.
+// F&F has no utilities concept and does not carry this key.
+function utilitiesHandoff(v) {
+  if (v == null) return undefined;
+  const n = +v;
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : undefined;
+}
+
 // ─── Carry the screener's economics into the CPC handoff (LTR/BRRR income deals) ──
 // so CPC DISPLAYS the operator-view math rather than re-deriving a conflicting one.
 // r already holds everything (lastLtrResult/lastBrrrResult) — pass through, no recompute.
@@ -42,6 +57,7 @@ function econHandoff(r) {
     annualTaxes: incomeFields.annualTaxes,
     annualInsurance: incomeFields.annualInsurance,
     monthlyHoa: n(r.hoa, true),
+    annualUtilities: utilitiesHandoff(r.util),   // raw input; NOT insurance/tax-gated (like rent/HOA)
     vacancyPct: n(r.vac),
     pmPct: n(r.pm),
     maintPct: n(r.maint),
@@ -139,6 +155,7 @@ function buildDealParams(r) {
     pp:      Math.round(r.price || 0),
     loan,
     ltc:     r.price ? loan / r.price : undefined,
+    annualUtilities: utilitiesHandoff(r.util),   // contract wave 2026-09-05: STR itemizes owner-paid utilities too
     addr:    r.addr || undefined,
     city, state,
     purpose: 'str',

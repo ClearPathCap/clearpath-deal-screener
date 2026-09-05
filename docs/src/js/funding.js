@@ -24,6 +24,10 @@ export function buildCpcUrl(deal) {
                 // instead of re-deriving a conflicting one. HOA is MONTHLY (CPC ×12).
                 monthlyRent:'monthlyRent', annualTaxes:'annualTaxes',
                 annualInsurance:'annualInsurance', monthlyHoa:'monthlyHoa',
+                // Owner-paid utilities are ANNUAL and itemized (contract wave
+                // 2026-09-05). screenerNoi below is ALREADY utilities-adjusted —
+                // CPC itemizes this value; it never subtracts it from screenerNoi.
+                annualUtilities:'annualUtilities',
                 vacancyPct:'vacancyPct', pmPct:'pmPct', maintPct:'maintPct', capexPct:'capexPct',
                 loanRate:'loanRate', amortYears:'amortYears', pointsPct:'pointsPct', closingPct:'closingPct',
                 screenerNoi:'screenerNoi', screenerDscr:'screenerDscr',

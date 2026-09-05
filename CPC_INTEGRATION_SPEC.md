@@ -43,5 +43,29 @@ Rules: all params optional — CPC pre-fills what arrives, leaves the rest blank
 ## Hosting/DNS (when screener leaves GitHub Pages default URL)
 - Target: `dealscreener.clearpathcapfunding.com` — CNAME record in Namecheap → GitHub Pages. Free.
 
+## Amendment 2026-09-05 — `annualUtilities` (itemized owner-paid utilities)
+
+*The v1 table above predates the economics keys (`monthlyRent`, `annualTaxes`, `annualInsurance`,
+`monthlyHoa`, `vacancyPct`, `pmPct`, `maintPct`, `capexPct`, `loanRate`, `amortYears`, `pointsPct`,
+`closingPct`, `screener*`, `units`, `band`, `ltv`, `dscr`); the authoritative key map is
+`docs/src/js/funding.js` (`buildCpcUrl`). This amendment records the one key added by the
+DealFit → CPC handoff contract wave.*
+
+| Param | Screener source field | CPC intake field | Example |
+|---|---|---|---|
+| `annualUtilities` | Owner-Paid Utilities (annual) — LTR / BRRRR / STR raw input | Annual Owner-Paid Utilities (income mode, optional) | `1200` |
+
+Contract law:
+- **Annual**, raw dollars, finite and nonnegative; sent by LTR, BRRRR and STR; **never by Fix & Flip**.
+- Explicit `0` travels as `0` (same style as `monthlyHoa`); an absent value (legacy saved record) is omitted;
+  a negative / NaN / non-finite value is omitted, never repaired.
+- **NOI law:** `screenerNoi` is *already* utilities-adjusted (DealFit subtracts utilities above NOI).
+  CPC itemizes `annualUtilities` in its **own** quick-estimate reconstruction
+  (`rent × 12 − taxes − insurance − HOA − utilities`, exactly once) and never subtracts it from
+  `screenerNoi`. CPC's server discards every `screener*` figure, so double subtraction is structurally
+  impossible.
+- Legacy links without the key keep working: CPC treats a missing value as `$0` in the reconstruction
+  (unlike the HOA basis, which stays "Not sure"); a malformed CPC entry is refused (422), never defaulted.
+
 ## Measurement (success metrics from PROJECT_BRIEF)
 - Every screener-sourced submission is identifiable via the email source tag → count monthly: submissions, packaged, closed. Quarter-1 target: 5+ submissions, 1+ closed loan.

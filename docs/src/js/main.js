@@ -12,11 +12,12 @@ import { saveDeal as _saveDeal, renderPipeline,
          requestDelete, confirmDelete,
          startDealEdit, cancelDealEdit, saveDealEdits,
          dealEditSelfToggled, dealEditUseEstimate,
-         dealEditMarketChanged, dealEditRepTouched }                 from './pipeline.js';
+         dealEditMarketChanged, dealEditRepTouched,
+         beginDealReview, endDealReview, getReviewingDealId }         from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
-import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct } from './format.js';
+import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct, escapeHtml } from './format.js';
 import { propertyBand, BAND_RULES,
          computeNegotiationScenario, flipProfitClass, mosLabel,
          ltrGuidance }                                                from './finance.js';
@@ -187,6 +188,10 @@ async function saveDeal(type) {
     }
   }
 
+  // Saved-deal review: a successful "Update Saved Deal" ends review mode — the
+  // banner goes, and the button follows the normal Saved ✓ → Save path below.
+  if (outcome && outcome.mode === 'updated') exitReviewUI(type);
+
   // Existing revert-on-input behavior — armed only after a genuine success.
   if (outcome && outcome.status === 'saved') {
     const page = document.getElementById('page-' + (type === 'flip' ? 'flip' : 'rental'));
@@ -201,9 +206,140 @@ async function saveDeal(type) {
   return outcome;
 }
 
+// ─── Saved-deal review: "Review & Re-analyze" (owner law 2026-09-05) ─────────
+// A saved deal is a historical snapshot. This flow prefills the RIGHT analyzer
+// with every persisted raw input, protects those values from market presets,
+// band defaults and estimator auto-fill (dataset.userEdited), carries the deal
+// id / name / notes as pending-update state, and then STOPS: the user reviews
+// the inputs and presses the normal Analyze button. Only the explicit "Update
+// Saved Deal" tap (the Save button while a review is pending) replaces the
+// snapshot. Nothing runs or persists automatically — an old record can be
+// internally coherent yet hold an input the user never intended (Orange
+// Street: stored vacancy 5, intended 7), so the number must be seen and
+// corrected BEFORE current DealFit runs.
+const REVIEW_VIEW = { flip: null, rental: 'str', ltr: 'ltr', brrr: 'brrr' };
+const RESULTS_ID  = { flip: 'flip-results', rental: 'rental-results', ltr: 'ltr-results', brrr: 'brrr-results' };
+const FUNDING_ID  = { flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: 'ltr-funding-btn', brrr: 'brrr-funding-btn' };
+const SELF_ID     = { flip: 'self-reno', rental: 'self-manage-toggle', ltr: 'l-self-manage-toggle', brrr: 'b-self-manage-toggle' };
+
+// Per-analyzer field map: [formId, storedKey, kind]. kinds — '$' money · 'n'
+// number · 't' text · 'x100' stored fraction → whole percent · 'sel' select ·
+// '$0' / 'n0' blank when zero (blank loan = all-cash, blank sqft = no
+// estimator) · 'pm' management % (0 means self-managed → the toggle, below).
+const REVIEW_FIELDS = {
+  flip: [['f-addr','addr','t'], ['f-ask','ask','$'], ['f-arv','arv','$'], ['f-rep','rep','$'], ['f-hold','hold','n'],
+         ['f-cc1','cc1','n'], ['f-cc2','cc2','n'], ['f-carry','carry','$'], ['f-target','target','$'], ['sqft','sqft','n0'],
+         ['f-loan','loan','$0'], ['f-rate','rate','x100'], ['f-points','points','x100']],
+  ltr:  [['l-addr','addr','t'], ['l-price','price','$'], ['l-rent','rent','$'], ['l-units','units','n'], ['l-down','down','n'],
+         ['l-vac','vac','n'], ['l-tax','tax','$'], ['l-ins','ins','$'], ['l-hoa','hoa','$'], ['l-maint','maint','n'],
+         ['l-pm','pm','pm'], ['l-capex','capex','n'], ['l-rate','rate','n'], ['l-amort','amort','n'], ['l-points','points','n'],
+         ['l-cc','cc','n'], ['l-target','target','n'], ['l-ptype','ptype','sel']],
+  rental: [['v-addr','addr','t'], ['v-price','price','$'], ['v-rent','rent','$'], ['v-down','down','n'], ['v-occ','occ','n'],
+           ['v-mgmt','mgmt','n'], ['v-pm','pm','pm'], ['v-tax','tax','$'], ['v-maint','maint','$'], ['v-furnish','furnish','$'],
+           ['v-target','tgtCoc','n'], ['v-interest-rate','interestRate','x100']],
+  brrr: [['b-addr','addr','t'], ['b-price','price','$'], ['b-rehab','rehab','$'], ['b-arv','arv','$'], ['b-rent','rent','$'],
+         ['b-units','units','n'], ['b-contingency','contingency','n'], ['b-cc','cc','n'], ['b-hold','hold','n'], ['b-carry','carry','$'],
+         ['b-acqloan','acqLoan','$0'], ['b-acqrate','acqRate','n'], ['b-acqpoints','acqPoints','n'], ['b-refiltv','refiLtv','n'],
+         ['b-refirate','refiRate','n'], ['b-refiamort','refiAmort','n'], ['b-reficost','reficost','n'], ['b-season','season','n'],
+         ['b-vac','vac','n'], ['b-tax','tax','$'], ['b-ins','ins','$'], ['b-hoa','hoa','$'], ['b-maint','maint','n'],
+         ['b-pm','pm','pm'], ['b-capex','capex','n'], ['b-targetdscr','targetDscr','n'], ['b-ptype','ptype','sel']],
+};
+
+function reviewSetField(id, value, kind) {
+  const el = document.getElementById(id);
+  if (!el) return false;
+  if (kind === 'sel') {
+    if (value == null || value === '') return false;
+    const opts = el.options ? [...el.options].map(o => o.value) : null;
+    if (opts && !opts.includes(String(value))) return false;
+    el.value = String(value);
+    return true;
+  }
+  if (value == null || (kind !== 't' && !Number.isFinite(+value))) return false;
+  if (kind === 't')         el.value = String(value);
+  else if (kind === '$')    el.value = (+value).toLocaleString('en-US');
+  else if (kind === '$0')   el.value = +value > 0 ? (+value).toLocaleString('en-US') : '';
+  else if (kind === 'n0')   el.value = +value > 0 ? String(+value) : '';
+  else if (kind === 'x100') el.value = String(Math.round(+value * 100 * 100) / 100);
+  else if (kind === 'pm')   { if (!(+value > 0)) return false; el.value = String(+value); }
+  else                      el.value = String(+value);
+  // Protected from every programmatic writer (market presets, band defaults,
+  // estimator auto-fill) until the user clears the form.
+  el.dataset.userEdited = '1';
+  delete el.dataset.autoFilled;
+  return true;
+}
+
+const reviewPrefilledIds = { flip: [], rental: [], ltr: [], brrr: [] };
+
+function reviewDeal(id) {
+  const deal = beginDealReview(id);
+  if (!deal) return { status: 'not-found' };
+  const type = deal.type;
+  if (!REVIEW_FIELDS[type]) { endDealReview(); return { status: 'unsupported' }; }
+  const data = deal.data || {};
+  // 1. Navigate to the right analyzer FIRST — its market presets render here,
+  //    so the prefill below is the last writer.
+  if (type === 'flip') {
+    showPage('flip', document.querySelector('.nav-btn[data-tab="flip"]'));
+  } else {
+    showPage('rental', document.querySelector('.nav-btn[data-tab="rental"]'));
+    switchRentalView(REVIEW_VIEW[type], document.getElementById('subtab-' + REVIEW_VIEW[type]));
+  }
+  // 2. Hide any stale result — nothing is analyzed until the user presses Analyze.
+  const res = document.getElementById(RESULTS_ID[type]); if (res) res.style.display = 'none';
+  const fb  = document.getElementById(FUNDING_ID[type]); if (fb) fb.innerHTML = '';
+  // 3. Prefill EVERY persisted raw input and protect it.
+  const filled = [];
+  for (const [fid, key, kind] of REVIEW_FIELDS[type]) if (reviewSetField(fid, data[key], kind)) filled.push(fid);
+  const selfEl = document.getElementById(SELF_ID[type]);
+  if (selfEl) selfEl.checked = type === 'flip' ? !!data.self : (data.pm === 0);
+  const unitsEl = document.getElementById(type === 'ltr' ? 'l-units' : type === 'brrr' ? 'b-units' : '');
+  if (unitsEl) unitsEl.dataset.band = propertyBand(parseNumOpt(unitsEl.value));   // band sync stays quiet
+  reviewPrefilledIds[type] = filled;
+  // 4. Carry identity — name and notes stay the saved ones unless the user edits them.
+  const nameEl = document.getElementById(type + '-deal-name');
+  if (nameEl) { nameEl.value = deal.name || ''; nameEl.dataset.autoName = ''; }
+  const notesEl = document.getElementById(type + '-notes');
+  if (notesEl) notesEl.value = deal.notes || '';
+  // 5. Banner + Save → "Update Saved Deal".  6. Wait for the user.
+  const banner = document.getElementById(type + '-review-banner');
+  if (banner) {
+    banner.innerHTML = `<strong>Reviewing “${escapeHtml(deal.name || '')}”</strong> — review the saved inputs, then analyze with current DealFit. Your saved deal will not change until you tap <strong>Update Saved Deal</strong>. <button type="button" class="review-cancel" onclick="cancelDealReview('${type}')">Cancel review</button>`;
+    banner.style.display = 'block';
+  }
+  const btn = document.getElementById(type + '-save-btn');
+  if (btn) { btn.textContent = 'Update Saved Deal'; btn.classList.remove('saved'); }
+  window.scrollTo(0, 0);
+  return { status: 'reviewing', id, type, filled: filled.length };
+}
+
+// Leave review mode. The snapshot was never touched; the form keeps its values.
+function exitReviewUI(type) {
+  const banner = document.getElementById(type + '-review-banner');
+  if (banner) { banner.style.display = 'none'; banner.innerHTML = ''; }
+  const btn = document.getElementById(type + '-save-btn');
+  if (btn && btn.textContent === 'Update Saved Deal') btn.textContent = 'Save';
+}
+function cancelDealReview(type) {
+  endDealReview();
+  exitReviewUI(type);
+  return { status: 'cancelled' };
+}
+// Clear & New Deal releases the prefill protection so presets work again.
+function releaseReviewProtection(type) {
+  for (const fid of reviewPrefilledIds[type] || []) { const el = document.getElementById(fid); if (el) delete el.dataset.userEdited; }
+  reviewPrefilledIds[type] = [];
+}
+
 // ─── Clear & New Deal ─────────────────────────────────────────────────────────
 
 function clearNewDeal(type) {
+  // Saved-deal review: clearing the form ends a pending review for THIS
+  // analyzer (the snapshot was never touched) and releases the prefill
+  // protection so market presets and band defaults apply to the next deal.
+  releaseReviewProtection(type);
+  { const rid = getReviewingDealId(); const rd = rid != null ? getDeals().find(d => d.id === rid) : null; if (rd && rd.type === type) cancelDealReview(type); }
   if (type === 'flip') {
     ['f-addr','f-ask','f-arv','f-rep','sqft'].forEach(id => {
       const el = document.getElementById(id);
@@ -213,6 +349,7 @@ function clearNewDeal(type) {
     document.getElementById('f-cc1').value    = 2;
     document.getElementById('f-cc2').value    = 5;
     document.getElementById('f-carry').value  = '900';
+    ['f-hold','f-carry'].forEach(id => { const el = document.getElementById(id); if (el) delete el.dataset.userEdited; });
     // Task 3: clear user-edited flag so renderMarketSlots resets target to market default
     const targetEl = document.getElementById('f-target');
     if (targetEl) { delete targetEl.dataset.userEdited; targetEl.value = '40,000'; }
@@ -250,8 +387,9 @@ function clearNewDeal(type) {
   } else {
     ['v-addr','v-price','v-rent'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.value = '';
+      if (el) { el.value = ''; delete el.dataset.userEdited; }
     });
+    { const o = document.getElementById('v-occ'); if (o) delete o.dataset.userEdited; }
     document.getElementById('v-down').value          = 20;
     document.getElementById('v-occ').value            = 65;
     document.getElementById('v-mgmt').value           = 3;
@@ -1617,6 +1755,8 @@ Object.assign(window, {
   startDealEdit,
   cancelDealEdit,
   saveDealEdits,
+  reviewDeal,
+  cancelDealReview,
   // repair-provenance corrective: governed self-toggle swap + explicit estimator re-adopt
   dealEditSelfToggled,
   dealEditUseEstimate,
@@ -1759,7 +1899,9 @@ if (repField) {
 // the band changes, refresh the band-derived % fields to that band's defaults — but
 // never clobber a field the user has explicitly edited (programmatic .value writes
 // don't fire 'input', so they stay "default"; user typing marks it edited).
-['l-down','l-vac','l-pm','l-maint','l-capex','b-vac','b-pm','b-maint','b-capex'].forEach(id => {
+// + f-hold / v-occ (2026-09-05): the flip and STR presets now honour the same
+// user-edited law for the fields they used to overwrite unconditionally.
+['l-down','l-vac','l-pm','l-maint','l-capex','b-vac','b-pm','b-maint','b-capex','f-hold','v-occ'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('input', () => { el.dataset.userEdited = '1'; });
 });

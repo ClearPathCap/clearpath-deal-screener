@@ -1005,7 +1005,7 @@ export function brrrVerdict(m) {
   let cls, verdict, vsub;
   if (hardFail) {
     cls = "pass";
-    verdict = "BRRR Breaks — Rework the Numbers";
+    verdict = "BRRRR Breaks — Rework the Numbers";
     if (m.refiLoan <= m.acqPayoff) {
       vsub =
         "The refi (~$" + Math.round(m.refiLoan).toLocaleString() + ") doesn't cover your $" +
@@ -1015,7 +1015,7 @@ export function brrrVerdict(m) {
       vsub =
         "All-in cost ($" + Math.round(m.allInCost).toLocaleString() + ") meets or exceeds ARV ($" +
         Math.round(m.arv).toLocaleString() +
-        ") — no equity is created, so there's nothing to refinance. This isn't a BRRR.";
+        ") — no equity is created, so there's nothing to refinance. This isn't a BRRRR.";
     } else {
       // Debt not covered: DSCR < 1.0 (financed) or negative NOI (all-cash). This
       // branch is honest by construction — it is inside hardFail.
@@ -1025,10 +1025,10 @@ export function brrrVerdict(m) {
     }
   } else if (d >= hotDscr && rec >= 75 && cf > 0 && survives) {
     cls = "hot";
-    verdict = band === '5-8' ? "Textbook Small-Multifamily BRRR — Capital Recycled" : "Textbook BRRR — Capital Recycled";
+    verdict = band === '5-8' ? "Textbook Small-Multifamily BRRRR — Capital Recycled" : "Textbook BRRRR — Capital Recycled";
     const left =
       m.capitalLeft <= 0
-        ? "You pulled out more than you put in — an infinite-return BRRR."
+        ? "You pulled out more than you put in — an infinite-return BRRRR."
         : "Only $" + Math.round(m.capitalLeft).toLocaleString() + " left in the deal.";
     vsub =
       "Recovered " + recText + " of your capital and the refi holds at DSCR " + dscrText +
@@ -1048,7 +1048,7 @@ export function brrrVerdict(m) {
     (rec >= 90 && d >= 1.1 && d < hotDscr)
   ) {
     cls = "warm";
-    verdict = "Partial BRRR — Capital Trapped or Tight";
+    verdict = "Partial BRRRR — Capital Trapped or Tight";
     const why = !survives
       ? "it thins under a stress test (ARV −5%, rent −5%)"
       : m.dscr !== null && m.dscr < hotDscr
@@ -1062,7 +1062,7 @@ export function brrrVerdict(m) {
     // covered and cash flow is non-negative, but the deal misses every stronger arm —
     // typically low capital recovery, or DSCR in [1.0, 1.1). Never COLD (decision B5).
     cls = "warm";
-    verdict = "Partial BRRR — Capital Trapped or Tight";
+    verdict = "Partial BRRRR — Capital Trapped or Tight";
     const why = rec < 40
       ? "only " + recText + " of your capital comes back — the hold works, but the recycle doesn't"
       : "cash flow is thin for best-pricing DSCR";

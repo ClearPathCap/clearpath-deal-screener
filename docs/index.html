@@ -74,6 +74,7 @@
   <!-- item 6: MARKET REGIONS label + 6-slot container -->
   <div class="slabel">Market Regions</div>
   <div class="market-slots" id="flip-slots"></div>
+  <div class="review-banner" id="flip-review-banner" style="display:none"></div>
 
   <div class="slabel">Renovation Scope</div>
   <div class="toggle-row">
@@ -292,7 +293,7 @@
   <div class="sub-tabs">
     <button class="sub-tab active" id="subtab-str"  onclick="switchRentalView('str',this)">🌙 Short-Term</button>
     <button class="sub-tab"        id="subtab-ltr"  onclick="switchRentalView('ltr',this)">🏠 Long-Term</button>
-    <button class="sub-tab"        id="subtab-brrr" onclick="switchRentalView('brrr',this)">🔄 BRRR</button>
+    <button class="sub-tab"        id="subtab-brrr" onclick="switchRentalView('brrr',this)">🔄 BRRRR</button>
   </div>
 
   <!-- ░░░░░ SHORT-TERM (STR) sub-view ░░░░░ -->
@@ -302,6 +303,7 @@
   <!-- item 6: MARKET REGIONS label + shared 6-slot container -->
   <div class="slabel">Market Regions</div>
   <div class="market-slots" id="rental-slots"></div>
+  <div class="review-banner" id="rental-review-banner" style="display:none"></div>
 
   <div class="slabel">Property Info</div>
   <div class="field full">
@@ -427,6 +429,7 @@
 
     <div class="slabel">Market Regions</div>
     <div class="market-slots" id="ltr-slots"></div>
+    <div class="review-banner" id="ltr-review-banner" style="display:none"></div>
 
     <div class="slabel">Property Info</div>
     <div class="field full">
@@ -581,6 +584,7 @@
 
     <div class="slabel">Market Regions</div>
     <div class="market-slots" id="brrr-slots"></div>
+    <div class="review-banner" id="brrr-review-banner" style="display:none"></div>
 
     <div class="slabel">Acquisition</div>
     <div class="field full">
@@ -749,12 +753,12 @@
         <div class="vsub" id="bvsub"></div>
       </div>
       <div class="metrics" id="brrr-metrics"></div>
-      <div class="breakdown"><div class="btitle">BRRR Breakdown</div><div id="brrr-breakdown"></div></div>
+      <div class="breakdown"><div class="btitle">BRRRR Breakdown</div><div id="brrr-breakdown"></div></div>
       <div id="brrr-funding-btn"></div>
 
       <div class="slabel">Save This Deal</div>
       <div class="save-row">
-        <input type="text" id="brrr-deal-name" placeholder="Deal name e.g. BRRR 77 Birch St">
+        <input type="text" id="brrr-deal-name" placeholder="Deal name e.g. BRRRR 77 Birch St">
         <button class="btn-save" id="brrr-save-btn" onclick="saveDeal('brrr')">Save</button>
       </div>
       <div class="field full" style="margin-top:6px">

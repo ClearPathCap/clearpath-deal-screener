@@ -224,7 +224,7 @@ function showBrrrManualReview(units, info) {
   notice.className = 'band-notice band-notice-warn';
   notice.innerHTML =
     '<div class="band-notice-title">9+ unit multifamily — commercial review</div>'
-    + '<div class="band-notice-body">A ' + (units || '9+') + '-unit building is financed as a commercial multifamily deal, not a standard BRRR/DSCR loan. DealFit doesn\'t auto-screen it — submit through Clear Path Capital and we\'ll route it to the right lender.</div>'
+    + '<div class="band-notice-body">A ' + (units || '9+') + '-unit building is financed as a commercial multifamily deal, not a standard BRRRR/DSCR loan. DealFit doesn\'t auto-screen it — submit through Clear Path Capital and we\'ll route it to the right lender.</div>'
     + '<button class="btn-get-funding" id="b-manual-review-btn" type="button"><span class="funding-btn-label">Submit for Review</span></button>';
   const btn = elv('b-manual-review-btn');
   if (btn) btn.addEventListener('click', () => {

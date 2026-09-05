@@ -206,7 +206,7 @@ const labelFn = cpJs.slice(labelStart, labelEnd);
 ok("F8: concise type-appropriate labels — LTR / STR / Fix & Flip / BRRR (+ Multifamily product variant for 5–8 units)",
    /'Explore DSCR Options'/.test(labelFn) && /'Explore Multifamily DSCR'/.test(labelFn)
    && /'Explore STR Funding'/.test(labelFn) && /'Explore Fix & Flip Funding'/.test(labelFn)
-   && /'Explore BRRR Funding'/.test(labelFn) && /'Explore Multifamily BRRR'/.test(labelFn)
+   && /'Explore BRRRR Funding'/.test(labelFn) && /'Explore Multifamily BRRRR'/.test(labelFn)
    && !/Clear Path/.test(labelFn) && !/cls === 'hot'/.test(labelFn));
 ok("F8b: every label is short enough for one line at 390px in the Syne face (≤ 26 characters)",
    [...labelFn.matchAll(/'(Explore [^']+)'/g)].every(m => m[1].length <= 26) && [...labelFn.matchAll(/'(Explore [^']+)'/g)].length === 6);

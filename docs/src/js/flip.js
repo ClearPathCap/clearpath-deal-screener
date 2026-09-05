@@ -46,8 +46,13 @@ export function setFlipPreset(slug, el) {
   const carry  = flipCarry(m);
   const target = Math.max(10000, Math.round((m.medianArv || 300000) * 0.09 / 1000) * 1000);
 
-  document.getElementById('f-hold').value  = 5;
-  document.getElementById('f-carry').value = carry.toLocaleString();
+  // Saved-deal review / user-edited law (2026-09-05): a hold or carry the user
+  // typed — or a reviewed saved deal prefilled — is never overwritten by the
+  // market preset. Untouched fields keep following the market as before.
+  const holdEl = document.getElementById('f-hold');
+  if (holdEl && !holdEl.dataset.userEdited) holdEl.value = 5;
+  const carryEl = document.getElementById('f-carry');
+  if (carryEl && !carryEl.dataset.userEdited) carryEl.value = carry.toLocaleString();
 
   // Task 3: only auto-update target if user hasn't manually edited it this session
   const targetEl = document.getElementById('f-target');

@@ -33,6 +33,48 @@ let pendingDeleteId = null;
 // 'stale' is the UX-wave silent-wipe guard: hydration unproven, nothing written,
 // recover by rehydrate + retry). Success
 // feedback fires ONLY after the durable server write confirms (await-then-commit).
+// ─── Saved-deal review (owner law 2026-09-05) ────────────────────────────────
+// A saved deal is a historical analysis snapshot. Code updates never rewrite
+// it; the user may explicitly review and re-analyze it with current DealFit,
+// and nothing persisted changes until the user taps "Update Saved Deal". This
+// module holds only the pending-review identity — the analyzer prefill, the
+// protection of prefilled values, and the banner are DOM glue in main.js.
+// While a review is pending, saveDeal() replaces THAT record in place.
+let reviewingDealId = null;
+export function getReviewingDealId() { return reviewingDealId; }
+export function beginDealReview(id) {
+  const deal = getDeals().find(d => d.id === id);
+  if (!deal) return null;
+  reviewingDealId = id;
+  return deal;
+}
+export function endDealReview() { reviewingDealId = null; }
+
+// Compact "why does this saved result have these numbers" line for the
+// EXPANDED card only — the analyzer's materially important RAW inputs, never
+// derived outputs. The collapsed card stays as it is.
+function savedInputsLine(d) {
+  const x = d.data || {};
+  const money = (v) => (v != null && Number.isFinite(+v)) ? fmt(+v) : null;
+  const pctOf = (v) => (v != null && Number.isFinite(+v)) ? (+v) + '%' : null;
+  let parts;
+  if (d.type === 'ltr') {
+    parts = [money(x.rent) && 'Rent ' + money(x.rent) + '/mo', pctOf(x.vac) && 'Vacancy ' + pctOf(x.vac),
+             pctOf(x.down) && 'Down ' + pctOf(x.down), (+x.units > 1) && (+x.units) + ' units'];
+  } else if (d.type === 'brrr') {
+    parts = [money(x.price) && 'Price ' + money(x.price), money(x.rehab) && 'Rehab ' + money(x.rehab),
+             money(x.arv) && 'ARV ' + money(x.arv), money(x.rent) && 'Rent ' + money(x.rent) + '/mo', pctOf(x.vac) && 'Vacancy ' + pctOf(x.vac)];
+  } else if (d.type === 'rental') {
+    parts = [money(x.rent) && 'Rent ' + money(x.rent) + '/yr', pctOf(x.occ) && 'Occupancy ' + pctOf(x.occ), pctOf(x.down) && 'Down ' + pctOf(x.down)];
+  } else {
+    parts = [money(x.ask) && 'Ask ' + money(x.ask), money(x.arv) && 'ARV ' + money(x.arv),
+             money(x.rep) && 'Repairs ' + money(x.rep), (+x.hold > 0) && (+x.hold) + ' mo hold'];
+  }
+  parts = parts.filter(Boolean);
+  if (!parts.length) return '';
+  return `<div class="saved-inputs"><span class="si-label">Saved inputs</span><span class="si-values">${parts.join(' · ')}</span></div>`;
+}
+
 export async function saveDeal(type) {
   // Pipeline requires a free account (Option A) — anonymous users can analyze a
   // deal and request funding, but SAVING prompts sign-in / account creation.
@@ -53,43 +95,68 @@ export async function saveDeal(type) {
     : getLastRentalResult();
   if (!result) { alert('Analyze the deal first, then save.'); return { status: 'refused-result' }; }
 
-  // Wave 5 (§18-1): capacity is a UNIFORM allowance on every tier — an
-  // anti-abuse bound, never a paid differentiator. Tier-blind by design.
   const deals = getDeals();
-  if (deals.length >= PIPELINE_ALLOWANCE) {
-    window.showToast && window.showToast(`Your pipeline is full (${PIPELINE_ALLOWANCE} deals) — delete a deal you're done with to save a new one`, 4200);
-    return { status: 'refused-cap' };
-  }
-
   const notes = document.getElementById(notesId).value.trim();
-  // UX wave finding 3 (retention rule): stamp the market this deal was
-  // underwritten against AT SAVE TIME. The user's active region can change later
-  // (or sync in from another device) without rewriting what this analysis meant.
-  // Additive fields — legacy deals without them render fine.
-  const marketId = getActiveMarketId();
-  const deal  = {
-    id:      Date.now(),
-    name,
-    type,
-    verdict: result.verdict,
-    cls:     result.cls,
-    notes,
-    date:    new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    savedAt: new Date().toISOString(),
-    market:      marketId || null,
-    marketLabel: marketId ? getMarketLabel(marketId) : null,
-    data:    result,
-    stats:   buildDealStats(type, result),
-  };
+  let candidate, onOk;
+  // Saved-deal review law (2026-09-05): while this analyzer is reviewing a saved
+  // deal, Save means "Update Saved Deal" — replace THAT record in place: same id,
+  // provenance kept (date / savedAt / market stamp), name + notes from the form,
+  // the reviewed raw inputs + fresh derived outputs, updated stamps. No
+  // duplicate, and nothing else in the pipeline moves.
+  const reviewing = reviewingDealId != null ? deals.find(d => d.id === reviewingDealId) : null;
+  if (reviewing && reviewing.type === type) {
+    const now = new Date();
+    const updatedDeal = {
+      ...reviewing, name, notes,
+      verdict: result.verdict, cls: result.cls,
+      data: result, stats: buildDealStats(type, result),
+      updatedAt: now.toISOString(),
+      updated:   now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    };
+    candidate = deals.map(x => x.id === reviewing.id ? updatedDeal : x);
+    onOk = () => {
+      reviewingDealId = null;
+      window.showToast && window.showToast('Saved deal updated');
+      return { status: 'saved', mode: 'updated', id: reviewing.id };
+    };
+  } else {
+    // Wave 5 (§18-1): capacity is a UNIFORM allowance on every tier — an
+    // anti-abuse bound, never a paid differentiator. Tier-blind by design.
+    if (deals.length >= PIPELINE_ALLOWANCE) {
+      window.showToast && window.showToast(`Your pipeline is full (${PIPELINE_ALLOWANCE} deals) — delete a deal you're done with to save a new one`, 4200);
+      return { status: 'refused-cap' };
+    }
+    // UX wave finding 3 (retention rule): stamp the market this deal was
+    // underwritten against AT SAVE TIME. The user's active region can change later
+    // (or sync in from another device) without rewriting what this analysis meant.
+    // Additive fields — legacy deals without them render fine.
+    const marketId = getActiveMarketId();
+    const deal  = {
+      id:      Date.now(),
+      name,
+      type,
+      verdict: result.verdict,
+      cls:     result.cls,
+      notes,
+      date:    new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      savedAt: new Date().toISOString(),
+      market:      marketId || null,
+      marketLabel: marketId ? getMarketLabel(marketId) : null,
+      data:    result,
+      stats:   buildDealStats(type, result),
+    };
+    candidate = [deal, ...deals];
+    onOk = () => {
+      // Keep fields intact — only show brief confirmation (Section 5g)
+      window.showToast && window.showToast('Deal saved to pipeline');
+      return { status: 'saved' };
+    };
+  }
 
   // Immutable candidate — the cache is committed by storage only on RPC success.
-  const res = await saveDeals([deal, ...deals]);
+  const res = await saveDeals(candidate);
 
-  if (res.ok) {
-    // Keep fields intact — only show brief confirmation (Section 5g)
-    window.showToast && window.showToast('Deal saved to pipeline');
-    return { status: 'saved' };
-  }
+  if (res.ok) return onOk();
   if (res.reason === 'busy') {
     window.showToast && window.showToast('Another pipeline update is in progress.');
     return { status: 'refused-busy' };
@@ -216,7 +283,7 @@ export function renderPipeline() {
 function dealRegionLabel(type) {
   return type === 'flip' ? 'Fix & Flip'
     : type === 'ltr'  ? 'Long-Term Rental'
-    : type === 'brrr' ? 'BRRR'
+    : type === 'brrr' ? 'BRRRR'
     : 'Short-Term Rental';
 }
 
@@ -302,7 +369,7 @@ function buildLtrDetail(d, deal) {
 }
 
 function buildBrrrDetail(d) {
-  return detailSection('BRRR (Bridge → DSCR Refi)', [
+  return detailSection('BRRRR (Bridge → DSCR Refi)', [
     { l: 'Purchase price',            v: d.price != null ? fmt(d.price) : '—' },
     { l: 'Rehab (incl. contingency)', v: d.rehabTotal != null ? fmt(d.rehabTotal) : '—' },
     { l: 'ARV',                       v: d.arv != null ? fmt(d.arv) : '—' },
@@ -408,9 +475,13 @@ function buildDealCard(d) {
         <svg class="expand-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="deal-detail">
+        ${savedInputsLine(d)}
         ${detailRows}
         ${notesBlock}
         ${getPipelineFundingButtonHTML(d)}
+        <div class="detail-actions review-row">
+          <button class="btn-action" onclick="event.stopPropagation();reviewDeal(${d.id})" title="Prefill the analyzer with this deal's saved inputs">Review &amp; Re-analyze</button>
+        </div>
         <div class="detail-actions">
           ${d.type === 'flip' ? `<button class="btn-action" onclick="event.stopPropagation();startDealEdit(${d.id})">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>

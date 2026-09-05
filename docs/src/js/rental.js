@@ -40,7 +40,8 @@ export function setRentalPreset(slug, el) {
   const m = getStrMarket(slug);
   // Set occupancy from market data (midpoint of low/high range)
   const occ = Math.round(((m.occLow || 0.55) + (m.occHigh || 0.65)) / 2 * 100);
-  document.getElementById('v-occ').value = occ;
+  const occEl = document.getElementById('v-occ');
+  if (occEl && !occEl.dataset.userEdited) occEl.value = occ;   // user-edited law (2026-09-05)
   // Keep other fields at their current values if already set, or use defaults
   const down = document.getElementById('v-down');
   if (!down.value || +down.value === 0) down.value = 20;

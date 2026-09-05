@@ -209,6 +209,15 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 .detail-row .dv{font-family:var(--mono);font-weight:500;color:var(--text);text-align:right}
 .detail-notes{font-size:12px;color:var(--text);line-height:1.5;background:var(--surface2);padding:10px 12px;border-radius:6px;white-space:pre-wrap}
 .detail-actions{display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+/* Saved-deal review (owner law 2026-09-05): full-width "Review & Re-analyze" row
+   above the existing actions, a compact saved-inputs line at the top of the
+   expanded detail, and the analyzer banner shown while a review is pending. */
+.detail-actions.review-row+.detail-actions{border-top:none;margin-top:8px;padding-top:0}
+.saved-inputs{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;margin:12px 0 2px;font-size:11px;color:var(--muted)}
+.saved-inputs .si-label{text-transform:uppercase;letter-spacing:.08em;font-size:10px}
+.saved-inputs .si-values{color:var(--text);font-weight:600}
+.review-banner{margin:10px 0 14px;padding:10px 12px;border:1px solid var(--accent);border-radius:10px;background:rgba(0,0,0,.25);color:var(--text);font-size:12px;line-height:1.45}
+.review-banner .review-cancel{margin-left:6px;background:none;border:none;color:var(--accent);font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;text-decoration:underline;padding:0}
 .btn-action{flex:1;height:38px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
 .btn-action:hover{border-color:var(--accent);color:var(--accent)}
 .btn-action.danger:hover{border-color:var(--danger);color:var(--danger)}

@@ -419,7 +419,7 @@ export function getFundingLabel(type, cls, band) {
   // product word keeps the label on one line at 390px in the Syne face
   // ("Explore Small Multifamily DSCR" measured 342px against 322px available).
   if (type === 'ltr')    return sm ? 'Explore Multifamily DSCR' : 'Explore DSCR Options';
-  if (type === 'brrr')   return sm ? 'Explore Multifamily BRRR' : 'Explore BRRR Funding';   // app-wide spelling: "BRRR"
+  if (type === 'brrr')   return sm ? 'Explore Multifamily BRRRR' : 'Explore BRRRR Funding';   // governed user-visible spelling: BRRRR
   if (type === 'rental') return 'Explore STR Funding';
   return 'Explore Fix & Flip Funding';
 }

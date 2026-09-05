@@ -1510,7 +1510,7 @@ function buildFundingLadderHTML(tier) {
   return `
     <div class="guide-section">
       <h3>How Funding Works</h3>
-      <p class="gi-note" style="margin-bottom:10px">Get Funding works the same on every tier — free, Investor, and Pro all reach Clear Path Capital the same way, with the same review. Paid tiers add DealFit app features, never funding treatment.</p>
+      <p class="gi-note" style="margin-bottom:10px">The funding button works the same on every tier — free, Investor, and Pro all reach Clear Path Capital the same way, with the same review. Paid tiers add DealFit app features, never funding treatment.</p>
       ${rung('starter', 'Starter — Free', 'Analyze deals, save your pipeline, and submit to Clear Path Capital — at no cost.')}
       ${rung('investor', 'Investor', 'Everything in Starter, plus server-verified quantitative market intel for your regions and one-tap deal-summary sharing.')}
       ${rung('pro', 'Pro', 'Everything in Investor, plus the full analyst layer — notes and sources for every market you track.')}

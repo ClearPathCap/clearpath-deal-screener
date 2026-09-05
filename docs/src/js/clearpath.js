@@ -170,7 +170,8 @@ function getTierConfig() {
   const tier = getActiveTier();
   const tagByTier = { pro: '[Pro Submission]', investor: '[Investor Submission]' };
   return {
-    label: 'Get Funding — Clear Path Capital',
+    // CTA simplification (owner decision 2026-09-05): the button label no longer
+    // carries a "— Clear Path Capital" suffix or the CPC mark — see getFundingLabel.
     tag:   tagByTier[tier] || '[Starter Submission]',
     toast: 'Form pre-filled on the Clear Path page — review and submit. Summary also copied as backup.',
   };
@@ -395,35 +396,32 @@ function outsideBoxHTML(type, deal) {
 // no approval or terms are implied; the handoff is simply not available at this
 // loan size.
 function renderBelowMinFundingHTML(type, cfg, cls, deal) {
-  const btnLabel = getFundingLabel(type, cfg, cls, deal.band);
+  const btnLabel = getFundingLabel(type, cls, deal.band);
   // F-10: the caption names the box-eligible (estimated) loan — with a blank loan
   // field there is no raw request to name, exactly as before this fix.
   const k = Math.round(((deal.gateLoan !== undefined ? deal.gateLoan : deal.loan) || 0) / 1000);
   return `
     <button class="btn-get-funding" disabled aria-disabled="true" title="Clear Path Capital brokers loans from $100K">
-      <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
       <span class="funding-btn-label">${btnLabel}</span>
     </button>
     <div style="font-size:11px;color:#9aa4b2;margin-top:6px;line-height:1.45">Clear Path Capital brokers private-money loans from $100K. This deal's estimated loan (~$${k}K) is below that minimum, so the Clear Path handoff isn't available for it — the analysis above is unaffected.</div>`;
 }
 
-// Type-aware CTA label. LTR names the DSCR product, BRRR names BRRR; 5–8 units name
-// the Small Multifamily DSCR product. cfg.label is "Get Funding — Clear Path Capital".
-function getFundingLabel(type, cfg, cls, band) {
+// Type-aware CTA label — ONE short, deal-specific phrase per analyzer (owner
+// decision 2026-09-05): no CPC mark, no "— Clear Path Capital" suffix, no
+// hot/warm wording split. The only variant kept is a real financing-product
+// distinction: 5–8 units route to the Small Multifamily DSCR product. Routing,
+// handoff payloads, and qualification gates are untouched — this is label copy.
+// `cls` stays in the signature so callers keep one call shape.
+export function getFundingLabel(type, cls, band) {
   const sm = band === '5-8';
-  let phrase;
-  if (type === 'ltr') {
-    phrase = cls === 'hot'
-      ? (sm ? 'Get Small Multifamily DSCR Funding' : 'Get DSCR Funding')
-      : (sm ? 'Explore Small Multifamily DSCR' : 'Explore DSCR Options');
-  } else if (type === 'brrr') {
-    phrase = cls === 'hot'
-      ? (sm ? 'Get Small Multifamily BRRR Funding' : 'Get BRRR Funding')
-      : (sm ? 'Explore Small Multifamily BRRR' : 'Explore BRRR Financing');
-  } else {
-    phrase = cls === 'hot' ? 'Get Funding' : 'Explore Funding Options';   // flip/str
-  }
-  return cfg.label.replace('Get Funding', phrase);
+  // 5–8 units: the handoff already types these as "Multifamily"; the shorter
+  // product word keeps the label on one line at 390px in the Syne face
+  // ("Explore Small Multifamily DSCR" measured 342px against 322px available).
+  if (type === 'ltr')    return sm ? 'Explore Multifamily DSCR' : 'Explore DSCR Options';
+  if (type === 'brrr')   return sm ? 'Explore Multifamily BRRR' : 'Explore BRRR Funding';   // app-wide spelling: "BRRR"
+  if (type === 'rental') return 'Explore STR Funding';
+  return 'Explore Fix & Flip Funding';
 }
 
 // ─── Analyzer tab funding button ──────────────────────────────────────────────
@@ -455,12 +453,11 @@ export function maybeShowFundingButton(result) {
   }
 
   const cfg = getTierConfig();
-  const btnLabel = getFundingLabel(result.type, cfg, result.cls, deal.band);
+  const btnLabel = getFundingLabel(result.type, result.cls, deal.band);
   const summary = summaryFor(result.type, result, cfg.tag);
 
   container.innerHTML = `
     <button class="btn-get-funding" id="${id}-trigger">
-      <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
       <span class="funding-btn-label">${btnLabel}</span>
     </button>
     <div style="font-size:11px;color:#9aa4b2;margin-top:6px;line-height:1.45">Estimate only — not a loan offer, approval, or guarantee of terms. Clear Path Capital is a broker; final terms come from the lender.</div>`;
@@ -488,13 +485,11 @@ export function getPipelineFundingButtonHTML(deal) {
     }
     return outsideBoxHTML(result.type, dp);
   }
-  const cfg = getTierConfig();
-  const btnLabel = getFundingLabel(result.type, cfg, result.cls, dp.band);
+  const btnLabel = getFundingLabel(result.type, result.cls, dp.band);
   // Parity corrective (mobile CTA overflow): the label wraps instead of
-  // ellipsizing — the inline nowrap span clipped "Explore DSCR Options — Clear
-  // Path Capital" mid-word on phones. Styling lives on .funding-btn-label.
+  // ellipsizing — the old inline nowrap span clipped long labels mid-word on
+  // phones. Styling lives on .funding-btn-label.
   return `<button class="btn-get-funding pipeline-funding-btn" onclick="event.stopPropagation();handlePipelineFundingClick(${deal.id})">
-    <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
     <span class="funding-btn-label">${btnLabel}</span>
   </button>`;
 }

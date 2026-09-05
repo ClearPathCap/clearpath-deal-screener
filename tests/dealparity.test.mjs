@@ -188,8 +188,35 @@ ok("F3: .btn-get-funding no longer forces nowrap; it centers and pads for a two-
 ok("F4: the shared label rule wraps (normal + anywhere), balanced, min-width:0",
    /^\.funding-btn-label\{white-space:normal;overflow-wrap:anywhere;text-wrap:balance;min-width:0;text-align:center;line-height:1\.25\}/m.test(css));
 ok("F5: the old pipeline-only nowrap/ellipsis label rule is gone", !/\.pipeline-funding-btn \.funding-btn-label\{white-space:nowrap/.test(css));
-ok("F6: the icon keeps its size beside a wrapped label (flex-shrink:0)", /^\.funding-icon\{[^}]*flex-shrink:0/m.test(css));
-ok("F7: label wording law untouched — getFundingLabel still substitutes the type phrase", /replace\('Get Funding', /.test(cpJs));
+// RE-PINNED (CTA simplification, owner decision 2026-09-05): the CPC mark and the
+// "— Clear Path Capital" suffix are gone from every funding button; labels are one
+// short deal-specific phrase per analyzer (5–8 units keep the Small Multifamily
+// DSCR product distinction). Routing, payloads and gates untouched.
+const ltrJs2 = src("docs/src/js/ltr.js"), brrrJs2 = src("docs/src/js/brrr.js");
+ok("F6: no funding button carries the CPC mark — analyzer, below-min, pipeline, 9+ manual review (LTR + BRRR)",
+   !/funding-icon/.test(cpJs) && !/funding-icon/.test(ltrJs2) && !/funding-icon/.test(brrrJs2) && !/clearpath-mark/.test(cpJs)
+   && !/^\.funding-icon\{/m.test(css));
+ok("F7: no funding CTA label contains 'Clear Path Capital' or the old 'Get Funding' phrase",
+   !/label: 'Get Funding/.test(cpJs) && !/replace\('Get Funding'/.test(cpJs)
+   && !/Submit to Clear Path/.test(ltrJs2) && !/Submit to Clear Path/.test(brrrJs2));
+// CRLF-tolerant function slice (the checkout may carry \r\n).
+const labelStart = cpJs.indexOf('export function getFundingLabel');
+const labelEnd = labelStart + cpJs.slice(labelStart).search(/\r?\n\}\r?\n/);
+const labelFn = cpJs.slice(labelStart, labelEnd);
+ok("F8: concise type-appropriate labels — LTR / STR / Fix & Flip / BRRR (+ Multifamily product variant for 5–8 units)",
+   /'Explore DSCR Options'/.test(labelFn) && /'Explore Multifamily DSCR'/.test(labelFn)
+   && /'Explore STR Funding'/.test(labelFn) && /'Explore Fix & Flip Funding'/.test(labelFn)
+   && /'Explore BRRR Funding'/.test(labelFn) && /'Explore Multifamily BRRR'/.test(labelFn)
+   && !/Clear Path/.test(labelFn) && !/cls === 'hot'/.test(labelFn));
+ok("F8b: every label is short enough for one line at 390px in the Syne face (≤ 26 characters)",
+   [...labelFn.matchAll(/'(Explore [^']+)'/g)].every(m => m[1].length <= 26) && [...labelFn.matchAll(/'(Explore [^']+)'/g)].length === 6);
+ok("F9: every CTA site calls the ONE label function with (type, cls, band)",
+   (cpJs.match(/getFundingLabel\((type|result\.type), (cls|result\.cls), (deal|dp)\.band\)/g) || []).length === 3);
+ok("F10: 9+ manual-review buttons read 'Submit for Review' under the 'commercial review' notice title (stage kept, short, no CPC name)",
+   /<span class="funding-btn-label">Submit for Review<\/span>/.test(ltrJs2) && /<span class="funding-btn-label">Submit for Review<\/span>/.test(brrrJs2)
+   && /9\+ unit multifamily — commercial review/.test(ltrJs2) && /9\+ unit multifamily — commercial review/.test(brrrJs2));
+ok("F11: routing untouched — handoff still opens buildCpcUrl(deal) and the pipeline click handler is unchanged",
+   /window\.open\(buildCpcUrl\(deal\), '_blank', 'noopener'\)/.test(cpJs) && /handlePipelineFundingClick\(\$\{deal\.id\}\)/.test(cpJs));
 
 // ── §G · compliance — guidance copy is estimate-only, never an approval ──────
 const ltrCopy = renderer.slice(renderer.indexOf('function renderLtrGuidanceHTML'));

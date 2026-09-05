@@ -274,7 +274,7 @@ function buildBrrrSummary(r, tag) {
   const tStat = resultTaxStatus(r);
   const insOk = insuranceReady(insStatus) && taxReady(tStat); // F-5: taxes join the gate
   const lines = [
-    'DEAL SCREENER SUMMARY — BRRR (Bridge → DSCR Cash-Out Refi)',
+    'DEAL SCREENER SUMMARY — BRRRR (Bridge → DSCR Cash-Out Refi)',
     r.addr ? 'Address: ' + r.addr : null,
     cs ? 'City/State: ' + cs : null,
     'Verdict: ' + (insOk ? r.verdict : incomePresentation(tStat, insStatus).label),

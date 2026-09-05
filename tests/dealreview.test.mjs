@@ -344,6 +344,16 @@ ok(/'BRRRR \(Bridge → DSCR Refi\)'/.test(plSrc) && /'brrr' \? 'BRRRR'/.test(pl
 ok(/'Explore BRRRR Funding'/.test(cpSrc) && /'Explore Multifamily BRRRR'/.test(cpSrc), 'H9 funding CTA says BRRRR');
 ok(/"Textbook BRRRR — Capital Recycled"/.test(finSrc) && /"Partial BRRRR — Capital Trapped or Tight"/.test(finSrc) && /"BRRRR Breaks — Rework the Numbers"/.test(finSrc) && !/"[^"]*\bBRRR\b[^"]*"/.test(finSrc.split('\n').filter(l => /verdict\s*=|vsub\s*=|\+ "/.test(l)).join('\n')), 'H10 BRRRR verdict copy normalized');
 ok(/brrr\.js|'brrr'/.test(mainSrc) && /switchRentalView\('brrr'/.test(htmlText), 'H11 internal brrr identifiers untouched');
+// Owner decision (2026-09-05): human-facing copy in clipboard/handoff summaries,
+// share text and the shared-deal page also says BRRRR; machine tokens stay.
+const shareSrc = readFileSync(join(ROOT, 'docs', 'src', 'js', 'share.js'), 'utf8');
+const sharedViewSrc = readFileSync(join(ROOT, 'docs', 'src', 'js', 'sharedView.js'), 'utf8');
+const fundingSrc = readFileSync(join(ROOT, 'docs', 'src', 'js', 'funding.js'), 'utf8');
+ok(/'DEAL SCREENER SUMMARY — BRRRR \(Bridge → DSCR Cash-Out Refi\)'/.test(cpSrc) && /lines\.push\('BRRRR ANALYSIS'\)/.test(shareSrc) && /deal\.type === 'brrr' \? 'BRRRR'/.test(sharedViewSrc),
+   'H12 clipboard/handoff summary header, share text and shared-deal label say BRRRR');
+ok(!/BRRR(?!R)/.test([cpSrc, shareSrc, sharedViewSrc, plSrc, finSrc].map(s => s.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).map(l => l.replace(/\/\/.*$/, '').replace(/BRRR_ASSUMPTIONS/g, '')).join('\n')).join('\n').replace(/\/\*[\s\S]*?\*\//g, '')),
+   'H13 no human-facing 4-R "BRRR" string literal remains in clearpath/share/sharedView/pipeline/finance');
+ok(/purpose/.test(fundingSrc) && /'brrr'/.test(fundingSrc + cpSrc) && /type === 'brrr'/.test(cpSrc), 'H14 machine tokens (purpose / type "brrr") untouched');
 
 console.log(`\ndealreview: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

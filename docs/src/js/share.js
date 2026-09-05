@@ -166,7 +166,7 @@ export function buildDealSummaryText(d) {
   } else if (d.type === 'brrr') {
     // BRRR keeps its refi math; only DSCR is insurance-dependent (matches
     // pendingDealStats).
-    lines.push('BRRR ANALYSIS');
+    lines.push('BRRRR ANALYSIS');
     if (data.price != null) lines.push('Price: ' + money(data.price));
     lines.push('DSCR: ' + pend(dscrS, data.dscr));
     lines.push('Capital left in: ' + money(data.capitalLeft));

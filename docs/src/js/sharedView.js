@@ -19,7 +19,7 @@ export function buildSharedDealHTML(deal) {
   const d = deal.data || {};
   const badgeCls = ['hot', 'warm', 'pass'].includes(deal.cls) ? deal.cls : 'warm';
   const typeLabel = deal.type === 'flip' ? 'Fix & Flip'
-    : deal.type === 'ltr' ? 'Long-Term Rental' : deal.type === 'brrr' ? 'BRRR' : 'Short-Term Rental';
+    : deal.type === 'ltr' ? 'Long-Term Rental' : deal.type === 'brrr' ? 'BRRRR' : 'Short-Term Rental';
 
   const rows = deal.type === 'flip' ? [
     ['Asking price', money(d.ask)],

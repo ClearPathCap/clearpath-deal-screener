@@ -434,13 +434,42 @@ function syncStaleWatch(type, result) {
   const res = document.getElementById(RESULTS_ID[type]);
   const shown = !!result && !!res && res.style.display !== 'none';
   if (shown) { staleSignature[type] = formSignature(type); setStaleUI(type, false); }
-  else clearStaleWatch(type);
+  else { clearStaleWatch(type); CLEAR_RESULT[type](); }   // no rendered result → nothing saveable either
 }
 for (const [type, containerId] of Object.entries({ flip: 'page-flip', rental: 'rental-view-str', ltr: 'rental-view-ltr', brrr: 'rental-view-brrr' })) {
   const c = document.getElementById(containerId);
   if (!c) continue;
   c.addEventListener('input',  () => refreshStale(type));
   c.addEventListener('change', () => refreshStale(type));
+}
+// The flip guide's "Use DealFit midpoint" re-runs the analysis itself (flip.js
+// adoptDealFitTarget, registered first); re-sign after it so the fresh result is
+// not read as stale.
+const fgAdopt = document.getElementById('fg-adopt');
+if (fgAdopt) fgAdopt.addEventListener('click', () => syncStaleWatch('flip', getLastFlipResult()));
+
+// ─── Clear & New Deal law (owner decision 2026-09-05) ────────────────────────
+// "Clear & New Deal" starts a GENUINELY fresh analyzer state: the previous
+// deal's user-protection must not survive the clear. Every field of the
+// analyzer drops its userEdited / autoFilled marks and returns to its HTML
+// default (the per-type clear below still blanks its own fields and owns the
+// toggles/selects); the band memory is re-seeded from the default unit count.
+// The normal new-deal initialization that follows — per-type values, market
+// preset, repair estimator — then applies exactly as on first load. This never
+// forces a preset by itself; it only restores preset eligibility.
+function resetAnalyzerProtection(type) {
+  const ids = (REVIEW_FIELDS[type] || []).map(r => r[0]).concat(SELF_ID[type] ? [SELF_ID[type]] : []);
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    delete el.dataset.userEdited;
+    delete el.dataset.autoFilled;
+    if (el.type === 'checkbox' || el.tagName === 'SELECT' || el.options) continue;   // per-type clear owns these
+    if (/addr$/.test(id)) continue;                                                  // per-type clear blanks the address
+    el.value = el.defaultValue != null ? String(el.defaultValue) : '';
+  }
+  const unitsEl = document.getElementById(type === 'ltr' ? 'l-units' : type === 'brrr' ? 'b-units' : '');
+  if (unitsEl) unitsEl.dataset.band = propertyBand(parseNumOpt(unitsEl.value));
 }
 
 // ─── Clear & New Deal ─────────────────────────────────────────────────────────
@@ -451,6 +480,7 @@ function clearNewDeal(type) {
   // protection so market presets and band defaults apply to the next deal.
   releaseReviewProtection(type);
   clearStaleWatch(type);
+  resetAnalyzerProtection(type);
   { const rid = getReviewingDealId(); const rd = rid != null ? getDeals().find(d => d.id === rid) : null; if (rid != null && (!rd || rd.type === type)) cancelDealReview(type); }
   if (type === 'flip') {
     ['f-addr','f-ask','f-arv','f-rep','sqft'].forEach(id => {
@@ -2033,7 +2063,7 @@ if (repField) {
 function syncBandDefaults(prefix) {
   const unitsEl = document.getElementById(prefix + '-units');
   // Numeric-input integrity: a half-typed or blank unit count is not a band change.
-  if (unitsEl && ((unitsEl.validity && unitsEl.validity.badInput) || String(unitsEl.value).trim() === '')) return null;
+  if (unitsEl && unitsEl.validity && unitsEl.validity.badInput) return null;
   const band = propertyBand(unitsEl ? parseNumOpt(unitsEl.value) : undefined);
   const rentLabel = document.getElementById(prefix + '-rent-label');
   if (rentLabel) rentLabel.textContent = band === '5-8' ? 'Total gross monthly rent (all units)' : 'Monthly Rent';

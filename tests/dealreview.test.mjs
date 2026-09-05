@@ -572,5 +572,77 @@ ok(/export function inputIsIncomplete\(el\)/.test(fmtSrc2) && /el\.validity && e
 ok(/initCurrencyInputs\(\);\n\/\/ User-edited guards/.test(mainSrc2) && mainSrc2.indexOf("['l-down','l-vac','l-pm'") < mainSrc2.indexOf('\nrenderAllSlots();'), 'L7 user-edited guards + currency mask are armed BEFORE the first preset render');
 ok(/el\.value !== '' && el\.value !== \(el\.defaultValue == null \? '' : String\(el\.defaultValue\)\)\) el\.dataset\.userEdited = '1';/.test(mainSrc2) && /el\.dataset\.userEdited = '1';\n    \/\/ Format any pre-populated values on init/.test(fmtSrc2), 'L8 a value already differing from the HTML default at arm time is treated as the user\'s');
 
+// ── §M · Clear & New Deal starts a genuinely fresh analyzer state ────────────
+console.log('— §M Clear & New Deal —');
+globalThis.cancelDealReview('ltr'); globalThis.clearNewDeal('ltr');
+for (const [id, val] of Object.entries(orange2)) typed(id, val);
+typed('l-vac', '9'); typed('l-pm', '10'); typed('l-util', '1200');
+globalThis.analyzeLtr();
+ok(ue('l-vac') && ue('l-pm') && ue('l-util') && ue('l-rent') && ltr.getLastLtrResult().vac === 9 && ltr.getLastLtrResult().pm === 10 && ltr.getLastLtrResult().util === 1200, 'M1 custom vacancy / PM / utilities typed, protected, analyzed');
+typed('l-vac', '8'); el('rental-view-ltr').dispatchEvent({ type: 'input', isTrusted: true });
+ok(el('ltr-results').classList.contains('is-stale'), 'M2 result went stale before the clear');
+const beforeClear = snapshot();
+globalThis.clearNewDeal('ltr');
+ok(!ue('l-vac') && !ue('l-pm') && !ue('l-util') && !ue('l-rent') && !ue('l-tax') && !ue('l-down'), 'M3 every protection flag of the analyzer is released');
+ok(v('l-pm') === '8' && v('l-util') === '0' && v('l-down') === '20' && v('l-units') === '1' && v('l-price') === '' && v('l-rent') === '1,750' && v('l-vac') === '7', `M4 fields return to defaults and the normal preset applies again (pm ${v('l-pm')}, util ${v('l-util')}, rent ${v('l-rent')}, vac ${v('l-vac')})`);
+ok(!el('ltr-results').classList.contains('is-stale') && el('ltr-stale').style.display === 'none' && pipeline.getReviewingDealId() === null && el('ltr-review-banner').style.display === 'none', 'M5 stale state and review/update mode are cleared');
+ok(el('l-units').dataset.band === '1-4', 'M6 band memory re-seeded from the default unit count');
+globalThis.handleSlotClick(1, 'charlotte-nc');
+ok(v('l-vac') === '5' && v('l-rent') === '1,757', 'M7 the next market preset can write vacancy and rent again (no prior-deal protection)');
+globalThis.handleSlotClick(0, 'bridgeport-ct');
+typed('l-units', '6');
+ok(v('l-pm') === '9' && v('l-maint') === '8' && v('l-capex') === '6', 'M8 the next band change can write its defaults again');
+typed('l-units', '1');
+ok(snapshot() === beforeClear, 'M9 no saved deal was mutated by the clear');
+globalThis.reviewDeal(savedU.id);
+ok(v('l-util') === '900' && ue('l-util') && ue('l-vac'), 'M10 Review & Re-analyze still hydrates and protects saved values after a clear');
+globalThis.handleSlotClick(1, 'charlotte-nc'); globalThis.handleSlotClick(0, 'bridgeport-ct');
+ok(v('l-util') === '900', 'M11 …and presets still cannot overwrite hydrated values');
+globalThis.cancelDealReview('ltr'); globalThis.clearNewDeal('ltr');
+ok(!ue('l-util') && v('l-util') === '0', 'M12 clearing after a review releases the hydrated protection too');
+// BRRRR + STR parity of the reset
+globalThis.clearNewDeal('brrr'); typed('b-vac', '9'); typed('b-util', '600'); globalThis.clearNewDeal('brrr');
+ok(!ue('b-vac') && !ue('b-util') && v('b-vac') === '5' && v('b-util') === '0', 'M13 BRRRR clear releases protection and restores defaults');
+globalThis.clearNewDeal('rental'); typed('v-occ', '80'); typed('v-util', '600'); globalThis.clearNewDeal('rental');
+ok(!ue('v-occ') && !ue('v-util') && v('v-util') === '0', 'M14 STR clear releases protection and restores defaults');
+const mainSrc3 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'main.js'), 'utf8');
+ok(/function resetAnalyzerProtection\(type\)/.test(mainSrc3) && /  resetAnalyzerProtection\(type\);\n  \{ const rid = getReviewingDealId\(\);/.test(mainSrc3), 'M15 one shared reset, called from clearNewDeal before the per-type initialization');
+
+// ── §N · adversarial-review correctives (opex wave) ─────────────────────────
+console.log('— §N opex-wave correctives —');
+globalThis.clearNewDeal('ltr');
+for (const [id, val] of Object.entries(orange2)) typed(id, val);
+globalThis.analyzeLtr();
+ok(ltr.getLastLtrResult() && ltr.getLastLtrResult().vac === 7, 'N1a a good analysis is live');
+el('l-units').validity = { badInput: true }; el('l-units').value = '';
+globalThis.analyzeLtr();                       // validation abort — no result rendered
+el('l-units').validity = { badInput: false }; el('l-units').value = '3';
+el('ltr-deal-name').value = 'Abort then save';
+const abortSave = await globalThis.saveDeal('ltr');
+ok(abortSave.status === 'refused-result' && !storage.getDeals().some(d => d.name === 'Abort then save'), `N1 after a validation abort, Save cannot persist the PRIOR analysis (${abortSave.status})`);
+// blank unit count behaves as before (falls through to the 1–4 path) — on a
+// fresh form whose % fields are NOT user-typed (band defaults may write them)
+globalThis.clearNewDeal('ltr');
+typed('l-price', '649900'); typed('l-rent', '6000'); typed('l-tax', '8000'); typed('l-ins', '2358');
+typed('l-units', '6');
+ok(v('l-pm') === '9' && v('l-maint') === '8', `N2a units 6 applied the 5–8 defaults (pm ${v('l-pm')}, maint ${v('l-maint')})`);
+typed('l-units', '');
+ok(v('l-pm') === '8' && el('l-units').dataset.band === '1-4', `N2 a genuinely BLANK unit count resets a stale 5–8 state (pm ${v('l-pm')}) — only an incomplete entry is ignored`);
+el('l-units').validity = { badInput: true };
+el('l-units').dispatchEvent({ type: 'input', isTrusted: true });
+ok(v('l-pm') === '8', 'N2b …and an incomplete entry still never fires the band rewrite');
+el('l-units').validity = { badInput: false }; typed('l-units', '3');
+// flip guide adopt-target re-runs the analysis and must not read as stale
+globalThis.reviewDeal(FLIP.id); globalThis.analyzeFlip();
+const tBefore = flip.getLastFlipResult().target;
+el('fg-adopt').dispatchEvent({ type: 'click', isTrusted: true });
+ok(flip.getLastFlipResult() && !el('flip-results').classList.contains('is-stale'), `N3 "Use DealFit midpoint" re-analyzes without a false stale state (target ${tBefore} → ${flip.getLastFlipResult().target})`);
+globalThis.cancelDealReview('flip');
+const cssSrc = readFileSync(join(ROOT, 'docs', 'src', 'css', 'styles.css'), 'utf8');
+ok(/\.results\.is-stale \.btn-get-funding,\.results\.is-stale \.btn-action,\.results\.is-stale \.verdict-whatif,\.results\.is-stale \.whatif-link\{pointer-events:none\}/.test(cssSrc), 'N4 a stale result cannot hand off / share / open guidance until re-analyzed');
+ok(F.computeLtr({ price: 100000, rentMo: 1000, vac: 7 }).vac === 7 && F.ltrGuidance({ type: 'ltr', price: 649900, rent: 6000, vac: 7, tax: 8000, ins: 2358 }).current.vac === 7, 'N5 guidance current.vac is a real number');
+const mainSrc4 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'main.js'), 'utf8');
+ok(/else \{ clearStaleWatch\(type\); CLEAR_RESULT\[type\]\(\); \}/.test(mainSrc4) && /if \(unitsEl && unitsEl\.validity && unitsEl\.validity\.badInput\) return null;/.test(mainSrc4), 'N6 pins: abort invalidates the result; band guard is badInput-only');
+
 console.log(`\ndealreview: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

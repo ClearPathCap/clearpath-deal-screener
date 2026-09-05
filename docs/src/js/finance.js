@@ -616,6 +616,7 @@ export function computeLtr(inp) {
     rentYr,
     EGI: ib.EGI,
     util,
+    vac: Math.round(vacF * 100 * 1e6) / 1e6,   // resolved vacancy, whole percent (float-clean)
     opEx: ib.opEx,
     NOI: ib.NOI,
     piMo: ib.piMo,
@@ -991,6 +992,7 @@ export function computeBrrr(inp) {
     rentYr,
     EGI: ib.EGI,
     util,
+    vac: Math.round(vacF * 100 * 1e6) / 1e6,   // resolved vacancy, whole percent (float-clean)
     NOI: ib.NOI,
     piMo: ib.piMo,
     refiDebtYr: ib.debtYr,

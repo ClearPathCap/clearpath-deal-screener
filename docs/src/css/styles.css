@@ -440,7 +440,7 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 .modal code{font-family:var(--mono);font-size:11px;background:var(--surface3);padding:2px 5px;border-radius:4px;color:var(--info)}
 
 /* GET FUNDING BUTTON */
-.btn-get-funding{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:52px;background:var(--accent);border:none;border-radius:10px;color:var(--accent-text);font-family:var(--font);font-size:13px;font-weight:800;letter-spacing:.03em;cursor:pointer;margin:14px 0;transition:opacity .15s,transform .1s;white-space:nowrap}
+.btn-get-funding{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:52px;padding:10px 14px;background:var(--accent);border:none;border-radius:10px;color:var(--accent-text);font-family:var(--font);font-size:13px;font-weight:800;letter-spacing:.03em;line-height:1.25;text-align:center;cursor:pointer;margin:14px 0;transition:opacity .15s,transform .1s}
 .btn-get-funding:active{transform:scale(.98);opacity:.9}
 /* Below CPC's $100K brokering minimum the button renders but is inactive —
    the deal is fully analyzed; only the Clear Path handoff is unavailable. */
@@ -573,8 +573,13 @@ body.beginner-mode .tier-desc-long{display:block}
 /* GET FUNDING BUTTON — font smoothing + icon fix */
 .btn-get-funding{-webkit-font-smoothing:antialiased}
 .funding-icon{background-color:var(--accent);border-radius:3px}
-/* Pipeline funding button — no-wrap fix */
-.pipeline-funding-btn .funding-btn-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Parity corrective (live LTR test): the CPC funding label WRAPS on narrow
+   widths instead of overflowing the button (white-space:nowrap on the button)
+   or ellipsizing mid-word (the old pipeline-only nowrap/ellipsis rule). Long
+   labels — "Explore Small Multifamily DSCR — Clear Path Capital" — become two
+   balanced centered lines; the icon keeps its size. Shared by every analyzer
+   and both surfaces. */
+.funding-btn-label{white-space:normal;overflow-wrap:anywhere;text-wrap:balance;min-width:0;text-align:center;line-height:1.25}
 .pipeline-funding-btn{font-size:12px}
 
 /* PIPELINE DEAL CARD — expand arrow still top-right, no need for extra padding */

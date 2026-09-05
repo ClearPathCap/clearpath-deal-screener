@@ -622,6 +622,32 @@ export function computeLtr(inp) {
 // LTR verdict (SPEC_LTR §3 + Verdict & Risk Framework §67-70). HOT clears the
 // DSCR gate AND the dollar/CoC bar AND survives the stress test. dscr === null
 // (all-cash) → treated as fully covered.
+// The LTR verdict's gates, extracted so DealFit Guidance can EXPLAIN the verdict
+// from the same booleans that decide it — one source, no restated thresholds.
+// Every expression here is lifted verbatim from ltrVerdict (which now consumes
+// this). Bars: debt coverage (DSCR ≥ 1.0 ⇔ NOI ≥ debt service; all-cash ⇔ NOI ≥ 0),
+// the band's lender DSCR bar (hotDscr, 1.25), the dollar-or-CoC bar ($6,000/yr OR
+// CoC ≥ the user's target), positive monthly cash flow, and stress survival.
+export function ltrGates(m) {
+  const band = m.band || '1-4';
+  const rules = BAND_RULES[band] || BAND_RULES['1-4'];
+  const d = m.dscr === null ? Infinity : m.dscr;
+  return {
+    band,
+    hotDscr: rules.hotDscr,
+    smallMfFloor: rules.smallMfFloor == null ? null : rules.smallMfFloor,
+    dollarBar: 6000,
+    target: m.target,
+    coversDebt: (m.dscr === null) ? (m.NOI >= 0) : (m.NOI >= m.debtYr),
+    dscrOk: d >= rules.hotDscr,
+    floorOk: band === '5-8' ? d >= rules.smallMfFloor : null,
+    dollarOk: m.cashFlowYr >= 6000,
+    cocOk: m.coc >= m.target,
+    cfPositive: m.cashFlowMo > 0,
+    survives: m.marginOfSafety !== "fails",
+  };
+}
+
 export function ltrVerdict(m) {
   const band = m.band || '1-4';
   const rules = BAND_RULES[band] || BAND_RULES['1-4'];
@@ -629,7 +655,8 @@ export function ltrVerdict(m) {
   const d = m.dscr === null ? Infinity : m.dscr;
   const target = m.target;
   const annualCF = m.cashFlowYr;
-  const survives = m.marginOfSafety !== "fails";
+  const g = ltrGates(m);
+  const survives = g.survives;
   const dscrText = m.dscr === null ? "n/a" : m.dscr.toFixed(2);
   const cocText = (Math.round(m.coc * 10) / 10) + "%";
   const cfMo = Math.round(m.cashFlowMo);
@@ -639,14 +666,14 @@ export function ltrVerdict(m) {
   // debt service (cash-flow-negative BEFORE the CapEx reserve). dscr === null = all-cash =
   // fully covered unless NOI itself is negative. The CapEx reserve alone never flips a
   // DSCR-fundable deal COLD (decision B5). Identical across bands.
-  const coversDebt = (m.dscr === null) ? (m.NOI >= 0) : (m.NOI >= m.debtYr);
+  const coversDebt = g.coversDebt;
   if (!coversDebt) {
     cls = "pass";
     verdict = "Negative Leverage — Walk or Restructure";
     vsub = (m.dscr !== null)
       ? "DSCR of " + dscrText + " is below 1.0 — rent doesn't cover the debt at this price and down payment. Increase the down payment, negotiate price, or walk."
       : "Even all-cash, operating costs exceed income before any debt service — the property is cash-flow negative on its own. Rework rent or expenses, or walk.";
-  } else if (d >= hotDscr && (annualCF >= 6000 || m.coc >= target) && m.cashFlowMo > 0 && survives) {
+  } else if (g.dscrOk && (g.dollarOk || g.cocOk) && g.cfPositive && survives) {
     cls = "hot";
     verdict = band === '5-8' ? "Strong Small-Multifamily — Lender-Ready" : "Strong Rental — Lender-Ready";
     const stressText = band === '5-8'
@@ -697,6 +724,108 @@ export function ltrVerdict(m) {
     }
   }
   return { cls, verdict, vsub };
+}
+
+// ─── LTR · DealFit Guidance (product parity with the F&F negotiation plan) ────
+// GOVERNED APPROACH, not a new advice system: the ONLY law consulted is the
+// existing ltrVerdict, evaluated over canonical computeLtr. Guidance answers
+// two questions from that law alone — which of the verdict's own bars pass or
+// fail right now, and what single-lever change (price to negotiate, rent to
+// raise, down payment to add) would make the SAME verdict come back
+// lender-ready. No threshold is invented; the predicate IS ltrVerdict.
+//
+// Saved-deal → engine mapping: the saved LTR record stores `rent` (monthly)
+// while computeLtr reads `rentMo`; pm is stored as a whole number (0 when
+// self-managed), which computeLtr accepts directly.
+export function ltrEngineInput(data) {
+  return {
+    price: data.price, rentMo: data.rentMo != null ? data.rentMo : data.rent,
+    units: data.units, down: data.down, vac: data.vac, tax: data.tax, ins: data.ins,
+    hoa: data.hoa, maint: data.maint, pm: data.pm, capex: data.capex, rate: data.rate,
+    amort: data.amort, points: data.points, cc: data.cc, target: data.target,
+    selfManage: !!data.selfManage,
+  };
+}
+
+const ltrIsHot = (inp) => ltrVerdict(computeLtr(inp)).cls === 'hot';
+
+// Highest PRICE at which the existing verdict is 'hot' (hot-ness is monotone
+// non-increasing in price: every bar — DSCR, dollar/CoC, monthly CF, stress,
+// debt coverage — weakens as price rises). Integer-dollar binary search on the
+// engine itself. null when no positive price is lender-ready.
+export function solveLtrPriceForHot(inp) {
+  const at = (P) => ltrIsHot({ ...inp, price: P });
+  if (!at(1)) return null;
+  let lo = 1, hi = Math.max(2, Math.round(inp.price || 2));
+  if (at(hi)) { while (at(hi)) { lo = hi; hi *= 2; if (hi > 1e10) return null; } }
+  while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (at(mid)) lo = mid; else hi = mid; }
+  return lo;
+}
+
+// Lowest monthly RENT at which the verdict is 'hot' at the current price
+// (monotone non-decreasing in rent). null when even a very large rent fails.
+export function solveLtrRentForHot(inp) {
+  const at = (R) => ltrIsHot({ ...inp, rentMo: R });
+  let lo = 0, hi = Math.max(1, Math.round(inp.rentMo || 1));
+  if (at(hi)) { while (lo < hi - 1) { const mid = Math.floor((lo + hi) / 2); if (at(mid)) hi = mid; else lo = mid; } return hi; }
+  while (!at(hi)) { lo = hi; hi *= 2; if (hi > 1e8) return null; }
+  while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (at(mid)) hi = mid; else lo = mid; }
+  return hi;
+}
+
+// Lowest DOWN PAYMENT % (whole points, ≤ 100) at which the verdict is 'hot'.
+// CoC is not monotone in down, so this is an exhaustive 1-point scan, not a
+// binary search. null when no down payment up to 100% is lender-ready.
+export function solveLtrDownForHot(inp) {
+  const start = Math.max(0, Math.round(inp.down == null ? 0 : +inp.down));
+  for (let d = start; d <= 100; d++) if (ltrIsHot({ ...inp, down: d })) return d;
+  return null;
+}
+
+// Full guidance payload for a saved LTR record (or the analyzer's live
+// result). Pure and non-mutating. null when required inputs are missing.
+export function ltrGuidance(data) {
+  // Honest null for anything that is not an analyzed LTR record — a typed
+  // non-LTR blob, an empty record, or a pending (no rent / no price) analysis.
+  if (!data || typeof data !== 'object' || (data.type && data.type !== 'ltr')) return null;
+  const inp = ltrEngineInput(data);
+  if (!(inp.price > 0) || !(inp.rentMo > 0)) return null;
+  const m = computeLtr(inp);
+  const gates = ltrGates(m);
+  const v = ltrVerdict(m);
+  const requiredForHot = [
+    { key: 'coversDebt', ok: gates.coversDebt },
+    { key: 'dscrOk',     ok: gates.dscrOk },
+    { key: 'cashBar',    ok: gates.dollarOk || gates.cocOk },
+    { key: 'cfPositive', ok: gates.cfPositive },
+    { key: 'survives',   ok: gates.survives },
+  ];
+  const failing = requiredForHot.filter(x => !x.ok).map(x => x.key);
+  const isHot = v.cls === 'hot';
+  const priceForHot = isHot ? inp.price : solveLtrPriceForHot(inp);
+  const rentForHot  = isHot ? inp.rentMo : solveLtrRentForHot(inp);
+  const downForHot  = isHot ? (inp.down == null ? null : +inp.down) : solveLtrDownForHot(inp);
+  // The lender-ready verdict label is read from the engine at the solved
+  // lever — never restated here — so band-specific wording stays one-sourced.
+  const hotLabel = priceForHot != null ? ltrVerdict(computeLtr({ ...inp, price: priceForHot })).verdict
+    : rentForHot != null ? ltrVerdict(computeLtr({ ...inp, rentMo: rentForHot })).verdict
+    : downForHot != null ? ltrVerdict(computeLtr({ ...inp, down: downForHot })).verdict : null;
+  return {
+    verdict: v.verdict, cls: v.cls, vsub: v.vsub, hotLabel,
+    gates,
+    current: {
+      price: m.price, rentMo: inp.rentMo, down: inp.down == null ? null : +inp.down,
+      dscr: m.dscr, coc: m.coc, cashFlowYr: m.cashFlowYr, cashFlowMo: m.cashFlowMo,
+      NOI: m.NOI, debtYr: m.debtYr, stressedDscr: m.stressedDscr, stressedCfMo: m.stressedCfMo,
+      marginOfSafety: m.marginOfSafety, band: m.band, target: m.target,
+    },
+    failing, isHot,
+    levers: {
+      price: priceForHot,
+      rent:  rentForHot,
+      down:  downForHot,
+    },
+  };
 }
 
 // ─── BRRR ──────────────────────────────────────────────────────────────────────

@@ -132,6 +132,16 @@ export function analyzeLtr() {
     ? insP.sub
     : vsub + (cls === 'hot' && m.marginOfSafety === 'tight' ? ' Strong signal, thin cushion.' : '');
 
+  // Parity corrective: the verdict is explorable — DealFit Guidance explains
+  // which of this verdict's own bars pass or fail and what moves them
+  // (non-mutating modal). Hidden while income is pending, since the verdict
+  // itself is pending then.
+  const whatif = elv('lv-whatif');
+  if (whatif) {
+    whatif.style.display = insP ? 'none' : '';
+    whatif.textContent = cls === 'hot' ? 'See the bars this deal clears →' : 'See what to dig into →';
+  }
+
   const mos = mosLabel(m.marginOfSafety);
   elv('ltr-metrics').innerHTML = buildMetrics([
     { label: 'DSCR',             val: insP ? insP.pendingText : dscrText, cls: insP ? 'warn' : m.dscr === null ? 'good' : m.dscr >= 1.25 ? 'good' : m.dscr >= 1.0 ? 'warn' : 'bad' },

@@ -57,7 +57,7 @@ const STUBS = {
     getMarketSlots=()=>[],getMarketForSlot=()=>'',setMarketSlot=()=>{},getPrimaryMarket=()=>'',
     getMarket2=()=>'',completePrimarySelection=()=>{},recordSlotChange=()=>{},isSlotLocked=()=>false,
     slotLockedUntilDate=()=>null,slotWillLockUntilDate=()=>'',getUnlockedSlotCount=()=>2,
-    isMarketUnlocked=()=>true,getMarketLabel=(x)=>x,getActiveMarketId=()=>'';`,
+    isMarketUnlocked=()=>true,getMarketLabel=(x)=>x,getActiveMarketId=()=>globalThis.__activeMarket||'';`,
   'marketIntel.js': `export const fetchMarketIntel = async () => new Map();`,
   'install.js': `export const openInstall=()=>{},triggerInstall=()=>{},initInstallHint=()=>{};`,
   // This stub mirrors main.js's import surface from repair.js and must grow with
@@ -466,6 +466,75 @@ const sdAwaited = [...pipelineSrc.matchAll(/await saveDeals\(/g)].length;
 ok(sdCalls >= 2 && sdCalls === sdAwaited, `F3 every production saveDeals call awaited (${sdAwaited}/${sdCalls})`);
 ok(!/textContent\s*=\s*'Saved ✓'/.test(mainSrc), 'F4 no direct unconditional Saved ✓ assignment in main.js');
 ok(/btn\.classList\.toggle\('saved', ui\.saved\)/.test(mainSrc), 'F5 saved class driven by the pure mapping only');
+
+// ── §G parity corrective (2026-09-04) — ONE shared save-name default, every
+// analyzer, executed against the real main.js helper on the DOM stub. The live
+// LTR test (73 Orange Street, Bridgeport CT) surfaced two things: LTR/STR/BRRR
+// were never wired, and the region came from the active MARKET SLOT even when
+// the address named a different city.
+console.log('— §G parity corrective — shared save-name default (real main.js helper) —');
+const mainMod = await import(JS + 'main.js');
+ok(typeof mainMod.maybeDefaultDealName === 'function', 'G0 maybeDefaultDealName is exported (shared, testable)');
+// Parent-failure law: on a tree without the export every G pin must FAIL, not
+// crash the suite before the STR render proof below gets its turn.
+const mdn = typeof mainMod.maybeDefaultDealName === 'function' ? mainMod.maybeDefaultDealName : () => {};
+const nameCase = (nameId, addrId, addr) => {
+  const n = el(nameId), a = el(addrId);
+  n.value = ''; n.dataset = {}; a.value = addr;
+  mdn(nameId, addrId);
+  return n;
+};
+globalThis.__activeMarket = '';
+let nm = nameCase('ltr-deal-name', 'l-addr', '73 Orange Street, Bridgeport, CT 06607');
+ok(nm.value === '73 Orange Street — Bridgeport CT', `G1 LTR prefill from the address (city + state, ZIP dropped): "${nm.value}"`);
+ok(nm.dataset.autoName === nm.value, 'G1 the auto name is recorded for the overwrite guard');
+nm.value = 'Orange St triplex — keep me';
+mdn('ltr-deal-name', 'l-addr');
+ok(nm.value === 'Orange St triplex — keep me', 'G2 a user-edited name survives re-analysis (never overwritten)');
+nm = nameCase('ltr-deal-name', 'l-addr', '73 Orange Street, Bridgeport, CT 06607');
+el('l-addr').value = '12 Main St, Stamford, CT';
+mdn('ltr-deal-name', 'l-addr');
+ok(nm.value === '12 Main St — Stamford CT', 'G3 an untouched auto name follows a changed address');
+nm = nameCase('brrr-deal-name', 'b-addr', '88 Long Cane Ct');
+ok(nm.value === '88 Long Cane Ct', 'G4 street-only + no active market → bare street (BRRR field ids)');
+globalThis.__activeMarket = 'lake-murray-sc';
+nm = nameCase('rental-deal-name', 'v-addr', '88 Long Cane Ct');
+ok(nm.value.startsWith('88 Long Cane Ct — ') && !/Bridgeport/.test(nm.value), `G5 street-only falls back to the active market region (STR field ids): "${nm.value}"`);
+nm = nameCase('rental-deal-name', 'v-addr', '9 Beach Rd, Bridgeport, CT');
+ok(nm.value === '9 Beach Rd — Bridgeport CT', 'G6 an address region beats the active market when both exist');
+nm = nameCase('flip-deal-name', 'f-addr', '   ');
+ok(nm.value === '', 'G7 a blank address writes nothing');
+nm = nameCase('ltr-deal-name', 'l-addr', '5 Elm St, Bridgeport, CT 06604-1234');
+ok(nm.value === '5 Elm St — Bridgeport CT', 'G8 ZIP+4 is dropped from the region');
+globalThis.__activeMarket = '';
+ok(/maybeDefaultDealName\('flip-deal-name', 'f-addr'\)/.test(mainSrc)
+   && /maybeDefaultDealName\('ltr-deal-name', 'l-addr'\)/.test(mainSrc)
+   && /maybeDefaultDealName\('brrr-deal-name', 'b-addr'\)/.test(mainSrc)
+   && /maybeDefaultDealName\('rental-deal-name', 'v-addr'\)/.test(mainSrc),
+   'G9 all four analyzers wire the ONE shared helper after a valid analysis');
+ok((mainSrc.match(/function maybeDefaultDealName/g) || []).length === 1, 'G10 exactly one name-default implementation');
+
+// §G-STR · executed render proof. The parity sweep found that 305e642 pasted a
+// flip-only "Plan the counter" line into buildRentalDetail referencing an
+// undeclared `deal` — a ReferenceError for EVERY saved STR card; renderPipeline
+// has no try/catch, so one saved STR deal blanked the whole pipeline. This
+// renders a real STR card through the real pipeline.js.
+globalThis.__authState.signedIn = true;
+okRpc();
+await storage.hydratePipeline();   // re-arm the silent-wipe guard after §E's failed-hydrate scenarios
+const strSave = await storage.saveDeals([{ id: 7101, name: '5 Beach Rd — Myrtle Beach', type: 'rental', verdict: 'Solid STR', cls: 'warm',
+  notes: '', date: 'Sep 4, 2026',
+  data: { type: 'rental', addr: '5 Beach Rd, Myrtle Beach, SC', price: 400000, down: 20, rent: 60000, occ: 65, mgmt: 3, pm: 10,
+    tax: 4000, ins: 1500, maint: 3000, furnish: 20000, noi: 30000, capRate: 7.5, debt: 25000, cashflow: 5000, coc: 5.2,
+    downAmt: 80000, grm: 6.7 },
+  stats: [{ l: 'CoC', v: '5.2%' }, { l: 'Cap', v: '7.5%' }, { l: 'Cash Flow', v: '$5,000' }] }]);
+ok(strSave.ok === true && storage.getDeals().some(x => x.id === 7101), 'G11 STR fixture committed to the cache (' + JSON.stringify(strSave) + ')');
+let strRenderErr = null;
+try { pipeline.renderPipeline(); } catch (e) { strRenderErr = e; }
+ok(strRenderErr === null, 'G11 a saved STR card renders without throwing (undeclared-deal defect closed)' + (strRenderErr ? ': ' + strRenderErr.message : ''));
+const strHtml = el('pipeline-list').innerHTML;
+ok(strHtml.includes('5 Beach Rd — Myrtle Beach'), 'G11 the STR card is present in the rendered pipeline (got ' + strHtml.length + ' chars: ' + strHtml.replace(/\s+/g, ' ').slice(0, 160) + ')');
+ok(!/whatif-link/.test(strHtml) && !/badge-action/.test(strHtml), 'G12 the STR card carries no guidance control (no governed model — none, not a dead button)');
 
 console.log(`\nwave-a1: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

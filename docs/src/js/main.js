@@ -2,7 +2,7 @@
 
 import { analyzeFlip, setFlipPreset, resetFlip, getLastFlipResult } from './flip.js';
 import { analyzeRental, setRentalPreset, resetRental }              from './rental.js';
-import { analyzeLtr, setLtrPreset, resetLtr }                       from './ltr.js';
+import { analyzeLtr, setLtrPreset, resetLtr, getLastLtrResult }     from './ltr.js';
 import { analyzeBrrr, setBrrrPreset, resetBrrr }                    from './brrr.js';
 import { setRepairTier, calcRepair, useRepairEstimate,
          onSelfRenoToggle, updateRepairRangesForMarket,
@@ -18,7 +18,8 @@ import { openInstall, triggerInstall, initInstallHint }             from './inst
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
 import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct } from './format.js';
 import { propertyBand, BAND_RULES,
-         computeNegotiationScenario, flipProfitClass, mosLabel }      from './finance.js';
+         computeNegotiationScenario, flipProfitClass, mosLabel,
+         ltrGuidance }                                                from './finance.js';
 import { handlePipelineFundingClick }                               from './clearpath.js';
 import { hydrateMarketsOnAuth, pushMarketChange }                   from './marketSync.js';
 import {
@@ -755,7 +756,12 @@ function validateRequiredFields(type) {
 // field stays fully editable, and once the user customizes it we never
 // overwrite: dataset.autoName records the last value WE wrote, so "current
 // value === our last write" is the only state we'll replace.
-function maybeDefaultDealName(nameFieldId, addrFieldId) {
+// Parity corrective (live LTR test, 2026-09-04): the region now comes FROM THE
+// ADDRESS when the user typed one ("73 Orange Street, Bridgeport, CT 06607" →
+// "73 Orange Street — Bridgeport CT"); the active market remains the fallback
+// for a street-only address. A property in Bridgeport must not be named after
+// a South Carolina market slot. ZIP codes are dropped from the region.
+export function maybeDefaultDealName(nameFieldId, addrFieldId) {
   const nameEl = document.getElementById(nameFieldId);
   const addrEl = document.getElementById(addrFieldId);
   if (!nameEl || !addrEl) return;
@@ -763,8 +769,10 @@ function maybeDefaultDealName(nameFieldId, addrFieldId) {
   if (current && current !== nameEl.dataset.autoName) return;   // user-customized — hands off
   const street = (addrEl.value || '').split(',')[0].trim();
   if (!street) return;
+  const fromAddr = (addrEl.value || '').split(',').slice(1).map(s => s.trim()).filter(Boolean)
+    .join(' ').replace(/\s*\b\d{5}(?:-\d{4})?\b\s*$/, '').trim();
   const marketId = getActiveMarketId();
-  const region = marketId ? slotDisplayName(getMarketLabel(marketId).replace(', ', ' ')) : '';
+  const region = fromAddr || (marketId ? slotDisplayName(getMarketLabel(marketId).replace(', ', ' ')) : '');
   const auto = region ? street + ' — ' + region : street;
   nameEl.value = auto;
   nameEl.dataset.autoName = auto;
@@ -777,12 +785,28 @@ function analyzeFlipValidated() {
   }
 }
 
+// Parity corrective: the same shared helper serves every analyzer — the LTR /
+// STR / BRRR save rows were never wired to it (the live Orange Street test
+// forced a hand-typed name).
 function analyzeRentalValidated() {
-  if (validateRequiredFields('rental')) analyzeRental();
+  if (validateRequiredFields('rental')) {
+    analyzeRental();
+    maybeDefaultDealName('rental-deal-name', 'v-addr');
+  }
 }
 
-function analyzeLtrValidated()  { if (validateRequiredFields('ltr'))  analyzeLtr();  }
-function analyzeBrrrValidated() { if (validateRequiredFields('brrr')) analyzeBrrr(); }
+function analyzeLtrValidated() {
+  if (validateRequiredFields('ltr')) {
+    analyzeLtr();
+    maybeDefaultDealName('ltr-deal-name', 'l-addr');
+  }
+}
+function analyzeBrrrValidated() {
+  if (validateRequiredFields('brrr')) {
+    analyzeBrrr();
+    maybeDefaultDealName('brrr-deal-name', 'b-addr');
+  }
+}
 
 // Rentals sub-toggle: swap the STR / LTR / BRRR sub-views and render that view's
 // (shared) market slots so presets prefill into the visible form.
@@ -863,35 +887,57 @@ function closeModal(id) {
   el.classList.remove('active');
 }
 
-// ─── Design wave · negotiation plan what-if (NON-MUTATING) ───────────────────
-// One renderer, two entry points: the analyzer verdict button reads the live
-// lastFlipResult ('analyzer'); a Pipeline link/badge passes the saved deal id.
-// Every number comes from canonical computeFlip/computeFlipStress via
-// computeNegotiationScenario — nothing is written to the form, the result, or
-// the saved deal, and closing simply closes. Edge law: §G1 no-workable-price
-// and repairs-exceed-ceiling get honest copy, §G2 shows the ceiling
-// educationally when the ask is already at/below it, §G3 never fabricates a
-// counter when DealFit's high range is unreachable.
+// ─── What-if / DealFit Guidance modal (NON-MUTATING, ONE renderer) ────────────
+// One renderer, entry points by ref: 'analyzer' (live Fix & Flip result),
+// 'analyzer:ltr' (live LTR result), or a saved deal id — the deal's own type
+// picks the content. Flip renders the negotiation plan from canonical
+// computeFlip via computeNegotiationScenario. LTR renders DealFit Guidance from
+// canonical computeLtr via ltrGuidance: which of the EXISTING verdict's bars
+// pass or fail, and the single-lever price / rent / down payment that would
+// return the same verdict lender-ready — the existing law explained, not a new
+// advice system. Nothing is written to the form, the result, or the saved deal;
+// closing simply closes. Flip edge law: §G1 no-workable-price and
+// repairs-exceed-ceiling get honest copy, §G2 shows the ceiling educationally
+// when the ask is already at/below it, §G3 never fabricates a counter when
+// DealFit's high range is unreachable.
 function showMaxOfferScenario(ref) {
-  // Analyzer results always carry type:'flip'; saved deals carry type at the
+  // Analyzer results always carry their type; saved deals carry type at the
   // DEAL level (legacy data blobs may not), so each path checks its own field.
-  let data = null;
+  let data = null, type = null;
   if (ref === 'analyzer') {
     const r = getLastFlipResult();
-    if (r && r.type === 'flip') data = r;
+    if (r && r.type === 'flip') { data = r; type = 'flip'; }
+  } else if (ref === 'analyzer:ltr') {
+    const r = getLastLtrResult();
+    if (r && r.type === 'ltr') { data = r; type = 'ltr'; }
   } else {
-    const deal = getDeals().find(x => x.id === ref && x.type === 'flip');
-    if (deal) data = deal.data;
+    const deal = getDeals().find(x => x.id === ref && (x.type === 'flip' || x.type === 'ltr'));
+    if (deal) { data = deal.data; type = deal.type; }
   }
   if (!data) return;
-  const sc = computeNegotiationScenario(data);
   const body = document.getElementById('maxoffer-body');
   if (!body) return;
-  const row   = (l, v, cls) => `<div class="detail-row"><span class="dl">${l}</span><span class="dv${cls ? ' ' + cls : ''}">${v}</span></div>`;
-  // UX corrective: plan sections must scan as distinct blocks — dedicated
-  // heading class (divider + spacing + brighter weight) instead of the muted
-  // in-card detail-title. Content and ordering unchanged.
-  const title = (t) => `<div class="plan-sec-title">${t}</div>`;
+  const html = type === 'ltr' ? renderLtrGuidanceHTML(data) : renderFlipPlanHTML(data);
+  if (html == null) return;
+  const h3   = document.querySelector('#modal-maxoffer h3');
+  const note = document.querySelector('#modal-maxoffer .maxoffer-note');
+  if (h3)   h3.textContent   = type === 'ltr' ? 'What to Dig Into' : 'Your Negotiation Plan';
+  if (note) note.textContent = type === 'ltr'
+    ? 'Why this verdict landed where it did, and what would move it. Nothing is saved — your deal and analysis stay exactly as they are.'
+    : 'Where to open and where to walk. Nothing is saved — your deal and analysis stay exactly as they are.';
+  body.innerHTML = html;
+  openModal('modal-maxoffer');
+}
+
+const planRow = (l, v, cls) => `<div class="detail-row"><span class="dl">${l}</span><span class="dv${cls ? ' ' + cls : ''}">${v}</span></div>`;
+// UX corrective: plan sections must scan as distinct blocks — dedicated
+// heading class (divider + spacing + brighter weight) instead of the muted
+// in-card detail-title.
+const planTitle = (t) => `<div class="plan-sec-title">${t}</div>`;
+
+function renderFlipPlanHTML(data) {
+  const sc = computeNegotiationScenario(data);
+  const row = planRow, title = planTitle;
   const scenarioRows = (a) => {
     const pCls = flipProfitClass(a.profit, sc.target);
     const mos  = mosLabel(a.marginOfSafety);
@@ -908,11 +954,9 @@ function showMaxOfferScenario(ref) {
     ].join('');
   };
   if (!sc || sc.noWorkablePrice) {
-    body.innerHTML = (sc && sc.ruleCeiling <= 0)
+    return (sc && sc.ruleCeiling <= 0)
       ? '<p>Repairs exceed the ARV ceiling — no purchase price works on this deal. Walk away.</p>'
       : '<p>No purchase price above $0 meets your ' + (sc ? fmt(sc.target) : '') + ' minimum-profit target under the current assumptions. Adjust the underwriting only if the numbers truly support it — otherwise walk away.</p>';
-    openModal('modal-maxoffer');
-    return;
   }
   const g = sc.guidance;
   const parts = [
@@ -944,8 +988,49 @@ function showMaxOfferScenario(ref) {
   parts.push(row('DealFit suggested project profit', fmt(g.low) + '–' + fmt(g.high) + ' (est.)'));
   if (g.laborAllowance > 0) parts.push(row('Owner-labor allowance (est.)', fmt(Math.round(g.laborAllowance))));
   parts.push('<p style="margin:10px 0 0;font-size:11px">DealFit estimate only. Not a guarantee, an offer, or a lender requirement — sellers accept or reject on their own terms.</p>');
-  body.innerHTML = parts.join('');
-  openModal('modal-maxoffer');
+  return parts.join('');
+}
+
+// LTR Guidance — product parity with the flip plan through the SAME governed
+// approach: the bars are ltrVerdict's own gates (ltrGates), the levers are
+// canonical computeLtr solves whose predicate IS ltrVerdict. No new thresholds.
+function renderLtrGuidanceHTML(data) {
+  const g = ltrGuidance(data);
+  if (!g) return null;
+  const row = planRow, title = planTitle;
+  const c = g.current, gates = g.gates;
+  const dscrTxt = c.dscr === null ? 'n/a (all-cash)' : c.dscr.toFixed(2);
+  const okCls = (ok) => ok ? 'good' : 'bad';
+  const mark  = (ok) => ok ? 'PASS' : 'FAIL';
+  const stressLaw = c.band === '5-8'
+    ? 'rent −5%, one-vacant-unit vacancy, rate +0.5%'
+    : 'rent −5%, vacancy +3pts, rate +0.5%';
+  const parts = [];
+  parts.push(row('DealFit verdict', g.verdict, g.cls === 'hot' ? 'good' : g.cls === 'warm' ? 'warn' : 'bad'));
+  parts.push(title('The bars this verdict checks'));
+  parts.push(row('Debt coverage — DSCR ≥ 1.00', dscrTxt + ' · ' + mark(gates.coversDebt), okCls(gates.coversDebt)));
+  if (gates.floorOk !== null) {
+    parts.push(row('Small-multifamily floor — DSCR ≥ ' + gates.smallMfFloor.toFixed(2), dscrTxt + ' · ' + mark(gates.floorOk), okCls(gates.floorOk)));
+  }
+  parts.push(row('Lender bar — DSCR ≥ ' + gates.hotDscr.toFixed(2), dscrTxt + ' · ' + mark(gates.dscrOk), okCls(gates.dscrOk)));
+  const cashOk = gates.dollarOk || gates.cocOk;
+  parts.push(row('Cash-flow bar — ' + fmt(gates.dollarBar) + '/yr or CoC ≥ ' + gates.target + '%',
+    fmt(Math.round(c.cashFlowYr)) + '/yr · CoC ' + pct(c.coc) + ' · ' + mark(cashOk), okCls(cashOk)));
+  parts.push(row('Positive monthly cash flow', fmt(Math.round(c.cashFlowMo)) + '/mo · ' + mark(gates.cfPositive), okCls(gates.cfPositive)));
+  const sDscr = c.stressedDscr === null ? 'n/a' : c.stressedDscr.toFixed(2);
+  parts.push(row('Stress test (' + stressLaw + ')',
+    'DSCR ' + sDscr + ' · ' + fmt(Math.round(c.stressedCfMo)) + '/mo · ' + mark(gates.survives), okCls(gates.survives)));
+  if (g.isHot) {
+    parts.push('<p style="margin:10px 0 0">Every bar clears as underwritten — this deal is lender-ready under DealFit&#8217;s existing rules.</p>');
+  } else {
+    parts.push(title('What moves it'));
+    parts.push(row('Negotiate price to', g.levers.price != null ? '≤ ' + fmt(g.levers.price) : 'No price clears every bar', g.levers.price != null ? 'good' : 'bad'));
+    parts.push(row('Or raise rent to', g.levers.rent != null ? '≥ ' + fmt(g.levers.rent) + '/mo' : 'Not reachable', g.levers.rent != null ? 'good' : 'bad'));
+    parts.push(row('Or put down', g.levers.down != null ? '≥ ' + g.levers.down + '%' : 'Not reachable at ≤ 100%', g.levers.down != null ? 'good' : 'bad'));
+    parts.push('<p style="margin:10px 0 0">Each lever on its own would bring this deal to <strong>' + (g.hotLabel || 'lender-ready') + '</strong> under DealFit&#8217;s existing rules. Real negotiations usually move more than one.</p>');
+  }
+  parts.push('<p style="margin:10px 0 0;font-size:11px">These are DealFit&#8217;s own verdict rules applied to your inputs — estimates only, not lender requirements, an approval, or an offer.</p>');
+  return parts.join('');
 }
 
 document.querySelectorAll('.modal-backdrop').forEach(m => {

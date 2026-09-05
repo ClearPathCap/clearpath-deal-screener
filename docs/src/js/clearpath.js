@@ -402,7 +402,7 @@ function renderBelowMinFundingHTML(type, cfg, cls, deal) {
   return `
     <button class="btn-get-funding" disabled aria-disabled="true" title="Clear Path Capital brokers loans from $100K">
       <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
-      ${btnLabel}
+      <span class="funding-btn-label">${btnLabel}</span>
     </button>
     <div style="font-size:11px;color:#9aa4b2;margin-top:6px;line-height:1.45">Clear Path Capital brokers private-money loans from $100K. This deal's estimated loan (~$${k}K) is below that minimum, so the Clear Path handoff isn't available for it — the analysis above is unaffected.</div>`;
 }
@@ -461,7 +461,7 @@ export function maybeShowFundingButton(result) {
   container.innerHTML = `
     <button class="btn-get-funding" id="${id}-trigger">
       <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
-      ${btnLabel}
+      <span class="funding-btn-label">${btnLabel}</span>
     </button>
     <div style="font-size:11px;color:#9aa4b2;margin-top:6px;line-height:1.45">Estimate only — not a loan offer, approval, or guarantee of terms. Clear Path Capital is a broker; final terms come from the lender.</div>`;
 
@@ -490,9 +490,12 @@ export function getPipelineFundingButtonHTML(deal) {
   }
   const cfg = getTierConfig();
   const btnLabel = getFundingLabel(result.type, cfg, result.cls, dp.band);
+  // Parity corrective (mobile CTA overflow): the label wraps instead of
+  // ellipsizing — the inline nowrap span clipped "Explore DSCR Options — Clear
+  // Path Capital" mid-word on phones. Styling lives on .funding-btn-label.
   return `<button class="btn-get-funding pipeline-funding-btn" onclick="event.stopPropagation();handlePipelineFundingClick(${deal.id})">
     <img src="icons/clearpath-mark.png" class="funding-icon" alt="">
-    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${btnLabel}</span>
+    <span class="funding-btn-label">${btnLabel}</span>
   </button>`;
 }
 

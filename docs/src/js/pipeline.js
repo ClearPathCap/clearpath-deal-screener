@@ -280,9 +280,14 @@ function detailSection(title, rows) {
   }</div>`;
 }
 
-function buildLtrDetail(d) {
+function buildLtrDetail(d, deal) {
   const pend = unresolvedInsPresentation('ltr', d) != null;
-  return detailSection('Long-Term Rental (DSCR)', [
+  // Parity corrective: the same isolated guidance action the flip detail
+  // carries — never while income is pending (the verdict itself is pending).
+  const guide = (deal && !pend && d.price > 0)
+    ? `<button class="whatif-link" onclick="event.stopPropagation();showMaxOfferScenario(${deal.id})">See what to dig into →</button>`
+    : '';
+  return guide + detailSection('Long-Term Rental (DSCR)', [
     { l: 'Purchase price',    v: d.price != null ? fmt(d.price) : '—' },
     { l: 'Monthly rent',      v: d.rent != null ? fmt(d.rent) : '—' },
     { l: 'Down payment',      v: d.down != null ? d.down + '%' : '—' },
@@ -361,7 +366,7 @@ function buildDealCard(d) {
     : cardStats;
   const address    = data.addr ? `<div class="deal-address">${escapeHtml(data.addr)}</div>` : '';
   const detailRows = d.type === 'flip' ? buildFlipDetail(data, d)
-    : d.type === 'ltr'  ? buildLtrDetail(data)
+    : d.type === 'ltr'  ? buildLtrDetail(data, d)
     : d.type === 'brrr' ? buildBrrrDetail(data)
     : buildRentalDetail(data);
   const notesBlock = d.notes
@@ -377,15 +382,17 @@ function buildDealCard(d) {
             ${address}
             <div class="deal-region">${dealRegionLabel(d.type)}</div>
           </div>
-          ${(d.type === 'flip' && !insP && data.maxOffer > 0)
+          ${((d.type === 'flip' && !insP && data.maxOffer > 0) || (d.type === 'ltr' && !insP && data.price > 0))
             /* LIVE DEFECT FIX: the verdict badge was an inert div inside the
                header's toggleDeal delegation, so tapping "COUNTER AT MAX
-               OFFER" only expanded the card. A flip verdict with a governed
-               scenario is now a real button: native Enter/Space activation,
-               and stopPropagation so activation never reaches the card
-               toggle. All other badges stay inert divs. */
+               OFFER" only expanded the card. A verdict with a governed
+               guidance scenario is a real button: native Enter/Space
+               activation, and stopPropagation so activation never reaches the
+               card toggle. Parity corrective: LTR joins flip (DealFit
+               Guidance); STR/BRRR have no guidance model yet and stay inert
+               divs — a button that opens nothing would be worse. */
             ? `<button type="button" class="deal-badge ${badgeCls} badge-action" aria-haspopup="dialog"
-                 title="See this deal at DealFit's max offer"
+                 title="${d.type === 'ltr' ? 'See what to dig into' : 'See this deal at DealFit&#8217;s max offer'}"
                  onclick="event.stopPropagation();showMaxOfferScenario(${d.id})">${badgeText}</button>`
             : `<div class="deal-badge ${badgeCls}">${badgeText}</div>`}
         </div>
@@ -867,6 +874,9 @@ function buildRentalDetail(d) {
       <div class="detail-title">Key Numbers</div>
       ${metrics.map(r => `<div class="detail-row"><span class="dl">${r.l}</span><span class="dv${r.cls ? ' ' + r.cls : ''}">${r.v}</span></div>`).join('')}
     </div>
-    ${deal && d.maxOffer > 0 ? `<button class="whatif-link" onclick="event.stopPropagation();showMaxOfferScenario(${deal.id})">Plan the counter & walk-away →</button>` : ''}
   `;
+  // Parity sweep (2026-09-04): a flip-only "Plan the counter" line had been
+  // pasted here referencing an undeclared `deal` — a ReferenceError for every
+  // saved STR card that blanked the whole pipeline render. STR has no
+  // governed guidance model, so the correct surface is none, not a dead button.
 }

@@ -551,6 +551,10 @@
         <div class="vtag" id="lvtag"></div>
         <div class="vlabel" id="lvlabel"></div>
         <div class="vsub" id="lvsub"></div>
+        <!-- Parity corrective: DealFit Guidance for LTR — ltr.js fills the label
+             and shows it after a valid analysis; nothing on the form changes. -->
+        <button class="verdict-whatif" id="lv-whatif" style="display:none"
+          onclick="showMaxOfferScenario('analyzer:ltr')"></button>
       </div>
       <div class="metrics" id="ltr-metrics"></div>
       <div class="breakdown"><div class="btitle">Income &amp; DSCR Breakdown</div><div id="ltr-breakdown"></div></div>

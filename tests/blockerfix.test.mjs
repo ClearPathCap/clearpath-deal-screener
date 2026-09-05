@@ -47,7 +47,8 @@ function near(label, actual, expected, tol = 2) {
   const v3b = FIN.brrrVerdict(f3b);
   eq("F1: W4-F3b grades WARM (not COLD)", v3b.cls, "warm");
   truthy("F1: W4-F3b covers-debt/thin-after-reserves copy", /Covers Debt — Thin After Reserves/.test(v3b.verdict));
-  truthy("F1: W4-F3b not 'BRRR Breaks'", !/BRRR Breaks/.test(v3b.verdict));
+  // BRRRR display copy (2026-09-05): the guard must still bite on the renamed verdict.
+  truthy("F1: W4-F3b not 'BRRRR Breaks'", !/BRRRR? Breaks/.test(v3b.verdict));
   truthy("F1: W4-F3b never 'Negative Leverage'", !/Negative Leverage/.test(v3b.verdict + v3b.vsub));
 
   // Regression guard: DSCR < 1.0 (NOI below annual debt service) is still COLD.

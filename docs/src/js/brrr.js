@@ -26,6 +26,9 @@ function getBrrrMarket(slug) {
 
 let lastBrrrResult = null;
 export function getLastBrrrResult() { return lastBrrrResult; }
+// Saved-deal review: entering a review invalidates the last result so an
+// "Update Saved Deal" without a fresh Analyze is refused (never a stale result).
+export function clearLastBrrrResult() { lastBrrrResult = null; }
 
 export function setBrrrPreset(slug, el) {
   if (el) el.classList.add('slot-active');

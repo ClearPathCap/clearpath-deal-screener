@@ -49,11 +49,11 @@ const STUBS = {
     export const redeemServerCode = async () => ({ ok: false, msg: '' });
     export const syncEntitlement = async () => 'pro';`,
   'flip.js': `export const getLastFlipResult = () => globalThis.__lastResults.flip;
-    export const analyzeFlip=()=>{},setFlipPreset=()=>{},resetFlip=()=>{},getFlipMarket=()=>({});`,
+    export const analyzeFlip=()=>{},setFlipPreset=()=>{},resetFlip=()=>{},getFlipMarket=()=>({}),clearLastFlipResult=()=>{};`,
   'rental.js': `export const getLastRentalResult = () => globalThis.__lastResults.rental;
-    export const analyzeRental=()=>{},setRentalPreset=()=>{},resetRental=()=>{};`,
+    export const analyzeRental=()=>{},setRentalPreset=()=>{},resetRental=()=>{},clearLastRentalResult=()=>{};`,
   'brrr.js': `export const getLastBrrrResult = () => globalThis.__lastResults.brrr;
-    export const analyzeBrrr=()=>{},setBrrrPreset=()=>{},resetBrrr=()=>{};`,
+    export const analyzeBrrr=()=>{},setBrrrPreset=()=>{},resetBrrr=()=>{},clearLastBrrrResult=()=>{};`,
   'clearpath.js': `export const getPipelineFundingButtonHTML = () => '';
     export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{};`,
   'tiers.js': `export const getActiveTier = () => globalThis.__tier;

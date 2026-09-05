@@ -39,6 +39,9 @@ function flipCarry(m) {
 let lastFlipResult = null;
 
 export function getLastFlipResult() { return lastFlipResult; }
+// Saved-deal review: entering a review invalidates the last result so an
+// "Update Saved Deal" without a fresh Analyze is refused (never a stale result).
+export function clearLastFlipResult() { lastFlipResult = null; }
 
 export function setFlipPreset(slug, el) {
   if (el) el.classList.add('active');

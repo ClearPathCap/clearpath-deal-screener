@@ -31,6 +31,9 @@ export function getLtrMarket(slug) {
 
 let lastLtrResult = null;
 export function getLastLtrResult() { return lastLtrResult; }
+// Saved-deal review: entering a review invalidates the last result so an
+// "Update Saved Deal" without a fresh Analyze is refused (never a stale result).
+export function clearLastLtrResult() { lastLtrResult = null; }
 
 // Field readers — return undefined when blank so finance.js applies its defaults.
 const elv = id => document.getElementById(id);

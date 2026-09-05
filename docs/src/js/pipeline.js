@@ -49,6 +49,10 @@ export function beginDealReview(id) {
   return deal;
 }
 export function endDealReview() { reviewingDealId = null; }
+// main.js registers the UI exit here so a delete of the reviewed deal ends the
+// review everywhere (pipeline.js owns persistence, not the analyzer DOM).
+let reviewEndedHook = null;
+export function onDealReviewEnded(fn) { reviewEndedHook = fn; }
 
 // Compact "why does this saved result have these numbers" line for the
 // EXPANDED card only — the analyzer's materially important RAW inputs, never
@@ -115,7 +119,9 @@ export async function saveDeal(type) {
     };
     candidate = deals.map(x => x.id === reviewing.id ? updatedDeal : x);
     onOk = () => {
-      reviewingDealId = null;
+      // Only THIS review ends — a newer review started while the RPC was in
+      // flight keeps its pending state.
+      if (reviewingDealId === reviewing.id) reviewingDealId = null;
       window.showToast && window.showToast('Saved deal updated');
       return { status: 'saved', mode: 'updated', id: reviewing.id };
     };
@@ -208,10 +214,13 @@ export async function confirmDelete() {
   // No pending delete = stale/duplicate invocation of an already-settled request.
   if (pendingDeleteId == null) return { status: 'refused-busy' };
 
+  const doomed = getDeals().find(d => d.id === pendingDeleteId);
   const candidate = getDeals().filter(d => d.id !== pendingDeleteId);
   const res = await saveDeals(candidate);
 
   if (res.ok) {
+    // Deleting the deal under review ends that review (nothing to update anymore).
+    if (doomed && reviewingDealId === doomed.id) { reviewingDealId = null; if (reviewEndedHook) reviewEndedHook(doomed.type); }
     pendingDeleteId = null;
     closeModal('modal-delete');
     renderPipeline();

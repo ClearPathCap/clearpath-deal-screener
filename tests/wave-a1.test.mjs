@@ -39,13 +39,13 @@ const STUBS = {
     export const redeemServerCode = async () => ({ ok: false, msg: '' });
     export const syncEntitlement = async () => 'starter';`,
   'flip.js': `export const getLastFlipResult = () => globalThis.__lastResults.flip;
-    export const analyzeFlip=()=>{},setFlipPreset=()=>{},resetFlip=()=>{},getFlipMarket=()=>({});`,
+    export const analyzeFlip=()=>{},setFlipPreset=()=>{},resetFlip=()=>{},getFlipMarket=()=>({}),clearLastFlipResult=()=>{};`,
   'rental.js': `export const getLastRentalResult = () => globalThis.__lastResults.rental;
-    export const analyzeRental=()=>{},setRentalPreset=()=>{},resetRental=()=>{};`,
+    export const analyzeRental=()=>{},setRentalPreset=()=>{},resetRental=()=>{},clearLastRentalResult=()=>{};`,
   'ltr.js': `export const getLastLtrResult = () => globalThis.__lastResults.ltr;
-    export const analyzeLtr=()=>{},setLtrPreset=()=>{},resetLtr=()=>{},getLtrMarket=()=>({});`,
+    export const analyzeLtr=()=>{},setLtrPreset=()=>{},resetLtr=()=>{},getLtrMarket=()=>({}),clearLastLtrResult=()=>{};`,
   'brrr.js': `export const getLastBrrrResult = () => globalThis.__lastResults.brrr;
-    export const analyzeBrrr=()=>{},setBrrrPreset=()=>{},resetBrrr=()=>{};`,
+    export const analyzeBrrr=()=>{},setBrrrPreset=()=>{},resetBrrr=()=>{},clearLastBrrrResult=()=>{};`,
   'clearpath.js': `export const getPipelineFundingButtonHTML = () => '';
     export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{};`,
   // Mirrors main.js's + pipeline.js's import surface from tiers.js — grow it in

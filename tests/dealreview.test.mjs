@@ -101,7 +101,15 @@ for (const m of html.matchAll(/<input\b([^>]*)>/g)) {
   const id = (attrs.match(/\bid="([^"]+)"/) || [])[1]; if (!id) continue;
   const e = el(id);
   const v = (attrs.match(/\bvalue="([^"]*)"/) || [])[1]; if (v !== undefined) e.value = v;
+  e.defaultValue = v !== undefined ? v : '';           // the HTML value attribute, as in a browser
   if (/\bdata-currency\b/.test(attrs)) { e.attrs['data-currency'] = ''; currencyEls.push(e); }
+}
+// Real option lists for the selects the review touches (property type).
+for (const m of html.matchAll(/<select\b([^>]*)>([\s\S]*?)<\/select>/g)) {
+  const id = (m[1].match(/\bid="([^"]+)"/) || [])[1]; if (!id) continue;
+  const e = el(id);
+  e.options = [...m[2].matchAll(/<option\b([^>]*)>([^<]*)<\/option>/g)].map(o => ({ value: (o[1].match(/\bvalue="([^"]*)"/) || [])[1] ?? o[2].trim(), text: o[2].trim() }));
+  if (e.options.length && !e.value) e.value = e.options[0].value;
 }
 globalThis.document = {
   getElementById: el,
@@ -354,6 +362,83 @@ ok(/'DEAL SCREENER SUMMARY — BRRRR \(Bridge → DSCR Cash-Out Refi\)'/.test(cp
 ok(!/BRRR(?!R)/.test([cpSrc, shareSrc, sharedViewSrc, plSrc, finSrc].map(s => s.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).map(l => l.replace(/\/\/.*$/, '').replace(/BRRR_ASSUMPTIONS/g, '')).join('\n')).join('\n').replace(/\/\*[\s\S]*?\*\//g, '')),
    'H13 no human-facing 4-R "BRRR" string literal remains in clearpath/share/sharedView/pipeline/finance');
 ok(/purpose/.test(fundingSrc) && /'brrr'/.test(fundingSrc + cpSrc) && /type === 'brrr'/.test(cpSrc), 'H14 machine tokens (purpose / type "brrr") untouched');
+
+// ── §I · adversarial-review correctives (executed probes → pins) ─────────────
+console.log('— §I review correctives —');
+// I1 (blocker): a stale result from ANOTHER deal must never become the update.
+globalThis.cancelDealReview('ltr'); globalThis.clearNewDeal('ltr');
+typed('l-price', '300000'); typed('l-rent', '3000'); typed('l-tax', '3000'); typed('l-ins', '1000');
+globalThis.analyzeLtr();
+ok(ltr.getLastLtrResult() && ltr.getLastLtrResult().price === 300000, 'I1a an unrelated LTR analysis is live');
+const beforeI = snapshot();
+globalThis.reviewDeal(ORANGE.id);
+ok(ltr.getLastLtrResult() === null, 'I1b entering a review INVALIDATES the analyzer\'s last result');
+const staleTry = await globalThis.saveDeal('ltr');
+ok(staleTry.status === 'refused-result' && snapshot() === beforeI, `I1c Update without Analyze is refused (${staleTry.status}); snapshot untouched`);
+ok(pipeline.getReviewingDealId() === ORANGE.id && el('ltr-save-btn').textContent === 'Update Saved Deal', 'I1d review still pending after the refusal');
+// I2 (major): the Saved ✓ revert handler must not relabel a pending review to "Save".
+el('page-rental').dispatchEvent({ type: 'input', isTrusted: true });
+ok(el('ltr-save-btn').textContent === 'Update Saved Deal', 'I2 first keystroke after a previous save keeps "Update Saved Deal"');
+// I3 (major): a second review of a DIFFERENT type exits the first analyzer's review UI.
+globalThis.reviewDeal(STR.id);
+ok(pipeline.getReviewingDealId() === STR.id && el('ltr-review-banner').style.display === 'none' && el('ltr-save-btn').textContent === 'Save' && !ue('l-vac'), 'I3 reviewing STR exits the LTR review UI and releases its protection');
+globalThis.cancelDealReview('rental');
+// I4 (major): deleting the reviewed deal ends the review everywhere.
+globalThis.reviewDeal(freshId);
+ok(pipeline.getReviewingDealId() === freshId && el('ltr-review-banner').style.display === 'block', 'I4a reviewing the throwaway deal');
+pipeline.requestDelete(freshId);
+const del = await pipeline.confirmDelete();
+ok(del.status === 'deleted' && pipeline.getReviewingDealId() === null && el('ltr-review-banner').style.display === 'none' && el('ltr-save-btn').textContent === 'Save', `I4b delete ends the review (${del.status}); banner gone, Save restored`);
+// I5 (major): pending ('missing') taxes / insurance prefill BLANK — never a fabricated $0.
+const PENDING = { ...ORANGE, id: 7601, name: 'Pending expenses', data: { ...ORANGE.data, tax: 0, taxStatus: 'missing', ins: 0, insStatus: 'missing' } };
+await storage.saveDeals([...storage.getDeals(), PENDING]);
+globalThis.reviewDeal(7601);
+ok(v('l-tax') === '' && v('l-ins') === '' && ue('l-tax') && ue('l-ins'), 'I5a missing taxes/insurance hydrate BLANK and protected');
+globalThis.handleSlotClick(1, 'charlotte-nc'); globalThis.handleSlotClick(0, 'bridgeport-ct');
+ok(v('l-tax') === '', 'I5b …and the market preset cannot fabricate a tax figure into them');
+globalThis.analyzeLtr();
+ok(ltr.getLastLtrResult().insStatus === 'missing' && ltr.getLastLtrResult().taxStatus === 'missing', 'I5c re-analysis keeps the expenses PENDING (status missing, not explicit_zero)');
+globalThis.cancelDealReview('ltr');
+// I6 (major): a legacy record without a field resets that field to the analyzer default.
+globalThis.reviewDeal(FLIP.id);
+ok(v('f-loan') === '150,000' && v('sqft') === '1400', 'I6a financed flip hydrates loan + sqft');
+const LEGACY_FLIP = { ...FLIP, id: 7701, name: 'Legacy flip', data: { type: 'flip', addr: '9 Old Rd', ask: 150000, arv: 240000, rep: 20000, hold: 5, cc1: 2, cc2: 5, carry: 900, target: 40000 } };
+await storage.saveDeals([...storage.getDeals(), LEGACY_FLIP]);
+globalThis.reviewDeal(7701);
+ok(v('f-loan') === '' && v('sqft') === '' && v('f-rate') === el('f-rate').defaultValue && v('f-points') === el('f-points').defaultValue && !ue('f-loan') && !ue('f-rate'), `I6b legacy flip resets loan/sqft/rate/points to defaults (loan "${v('f-loan')}", rate "${v('f-rate')}")`);
+globalThis.cancelDealReview('flip');
+// I7 (major): STR self-manage toggle runs its handler.
+const STR_SELF = { ...STR, id: 7801, name: 'Self-managed STR', data: { ...STR.data, pm: 0 } };
+await storage.saveDeals([...storage.getDeals(), STR_SELF]);
+globalThis.reviewDeal(7801);
+ok(el('self-manage-toggle').checked === true && el('self-manage-field').style.display === 'none', 'I7a pm 0 → self-managed: toggle on, PM field hidden');
+globalThis.reviewDeal(STR.id);
+ok(el('self-manage-toggle').checked === false && el('self-manage-field').style.display !== 'none' && v('v-pm') === '10', 'I7b pm 10 → hired: toggle off, PM field shown with 10');
+// I8 (minor): STR preset no longer overwrites a hydrated 0 mgmt / down.
+const STR_ZERO = { ...STR, id: 7901, name: 'No platform fee', data: { ...STR.data, mgmt: 0 } };
+await storage.saveDeals([...storage.getDeals(), STR_ZERO]);
+globalThis.reviewDeal(7901);
+globalThis.switchRentalView('str');
+ok(v('v-mgmt') === '0', `I8 a hydrated 0% platform fee survives the STR preset (got "${v('v-mgmt')}")`);
+globalThis.cancelDealReview('rental');
+// I9 (minor): stored 'Multifamily' maps to the 5–8 option through the band sync.
+const MF = { ...ORANGE, id: 8001, name: 'Six-plex', data: { ...ORANGE.data, units: 6, ptype: 'Multifamily', band: '5-8', rent: 9500, down: 30 } };
+await storage.saveDeals([...storage.getDeals(), MF]);
+globalThis.reviewDeal(8001);
+ok(v('l-ptype') === '5–8 Unit' && el('l-units').dataset.band === '5-8' && v('l-vac') === '5' && v('l-down') === '30', `I9 6-unit review: ptype "${v('l-ptype')}", band memory 5-8, hydrated vac/down kept`);
+globalThis.cancelDealReview('ltr');
+// I10 (minor): stale surfaces from a previous analysis are hidden on review.
+el('flip-guide').style.display = ''; el('l-band-notice').style.display = 'block'; el('ltr-input-errors').style.display = 'block';
+globalThis.reviewDeal(FLIP.id);
+ok(el('flip-guide').style.display === 'none', 'I10a flip guide hidden on flip review');
+globalThis.reviewDeal(ORANGE.id);
+ok(el('l-band-notice').style.display === 'none' && el('ltr-input-errors').style.display === 'none', 'I10b LTR band notice + input-errors box hidden on LTR review');
+// I11 (minor): cancel releases the prefill protection (pre-wave preset law resumes).
+globalThis.cancelDealReview('ltr');
+ok(!ue('l-vac') && !ue('l-rent') && pipeline.getReviewingDealId() === null, 'I11 cancel releases protection');
+// I12: pins for the in-flight guard and the delete hook.
+const plSrc2 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'pipeline.js'), 'utf8');
+ok(/if \(reviewingDealId === reviewing\.id\) reviewingDealId = null;/.test(plSrc2) && /if \(doomed && reviewingDealId === doomed\.id\)/.test(plSrc2), 'I12 in-flight update guard + delete hook present');
 
 console.log(`\ndealreview: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

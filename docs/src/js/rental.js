@@ -34,6 +34,9 @@ function getStrMarket(slug) {
 let lastRentalResult = null;
 
 export function getLastRentalResult() { return lastRentalResult; }
+// Saved-deal review: entering a review invalidates the last result so an
+// "Update Saved Deal" without a fresh Analyze is refused (never a stale result).
+export function clearLastRentalResult() { lastRentalResult = null; }
 
 export function setRentalPreset(slug, el) {
   if (el) el.classList.add('slot-active');
@@ -44,9 +47,9 @@ export function setRentalPreset(slug, el) {
   if (occEl && !occEl.dataset.userEdited) occEl.value = occ;   // user-edited law (2026-09-05)
   // Keep other fields at their current values if already set, or use defaults
   const down = document.getElementById('v-down');
-  if (!down.value || +down.value === 0) down.value = 20;
+  if (!down.dataset.userEdited && (!down.value || +down.value === 0)) down.value = 20;   // user-edited law
   const mgmt = document.getElementById('v-mgmt');
-  if (!mgmt.value || +mgmt.value === 0) mgmt.value = 3;
+  if (!mgmt.dataset.userEdited && (!mgmt.value || +mgmt.value === 0)) mgmt.value = 3;    // user-edited law
 }
 
 export function analyzeRental() {

@@ -118,7 +118,7 @@ ok("D3: saved-deal entry accepts flip OR ltr and routes by the DEAL's type",
    /x\.type === 'flip' \|\| x\.type === 'ltr'/.test(renderer) && /type === 'ltr' \? renderLtrGuidanceHTML\(data\) : renderFlipPlanHTML\(data\)/.test(renderer));
 ok("D4: LTR content comes from ltrGuidance (canonical), flip from computeNegotiationScenario (unchanged)",
    /const g = ltrGuidance\(data\)/.test(renderer) && /const sc = computeNegotiationScenario\(data\)/.test(renderer));
-ok("D5: main.js imports ltrGuidance and getLastLtrResult", /ltrGuidance \}/.test(mainJs.slice(0, 2500)) && /getLastLtrResult \}\s+from '\.\/ltr\.js'/.test(mainJs));
+ok("D5: main.js imports ltrGuidance and getLastLtrResult", /ltrGuidance \}/.test(mainJs.slice(0, 2500)) && /getLastLtrResult(?:, clearLastLtrResult)? \}\s+from '\.\/ltr\.js'/.test(mainJs));
 ok("D6: the renderer still writes ONLY the read-only modal body (single innerHTML, no persistence)",
    (renderer.match(/innerHTML/g) || []).length === 1 && /getElementById\('maxoffer-body'\)/.test(renderer)
    && !/saveDeal|save_pipeline|requestDelete|dealEdit|localStorage|supabase\./.test(renderer));

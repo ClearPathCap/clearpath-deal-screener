@@ -50,12 +50,30 @@ const RANGE = {
 };
 function oob(v, [lo, hi]) { return v !== undefined && v !== null && Number.isFinite(+v) && (+v < lo || +v > hi); }
 
-// type: 'flip' | 'ltr' | 'brrr'. raw = the same whole-number/$ values the analyzer read.
+// Numeric-input integrity (2026-09-05): a partially entered <input type="number">
+// ("7.") reads back as an EMPTY value with validity.badInput set; the analyzer
+// readers surface that as NaN, and NaN here is a blocking error — a half-typed
+// number must never silently become a band/market default.
+const NAN_FIELD_IDS = {
+  ltr:  { units:'l-units', down:'l-down', vac:'l-vac', pm:'l-pm', maint:'l-maint', capex:'l-capex', rate:'l-rate', amort:'l-amort', points:'l-points', cc:'l-cc', target:'l-target' },
+  brrr: { units:'b-units', contingency:'b-contingency', cc:'b-cc', hold:'b-hold', acqRate:'b-acqrate', acqPoints:'b-acqpoints', refiLtv:'b-refiltv', refiRate:'b-refirate', refiAmort:'b-refiamort', reficost:'b-reficost', season:'b-season', vac:'b-vac', maint:'b-maint', pm:'b-pm', capex:'b-capex', targetDscr:'b-targetdscr' },
+  str:  { down:'v-down', occ:'v-occ', mgmt:'v-mgmt', pm:'v-pm', rate:'v-interest-rate', tgtCoc:'v-target' },
+  flip: { hold:'f-hold', cc1:'f-cc1', cc2:'f-cc2', rate:'f-rate', points:'f-points', sqft:'sqft' },
+};
+const NAN_FIELD_LABELS = { units:'Units', down:'Down payment', vac:'Vacancy', pm:'Property mgmt', maint:'Maintenance', capex:'CapEx reserve', rate:'Interest rate', amort:'Amortization', points:'Points', cc:'Closing costs', target:'Target CoC', contingency:'Contingency', hold:'Hold period', acqRate:'Bridge rate', acqPoints:'Bridge points', refiLtv:'Refi LTV', refiRate:'Refi rate', refiAmort:'Refi amortization', reficost:'Refi costs', season:'Seasoning', targetDscr:'Target DSCR', occ:'Occupancy', mgmt:'Platform fee', tgtCoc:'Target CoC', cc1:'Buying costs', cc2:'Selling costs', sqft:'Square footage' };
+
+// type: 'flip' | 'ltr' | 'brrr' | 'str'. raw = the same whole-number/$ values the analyzer read.
 export function validateInputs(type, raw) {
   const errors = [];
   const warnings = [];
   const err  = (field, label, message) => errors.push({ field, label, message });
   const warn = (field, label, message) => warnings.push({ field, label, message });
+
+  // Incomplete numeric entries block BEFORE any default could stand in for them.
+  const ids = NAN_FIELD_IDS[type] || {};
+  for (const [k, v] of Object.entries(raw || {})) {
+    if (typeof v === 'number' && Number.isNaN(v)) err(ids[k] || k, NAN_FIELD_LABELS[k] || k, 'looks incomplete — finish entering the number.');
+  }
 
   if (type === 'ltr') {
     if (oob(raw.down,  RANGE.pct))   err('l-down','Down payment','must be between 0% and 100%.');
@@ -478,13 +496,14 @@ export function incomeBlock({
   tax,
   ins,
   hoaYr,
+  util = 0,          // owner-paid utilities, annual $ (water/sewer, common-area, trash) — a true opEx ABOVE NOI
   capex,
   loan,
   rate,
   amortYears,
 }) {
   const EGI = rentYr * (1 - vac);
-  const opEx = EGI * pm + rentYr * maint + tax + ins + hoaYr;
+  const opEx = EGI * pm + rentYr * maint + tax + ins + hoaYr + util;
   const NOI = EGI - opEx;
   const piMo = amortizedPaymentMonthly(loan, rate, amortYears);
   const debtYr = piMo * 12;
@@ -493,6 +512,7 @@ export function incomeBlock({
   return {
     EGI,
     opEx,
+    util,
     NOI,
     piMo,
     debtYr,
@@ -525,6 +545,7 @@ export function computeLtr(inp) {
   const tax = +inp.tax || 0;
   const ins = +inp.ins || 0;
   const hoaYr = (+inp.hoa || 0) * 12;
+  const util = +inp.util || 0;         // owner-paid utilities (annual $); legacy records without it → 0
   const target = inp.target == null ? 8 : +inp.target;
 
   const rentYr = rentMo * 12;
@@ -538,6 +559,7 @@ export function computeLtr(inp) {
     tax,
     ins,
     hoaYr,
+    util,
     capex: capexF,
     loan,
     rate: rateF,
@@ -570,6 +592,7 @@ export function computeLtr(inp) {
     tax,
     ins,
     hoaYr,
+    util,
     capex: capexF,
     loan,
     rate: rateF + 0.005,
@@ -592,6 +615,7 @@ export function computeLtr(inp) {
     price,
     rentYr,
     EGI: ib.EGI,
+    util,
     opEx: ib.opEx,
     NOI: ib.NOI,
     piMo: ib.piMo,
@@ -741,7 +765,7 @@ export function ltrEngineInput(data) {
   return {
     price: data.price, rentMo: data.rentMo != null ? data.rentMo : data.rent,
     units: data.units, down: data.down, vac: data.vac, tax: data.tax, ins: data.ins,
-    hoa: data.hoa, maint: data.maint, pm: data.pm, capex: data.capex, rate: data.rate,
+    hoa: data.hoa, util: data.util == null ? 0 : data.util, maint: data.maint, pm: data.pm, capex: data.capex, rate: data.rate,
     amort: data.amort, points: data.points, cc: data.cc, target: data.target,
     selfManage: !!data.selfManage,
   };
@@ -815,7 +839,7 @@ export function ltrGuidance(data) {
     gates,
     current: {
       price: m.price, rentMo: inp.rentMo, down: inp.down == null ? null : +inp.down,
-      vac: m.vac, rentYr: m.rentYr, EGI: m.EGI,
+      vac: m.vac, rentYr: m.rentYr, EGI: m.EGI, util: m.util,
       dscr: m.dscr, coc: m.coc, cashFlowYr: m.cashFlowYr, cashFlowMo: m.cashFlowMo,
       NOI: m.NOI, debtYr: m.debtYr, stressedDscr: m.stressedDscr, stressedCfMo: m.stressedCfMo,
       marginOfSafety: m.marginOfSafety, band: m.band, target: m.target,
@@ -860,6 +884,7 @@ export function computeBrrr(inp) {
   const tax = +inp.tax || 0;
   const ins = +inp.ins || 0;
   const hoaYr = (+inp.hoa || 0) * 12;
+  const util = +inp.util || 0;         // owner-paid utilities (annual $); legacy records without it → 0
   const targetDscr = inp.targetDscr == null ? 1.25 : +inp.targetDscr;
 
   // ── Acquisition / all-in basis ──
@@ -893,6 +918,7 @@ export function computeBrrr(inp) {
     tax,
     ins,
     hoaYr,
+    util,
     capex: capexF,
     loan: refiLoan,
     rate: refiRateF,
@@ -924,6 +950,7 @@ export function computeBrrr(inp) {
     tax,
     ins,
     hoaYr,
+    util,
     capex: capexF,
     loan: sRefiLoan,
     rate: refiRateF,
@@ -963,6 +990,7 @@ export function computeBrrr(inp) {
     postRefiEquity,
     rentYr,
     EGI: ib.EGI,
+    util,
     NOI: ib.NOI,
     piMo: ib.piMo,
     refiDebtYr: ib.debtYr,

@@ -163,6 +163,7 @@ export function buildDealSummaryText(d) {
     lines.push('DSCR: ' + pend(dscrS, data.dscr));
     lines.push('Cash-on-cash: ' + pend(perc, data.coc));
     lines.push('Cash flow: ' + pend(money, data.cashFlowMo) + '/mo');
+    if (data.util > 0) lines.push('Owner-paid utilities: ' + money(data.util) + '/yr');
   } else if (d.type === 'brrr') {
     // BRRR keeps its refi math; only DSCR is insurance-dependent (matches
     // pendingDealStats).
@@ -171,12 +172,14 @@ export function buildDealSummaryText(d) {
     lines.push('DSCR: ' + pend(dscrS, data.dscr));
     lines.push('Capital left in: ' + money(data.capitalLeft));
     lines.push('Cash recovered: ' + perc(data.cashRecoveredPct));
+    if (data.util > 0) lines.push('Owner-paid utilities: ' + money(data.util) + '/yr');
   } else {
     lines.push('SHORT-TERM RENTAL ANALYSIS');
     lines.push('Price: ' + money(data.price) + '  |  Down: ' + (data.down == null ? 'n/a' : data.down + '%'));
     lines.push('Gross rent: ' + money(data.rent) + ' @ ' + (data.occ == null ? 'n/a' : data.occ + '%') + ' occ.');
     lines.push('Cash flow: ' + pend(money, data.cashflow) + '/yr');
     lines.push('Cash-on-cash: ' + pend(perc, data.coc) + '  |  Cap rate: ' + pend(perc, data.capRate));
+    if (data.util > 0) lines.push('Owner-paid utilities: ' + money(data.util) + '/yr');
   }
   if (d.notes) { lines.push(''); lines.push('Notes: ' + d.notes); }
   return lines.join('\n');

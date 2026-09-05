@@ -1,6 +1,6 @@
 // ─── Fix & Flip analyzer ──────────────────────────────────────────────────────
 
-import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, renderInputIssues } from './format.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, renderInputIssues, inputIsIncomplete } from './format.js';
 import { FLIP_MARKETS, ALL_MARKETS } from './markets.js';
 import { updateRepairRangesForMarket, repairEstimateSnapshot } from './repair.js';
 import { maybeShowFundingButton } from './clearpath.js';
@@ -96,9 +96,13 @@ export function analyzeFlip() {
 
   // B2: validate pre-compute — out-of-range inputs abort (no compute, no HOT, no funnel).
   // flip reads cc/rate/points as fractions, so multiply back to whole numbers for the check.
+  // Numeric-input integrity: a half-typed number field blocks instead of a default.
+  const incomplete = (id) => inputIsIncomplete(document.getElementById(id));
   const vErr = validateInputs('flip', {
     ask, rep, loan, price: ask,
-    cc1: cc1 * 100, cc2: cc2 * 100, rate: rate * 100, points: points * 100,
+    cc1: incomplete('f-cc1') ? NaN : cc1 * 100, cc2: incomplete('f-cc2') ? NaN : cc2 * 100,
+    rate: incomplete('f-rate') ? NaN : rate * 100, points: incomplete('f-points') ? NaN : points * 100,
+    hold: incomplete('f-hold') ? NaN : hold, sqft: incomplete('sqft') ? NaN : sqft,
   });
   if (renderInputIssues('flip', vErr.errors, vErr.warnings)) {
     document.getElementById('flip-results').style.display = 'none';

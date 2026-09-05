@@ -112,6 +112,7 @@ for (const m of html.matchAll(/<input\b([^>]*)>/g)) {
   const id = (attrs.match(/\bid="([^"]+)"/) || [])[1]; if (!id) continue;
   const e = el(id);
   const v = (attrs.match(/\bvalue="([^"]*)"/) || [])[1]; if (v !== undefined) e.value = v;
+  e.defaultValue = v !== undefined ? v : '';           // the HTML value attribute, as in a browser
   if (/\bdata-currency\b/.test(attrs)) { e.attrs['data-currency'] = ''; currencyEls.push(e); }
 }
 globalThis.document = {

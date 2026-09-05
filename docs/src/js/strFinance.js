@@ -8,11 +8,11 @@
 //
 // All rate/% args arrive as FRACTIONS (already /100, matching how rental.js read
 // them before the extraction). `rent` is ANNUAL revenue at 100% occupancy.
-export function computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate }) {
+export function computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate, util = 0 }) {
   const effRent     = rent * occ;
   const platformFee = effRent * mgmt;
   const pmFee       = effRent * pm;
-  const totalExp    = platformFee + pmFee + tax + maint;
+  const totalExp    = platformFee + pmFee + tax + maint + (+util || 0);   // owner-paid utilities (annual $) — opEx above NOI
   const noi         = effRent - totalExp;
   const capRate     = (noi / price) * 100;
   const downAmt     = price * down + furnish;
@@ -46,5 +46,5 @@ export function computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furni
     vsub += ' Lender-fundable: DSCR ' + dscr.toFixed(2) + ' clears typical 1.20–1.25 underwriting even though cash-on-cash trails your target — a finance-and-hold candidate.';
   }
 
-  return { effRent, platformFee, pmFee, totalExp, noi, capRate, downAmt, loan, mo, debt, cashflow, dscr, coc, grm, verdict, vsub, cls };
+  return { effRent, platformFee, pmFee, totalExp, util: +util || 0, noi, capRate, downAmt, loan, mo, debt, cashflow, dscr, coc, grm, verdict, vsub, cls };
 }

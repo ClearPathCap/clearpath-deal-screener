@@ -4,7 +4,7 @@
 // → incomeBlock). Reads both FLIP_MARKETS (ARV/carry) and LTR_MARKETS (rent) for
 // prefills. Mirrors ltr.js/rental.js conventions: b-* IDs, lastBrrrResult.
 
-import { fmt, pct, cClass, buildMetrics, buildRows, parseNumOpt, renderInputIssues } from './format.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseNumOpt, renderInputIssues, inputIsIncomplete } from './format.js';
 import { computeBrrr, brrrVerdict, mosLabel, validateInputs, plausibilityWarnings, propertyBand, BAND_RULES } from './finance.js';
 import { FLIP_MARKETS, LTR_MARKETS, BRRR_ASSUMPTIONS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
@@ -12,7 +12,7 @@ import { buildCpcUrl } from './funding.js';
 import { insuranceStatus, taxStatus, incomePresentation } from './insuranceReadiness.js';
 
 const elv = id => document.getElementById(id);
-function numOpt(id) { const el = elv(id); return el ? parseNumOpt(el.value) : undefined; }
+function numOpt(id) { const el = elv(id); if (!el) return undefined; if (inputIsIncomplete(el)) return NaN; return parseNumOpt(el.value); }
 
 function getBrrrMarket(slug) {
   const entry  = ALL_MARKETS.find(m => m.id === slug);
@@ -89,6 +89,7 @@ export function analyzeBrrr() {
     tax:   numOpt('b-tax'),
     ins:   numOpt('b-ins'),
     hoa:   numOpt('b-hoa'),
+    util:  numOpt('b-util'),     // owner-paid utilities (annual $)
     maint: numOpt('b-maint'),
     pm:    numOpt('b-pm'),
     selfManage,
@@ -165,6 +166,7 @@ export function analyzeBrrr() {
     { l: 'Cash recovered',                          v: pct(m.cashRecoveredPct) },
     { l: 'Equity created (ARV − all-in)',           v: fmt(m.equityCreated) },
     { l: '— Hold (post-refi) —', v: '', tot: true },
+    ...((input.util || 0) > 0 ? [{ l: 'Owner-paid utilities', v: '–' + fmt(input.util) }] : []),
     { l: 'Net operating income',                    v: insP ? insP.pendingText : fmt(m.NOI) },
     { l: 'Annual debt service (refi, ' + refiRate + ')', v: '–' + fmt(m.refiDebtYr) },
     { l: 'CapEx reserve (' + capexPct + '%, below NOI)', v: '–' + fmt(m.capexRes) },
@@ -185,7 +187,7 @@ export function analyzeBrrr() {
     acqRate: input.acqRate == null ? 10 : input.acqRate, acqPoints: input.acqPoints == null ? 2 : input.acqPoints,
     refiLtv: refiLtvPct, refiRate: input.refiRate == null ? 7.0 : input.refiRate, refiAmort: input.refiAmort == null ? 30 : input.refiAmort,
     reficost: input.reficost == null ? 3 : input.reficost, season: input.season == null ? 6 : input.season,
-    rent, vac: input.vac == null ? BAND_RULES[band].vac : input.vac, tax: input.tax || 0, taxStatus: tStat, ins: input.ins || 0, insStatus, hoa: input.hoa || 0,
+    rent, vac: input.vac == null ? BAND_RULES[band].vac : input.vac, tax: input.tax || 0, taxStatus: tStat, ins: input.ins || 0, insStatus, hoa: input.hoa || 0, util: input.util || 0,
     maint: input.maint == null ? BAND_RULES[band].maint : input.maint, pm: selfManage ? 0 : (input.pm == null ? BAND_RULES[band].pm : input.pm),
     capex: capexPct, ptype: input.ptype,
     rehabTotal: m.rehabTotal, allInCost: m.allInCost, cashInvested: m.cashInvested,

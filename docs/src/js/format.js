@@ -88,8 +88,20 @@ export function fmtCurrencyInput(el) {
   el.value = r.display;
 }
 
+// Numeric-input integrity (2026-09-05): an <input type="number"> holding text the
+// browser cannot parse ("7.", "7,") reports value '' and validity.badInput. The
+// analyzers read such a field as NaN so validateInputs blocks the run instead of
+// a default silently standing in. Node harnesses stub `validity` to exercise it.
+export function inputIsIncomplete(el) {
+  return !!(el && el.validity && el.validity.badInput);
+}
+
 export function initCurrencyInputs() {
   document.querySelectorAll('[data-currency]').forEach(el => {
+    // A value already differing from the HTML default before this module ran
+    // (fast typing on a slow load, browser form restore) is the user's — protect
+    // it from the presets that render right after init.
+    if (el.value !== '' && el.value !== (el.defaultValue == null ? '' : String(el.defaultValue))) el.dataset.userEdited = '1';
     // Format any pre-populated values on init
     if (el.value) fmtCurrencyInput(el);
     el.addEventListener('input', (e) => {

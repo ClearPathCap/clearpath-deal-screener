@@ -1,9 +1,9 @@
 // ─── App entry — page nav, toast, modal, init ─────────────────────────────────
 
 import { analyzeFlip, setFlipPreset, resetFlip, getLastFlipResult, clearLastFlipResult } from './flip.js';
-import { analyzeRental, setRentalPreset, resetRental, clearLastRentalResult } from './rental.js';
+import { analyzeRental, setRentalPreset, resetRental, clearLastRentalResult, getLastRentalResult } from './rental.js';
 import { analyzeLtr, setLtrPreset, resetLtr, getLastLtrResult, clearLastLtrResult } from './ltr.js';
-import { analyzeBrrr, setBrrrPreset, resetBrrr, clearLastBrrrResult } from './brrr.js';
+import { analyzeBrrr, setBrrrPreset, resetBrrr, clearLastBrrrResult, getLastBrrrResult } from './brrr.js';
 import { setRepairTier, calcRepair, useRepairEstimate,
          onSelfRenoToggle, updateRepairRangesForMarket,
          repairFieldShouldSelectOnFocus }                            from './repair.js';
@@ -164,6 +164,9 @@ function saveButtonUI(status) {
 }
 
 async function saveDeal(type) {
+  // Stale-result law: a result that no longer matches the form is never saved
+  // or used to update a snapshot — analyze again first.
+  if (isStale(type)) { showToast('Inputs changed — analyze again before saving'); return { status: 'refused-stale' }; }
   const btn = document.getElementById(type + '-save-btn');
   // Never restore a stale success/busy label — a re-save that fails must not
   // resurrect 'Saved ✓' from a previous save.
@@ -243,17 +246,17 @@ const REVIEW_FIELDS = {
          ['f-cc1','cc1','n'], ['f-cc2','cc2','n'], ['f-carry','carry','$'], ['f-target','target','$'], ['sqft','sqft','n0'],
          ['f-loan','loan','$0'], ['f-rate','rate','x100'], ['f-points','points','x100']],
   ltr:  [['l-addr','addr','t'], ['l-price','price','$'], ['l-rent','rent','$'], ['l-units','units','n'], ['l-down','down','n'],
-         ['l-vac','vac','n'], ['l-tax','tax','$','taxStatus'], ['l-ins','ins','$','insStatus'], ['l-hoa','hoa','$'], ['l-maint','maint','n'],
+         ['l-vac','vac','n'], ['l-tax','tax','$','taxStatus'], ['l-ins','ins','$','insStatus'], ['l-hoa','hoa','$'], ['l-util','util','$'], ['l-maint','maint','n'],
          ['l-pm','pm','pm'], ['l-capex','capex','n'], ['l-rate','rate','n'], ['l-amort','amort','n'], ['l-points','points','n'],
          ['l-cc','cc','n'], ['l-target','target','n'], ['l-ptype','ptype','sel']],
   rental: [['v-addr','addr','t'], ['v-price','price','$'], ['v-rent','rent','$'], ['v-down','down','n'], ['v-occ','occ','n'],
-           ['v-mgmt','mgmt','n'], ['v-pm','pm','pm'], ['v-tax','tax','$','taxStatus'], ['v-maint','maint','$'], ['v-furnish','furnish','$'],
+           ['v-mgmt','mgmt','n'], ['v-pm','pm','pm'], ['v-tax','tax','$','taxStatus'], ['v-maint','maint','$'], ['v-util','util','$'], ['v-furnish','furnish','$'],
            ['v-target','tgtCoc','n'], ['v-interest-rate','interestRate','x100']],
   brrr: [['b-addr','addr','t'], ['b-price','price','$'], ['b-rehab','rehab','$'], ['b-arv','arv','$'], ['b-rent','rent','$'],
          ['b-units','units','n'], ['b-contingency','contingency','n'], ['b-cc','cc','n'], ['b-hold','hold','n'], ['b-carry','carry','$'],
          ['b-acqloan','acqLoan','$0'], ['b-acqrate','acqRate','n'], ['b-acqpoints','acqPoints','n'], ['b-refiltv','refiLtv','n'],
          ['b-refirate','refiRate','n'], ['b-refiamort','refiAmort','n'], ['b-reficost','reficost','n'], ['b-season','season','n'],
-         ['b-vac','vac','n'], ['b-tax','tax','$','taxStatus'], ['b-ins','ins','$','insStatus'], ['b-hoa','hoa','$'], ['b-maint','maint','n'],
+         ['b-vac','vac','n'], ['b-tax','tax','$','taxStatus'], ['b-ins','ins','$','insStatus'], ['b-hoa','hoa','$'], ['b-util','util','$'], ['b-maint','maint','n'],
          ['b-pm','pm','pm'], ['b-capex','capex','n'], ['b-targetdscr','targetDscr','n'], ['b-ptype','ptype','sel']],
 };
 
@@ -328,6 +331,7 @@ function reviewDeal(id) {
   //    without a fresh Analyze is refused ("Analyze the deal first") instead of
   //    persisting a result that belongs to some other deal.
   CLEAR_RESULT[type]();
+  clearStaleWatch(type);
   const hide = (elId, wipe) => { const e = document.getElementById(elId); if (!e) return; e.style.display = 'none'; if (wipe) { e.innerHTML = ''; } };
   hide(RESULTS_ID[type]); hide(FUNDING_ID[type], true); hide(type + '-input-errors', true);
   if (type === 'flip') hide('flip-guide');
@@ -392,6 +396,53 @@ function releaseReviewProtection(type) {
 // Deleting the deal under review ends the review (pipeline.js owns the delete).
 onDealReviewEnded((type) => { if (type) { exitReviewUI(type); releaseReviewProtection(type); } });
 
+// ─── Stale-result indicator (owner law 2026-09-05) ───────────────────────────
+// After a successful Analyze, changing any material underwriting input marks
+// the visible analysis STALE: nothing is recalculated silently, the prior
+// result is not erased, and a notice makes it obvious the numbers reflect the
+// prior inputs. Pressing Analyze clears the state. The truth is a SIGNATURE of
+// the form taken at Analyze time, so programmatic writers (market presets,
+// band defaults, the repair estimator) count too, and reverting a change by
+// hand un-stales the result. Shared by all four analyzers; coexists with
+// Review & Re-analyze (a review hides the result and drops the watch; an
+// Analyze inside a review re-arms it; Save / Update refuse while stale).
+const STALE_FIELDS = Object.fromEntries(Object.entries(REVIEW_FIELDS).map(([t, rows]) =>
+  [t, rows.map(r => r[0]).filter(id => !/addr$/.test(id)).concat(SELF_ID[t] ? [SELF_ID[t]] : [])]));
+const staleSignature = { flip: null, rental: null, ltr: null, brrr: null };   // null = no watch armed
+function formSignature(type) {
+  return (STALE_FIELDS[type] || []).map(id => {
+    const e = document.getElementById(id);
+    if (!e) return '';
+    // value AND checked for every field — toggles count, and a stub without a
+    // `type` still signs correctly.
+    return String(e.value) + '|' + (e.checked ? '1' : '0');
+  }).join('');
+}
+function setStaleUI(type, on) {
+  const res = document.getElementById(RESULTS_ID[type]);
+  if (res) res.classList.toggle('is-stale', !!on);
+  const note = document.getElementById(type + '-stale');
+  if (note) note.style.display = on ? '' : 'none';
+}
+function isStale(type) { return staleSignature[type] != null && formSignature(type) !== staleSignature[type]; }
+function refreshStale(type) { if (staleSignature[type] == null) return; setStaleUI(type, isStale(type)); }
+function refreshStaleAll() { for (const t of Object.keys(staleSignature)) refreshStale(t); }
+function clearStaleWatch(type) { staleSignature[type] = null; setStaleUI(type, false); }
+// Called by the validated Analyze wrappers: arm the watch on a rendered result,
+// drop it when the analysis did not run (validation abort, 9+ referral).
+function syncStaleWatch(type, result) {
+  const res = document.getElementById(RESULTS_ID[type]);
+  const shown = !!result && !!res && res.style.display !== 'none';
+  if (shown) { staleSignature[type] = formSignature(type); setStaleUI(type, false); }
+  else clearStaleWatch(type);
+}
+for (const [type, containerId] of Object.entries({ flip: 'page-flip', rental: 'rental-view-str', ltr: 'rental-view-ltr', brrr: 'rental-view-brrr' })) {
+  const c = document.getElementById(containerId);
+  if (!c) continue;
+  c.addEventListener('input',  () => refreshStale(type));
+  c.addEventListener('change', () => refreshStale(type));
+}
+
 // ─── Clear & New Deal ─────────────────────────────────────────────────────────
 
 function clearNewDeal(type) {
@@ -399,6 +450,7 @@ function clearNewDeal(type) {
   // analyzer (the snapshot was never touched) and releases the prefill
   // protection so market presets and band defaults apply to the next deal.
   releaseReviewProtection(type);
+  clearStaleWatch(type);
   { const rid = getReviewingDealId(); const rd = rid != null ? getDeals().find(d => d.id === rid) : null; if (rid != null && (!rd || rd.type === type)) cancelDealReview(type); }
   if (type === 'flip') {
     ['f-addr','f-ask','f-arv','f-rep','sqft'].forEach(id => {
@@ -575,6 +627,7 @@ function renderAllSlots() {
   renderMarketSlots('rental-slots', 'rental');
   renderMarketSlots('ltr-slots',    'ltr');
   renderMarketSlots('brrr-slots',   'brrr');
+  refreshStaleAll();   // presets may have rewritten inputs after an Analyze
 }
 
 // ─── Slot click handler — Task 5 logic ───────────────────────────────────────
@@ -979,6 +1032,7 @@ export function maybeDefaultDealName(nameFieldId, addrFieldId) {
 function analyzeFlipValidated() {
   if (validateRequiredFields('flip')) {
     analyzeFlip();
+    syncStaleWatch('flip', getLastFlipResult());
     maybeDefaultDealName('flip-deal-name', 'f-addr');
   }
 }
@@ -989,6 +1043,7 @@ function analyzeFlipValidated() {
 function analyzeRentalValidated() {
   if (validateRequiredFields('rental')) {
     analyzeRental();
+    syncStaleWatch('rental', getLastRentalResult());
     maybeDefaultDealName('rental-deal-name', 'v-addr');
   }
 }
@@ -996,12 +1051,14 @@ function analyzeRentalValidated() {
 function analyzeLtrValidated() {
   if (validateRequiredFields('ltr')) {
     analyzeLtr();
+    syncStaleWatch('ltr', getLastLtrResult());
     maybeDefaultDealName('ltr-deal-name', 'l-addr');
   }
 }
 function analyzeBrrrValidated() {
   if (validateRequiredFields('brrr')) {
     analyzeBrrr();
+    syncStaleWatch('brrr', getLastBrrrResult());
     maybeDefaultDealName('brrr-deal-name', 'b-addr');
   }
 }
@@ -1018,6 +1075,7 @@ function switchRentalView(view, btn) {
   if (view === 'ltr')       renderMarketSlots('ltr-slots',    'ltr');
   else if (view === 'brrr') renderMarketSlots('brrr-slots',   'brrr');
   else                      renderMarketSlots('rental-slots', 'rental');
+  refreshStaleAll();
 }
 
 // ─── Self-reno toggle — recalc + re-run analysis (item 9) ────────────────────
@@ -1798,11 +1856,12 @@ Object.assign(window, {
   // window-exposed control may mutate paid display state. Rehab-cost tiers
   // (Light/Mid/Full, repair.js) are unrelated to subscriptions and keep their
   // setter under an unambiguous name.
-  setRepairTier,
+  // Stale-result law: estimator writes count as input changes.
+  setRepairTier: (name, el) => { setRepairTier(name, el); refreshStale('flip'); },
   startCheckout,
   manageSubscription,
   calcRepair,
-  useRepairEstimate,
+  useRepairEstimate: (...a) => { const r = useRepairEstimate(...a); refreshStale('flip'); return r; },
   updateSelfReno,
   // pipeline
   saveDeal,
@@ -1872,6 +1931,16 @@ migrateGuideMode();       // "beginner"/"pro" → "on"/"off"
 initInstallHint();
 initGuideMode();
 initCurrencyInputs();
+// User-edited guards for the % / number fields — armed BEFORE the first preset
+// render so (a) a keystroke that landed before this module ran is recognised
+// as the user's (value already differs from the HTML default) and (b) every
+// later keystroke marks the field. Programmatic writes never fire 'input'.
+['l-down','l-vac','l-pm','l-maint','l-capex','b-vac','b-pm','b-maint','b-capex','f-hold','v-occ','v-down','v-mgmt'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.value !== '' && el.value !== (el.defaultValue == null ? '' : String(el.defaultValue))) el.dataset.userEdited = '1';
+  el.addEventListener('input', () => { el.dataset.userEdited = '1'; });
+});
 initTierBadge();
 handleCheckoutReturn();   // Wave 5: checkout return is a sync TRIGGER, never entitlement
 applyTierToUI();
@@ -1961,12 +2030,10 @@ if (repField) {
 // don't fire 'input', so they stay "default"; user typing marks it edited).
 // + f-hold / v-occ (2026-09-05): the flip and STR presets now honour the same
 // user-edited law for the fields they used to overwrite unconditionally.
-['l-down','l-vac','l-pm','l-maint','l-capex','b-vac','b-pm','b-maint','b-capex','f-hold','v-occ','v-down','v-mgmt'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('input', () => { el.dataset.userEdited = '1'; });
-});
 function syncBandDefaults(prefix) {
   const unitsEl = document.getElementById(prefix + '-units');
+  // Numeric-input integrity: a half-typed or blank unit count is not a band change.
+  if (unitsEl && ((unitsEl.validity && unitsEl.validity.badInput) || String(unitsEl.value).trim() === '')) return null;
   const band = propertyBand(unitsEl ? parseNumOpt(unitsEl.value) : undefined);
   const rentLabel = document.getElementById(prefix + '-rent-label');
   if (rentLabel) rentLabel.textContent = band === '5-8' ? 'Total gross monthly rent (all units)' : 'Monthly Rent';

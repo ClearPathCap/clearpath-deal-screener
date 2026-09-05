@@ -233,6 +233,7 @@
   <button class="btn-analyze" onclick="analyzeFlip()">Analyze This Deal</button>
 
   <div class="results" id="flip-results">
+    <div class="stale-notice" id="flip-stale" style="display:none">Inputs changed — re-analyze to update this result</div>
     <div class="verdict" id="flip-verdict">
       <div class="vtag" id="fvtag"></div>
       <div class="vlabel" id="fvlabel"></div>
@@ -372,6 +373,11 @@
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-maint" class="has-pfx" value="3,000" placeholder="3,000" data-currency></div>
     </div>
   </div>
+  <div class="field full">
+    <label>Owner-Paid Utilities <span>(annual)</span></label>
+    <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-util" class="has-pfx" value="0" placeholder="0" data-currency></div>
+    <div class="field-hint">Water/sewer, common-area utilities, trash, or other utilities paid by the owner.</div>
+  </div>
   <div class="field-row">
     <div class="field">
       <label>Furnishing/Setup <span>(one-time)</span></label>
@@ -397,6 +403,7 @@
   <button class="btn-analyze" onclick="analyzeRental()">Analyze This Deal</button>
 
   <div class="results" id="rental-results">
+    <div class="stale-notice" id="rental-stale" style="display:none">Inputs changed — re-analyze to update this result</div>
     <div class="verdict" id="rental-verdict">
       <div class="vtag" id="rvtag"></div>
       <div class="vlabel" id="rvlabel"></div>
@@ -496,6 +503,11 @@
         <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-ins" class="has-pfx" placeholder="1,050" data-currency></div>
       </div>
     </div>
+    <div class="field full">
+      <label>Owner-Paid Utilities <span>(annual)</span></label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-util" class="has-pfx" value="0" placeholder="0" data-currency></div>
+      <div class="field-hint">Water/sewer, common-area utilities, trash, or other utilities paid by the owner.</div>
+    </div>
     <div class="field-row">
       <div class="field">
         <label>HOA <span>(monthly)</span></label>
@@ -550,6 +562,7 @@
     <div class="band-notice" id="l-band-notice" style="display:none"></div>
 
     <div class="results" id="ltr-results">
+      <div class="stale-notice" id="ltr-stale" style="display:none">Inputs changed — re-analyze to update this result</div>
       <div class="verdict" id="ltr-verdict">
         <div class="vtag" id="lvtag"></div>
         <div class="vlabel" id="lvlabel"></div>
@@ -706,6 +719,11 @@
         <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-ins" class="has-pfx" placeholder="1,200" data-currency></div>
       </div>
     </div>
+    <div class="field full">
+      <label>Owner-Paid Utilities <span>(annual)</span></label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-util" class="has-pfx" value="0" placeholder="0" data-currency></div>
+      <div class="field-hint">Water/sewer, common-area utilities, trash, or other utilities paid by the owner.</div>
+    </div>
     <div class="field-row">
       <div class="field">
         <label>HOA <span>(monthly)</span></label>
@@ -747,6 +765,7 @@
     <div class="band-notice" id="b-band-notice" style="display:none"></div>
 
     <div class="results" id="brrr-results">
+      <div class="stale-notice" id="brrr-stale" style="display:none">Inputs changed — re-analyze to update this result</div>
       <div class="verdict" id="brrr-verdict">
         <div class="vtag" id="bvtag"></div>
         <div class="vlabel" id="bvlabel"></div>

@@ -440,5 +440,137 @@ ok(!ue('l-vac') && !ue('l-rent') && pipeline.getReviewingDealId() === null, 'I11
 const plSrc2 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'pipeline.js'), 'utf8');
 ok(/if \(reviewingDealId === reviewing\.id\) reviewingDealId = null;/.test(plSrc2) && /if \(doomed && reviewingDealId === doomed\.id\)/.test(plSrc2), 'I12 in-flight update guard + delete hook present');
 
+// ── §J · owner-paid utilities through the UI: form → engine → save → reopen → review ──
+console.log('— §J owner-paid utilities (UI + persistence) —');
+globalThis.cancelDealReview('ltr'); globalThis.clearNewDeal('ltr');
+ok(v('l-util') === '0' && el('l-util').attrs['data-currency'] !== undefined, 'J1 LTR has an Owner-Paid Utilities money field defaulting to $0');
+ok(v('b-util') === '0' && v('v-util') === '0', 'J2 BRRRR and STR carry the same field (shared law)');
+const orange2 = { 'l-price': '649900', 'l-rent': '6000', 'l-units': '3', 'l-down': '25', 'l-vac': '7', 'l-tax': '8000', 'l-ins': '2358', 'l-hoa': '0', 'l-maint': '5', 'l-pm': '8', 'l-capex': '5', 'l-rate': '7.25', 'l-amort': '30', 'l-points': '1', 'l-cc': '2', 'l-target': '8' };
+for (const [id, val] of Object.entries(orange2)) typed(id, val);
+typed('l-addr', '73 Orange Street, Bridgeport, CT 06607');
+globalThis.analyzeLtr();
+const r0u = ltr.getLastLtrResult();
+ok(r0u && r0u.util === 0 && near(r0u.NOI, 47645.2, 0.5) && r0u.dscr.toFixed(2) === '1.19', `J3 zero-utility baseline through the analyzer: NOI ${r0u && r0u.NOI.toFixed(1)}, DSCR ${r0u && r0u.dscr.toFixed(2)}`);
+typed('l-util', '1200');
+globalThis.analyzeLtr();
+const r1u = ltr.getLastLtrResult();
+ok(r1u && r1u.util === 1200 && near(r1u.NOI, 47645.2 - 1200, 0.5), `J4 utilities 1,200 → NOI ${r1u && r1u.NOI.toFixed(1)} (dollar-for-dollar through the UI)`);
+ok(/Owner-paid utilities/.test(el('ltr-breakdown').innerHTML) && /\$1,200/.test(el('ltr-breakdown').innerHTML), 'J5 breakdown shows the utilities line');
+el('ltr-deal-name').value = 'Orange Street — with utilities';
+const su = await globalThis.saveDeal('ltr');
+const savedU = storage.getDeals().find(d => d.name === 'Orange Street — with utilities');
+ok(su.status === 'saved' && savedU && savedU.data.util === 1200, 'J6 save persists the raw utility input');
+const payloadU = rpcCalls.filter(c => c.name === 'save_pipeline').pop().args.p_deals.find(d => d.name === 'Orange Street — with utilities');
+ok(payloadU && payloadU.data.util === 1200 && near(payloadU.data.NOI, 46445.2, 0.5), 'J7 RPC payload carries util + the utilities-adjusted NOI');
+pipeline.renderPipeline();
+ok(/Owner-paid utilities<\/span><span class="dv">\$1,200\/yr/.test(el('pipeline-list').innerHTML) && /Utilities \$1,200\/yr/.test(el('pipeline-list').innerHTML), 'J8 expanded card shows the utilities row and the saved-inputs line');
+globalThis.reviewDeal(savedU.id);
+ok(v('l-util') === '1,200' && ue('l-util'), 'J9 Review & Re-analyze hydrates utilities, protected');
+globalThis.handleSlotClick(1, 'charlotte-nc'); globalThis.handleSlotClick(0, 'bridgeport-ct');
+ok(v('l-util') === '1,200', 'J10 market presets cannot overwrite it');
+ok(snapshot().includes('"util":1200') && ltr.getLastLtrResult() === null, 'J11 review itself persists nothing and runs no analysis');
+globalThis.cancelDealReview('ltr');
+// A truly legacy record (saved before the field existed): no util key at all.
+const ORANGE_LEGACY = { ...ORANGE, id: 8101, name: 'Legacy Orange (no utilities key)' };
+delete ORANGE_LEGACY.data.util;
+await storage.saveDeals([...storage.getDeals(), ORANGE_LEGACY]);
+globalThis.reviewDeal(8101);
+ok(v('l-util') === '0' && !ue('l-util'), `J12 a legacy record without the field hydrates the $0 default (not pending, not an error) (got "${v('l-util')}", ue=${ue('l-util')})`);
+globalThis.analyzeLtr();
+ok(ltr.getLastLtrResult() && ltr.getLastLtrResult().util === 0, 'J13 legacy re-analysis runs at $0 utilities');
+ok(!/Pending/.test(el('lvlabel').textContent) && /Owner-paid utilities<\/span><span class="dv">\$0\/yr/.test((pipeline.renderPipeline(), el('pipeline-list').innerHTML)), 'J13b the legacy card shows Utilities $0/yr, never pending');
+ok(F.ltrGuidance(savedU.data).current.util === 1200 && near(F.ltrGuidance(savedU.data).current.NOI, savedU.data.NOI, 1e-6), 'J14 pipeline guidance consumes the saved utility through the same engine');
+globalThis.cancelDealReview('ltr');
+const shareSrc2 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'share.js'), 'utf8');
+const cpSrc2 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'clearpath.js'), 'utf8');
+ok(/Owner-paid utilities: ' \+ money\(data\.util\)/.test(shareSrc2) && /Owner-Paid Utilities \(annual\): \$/.test(cpSrc2) && !/annualUtilities/.test(cpSrc2), 'J15 share text + clipboard summaries carry the expense; the CPC URL contract is untouched');
+
+// ── §K · stale-result indicator ──────────────────────────────────────────────
+console.log('— §K stale result —');
+globalThis.clearNewDeal('ltr');
+for (const [id, val] of Object.entries(orange2)) typed(id, val);
+globalThis.analyzeLtr();
+const bump = (containerId) => el(containerId).dispatchEvent({ type: 'input', isTrusted: true });
+ok(!el('ltr-results').classList.contains('is-stale') && el('ltr-stale').style.display === 'none', 'K1 fresh analysis is not stale');
+typed('l-vac', '9'); bump('rental-view-ltr');
+ok(el('ltr-results').classList.contains('is-stale') && el('ltr-stale').style.display === '', 'K2 changing a material input marks the visible result stale (notice shown)');
+ok(ltr.getLastLtrResult().vac === 7 && el('ltr-results').style.display === 'block', 'K3 nothing recalculated, prior result not erased (still the 7% analysis on screen)');
+const staleSave = await globalThis.saveDeal('ltr');
+ok(staleSave.status === 'refused-stale', 'K4 saving a stale result is refused');
+typed('l-vac', '7'); bump('rental-view-ltr');
+ok(!el('ltr-results').classList.contains('is-stale'), 'K5 reverting the input by hand un-stales (signature law, not a dirty flag)');
+typed('l-util', '500'); bump('rental-view-ltr');
+ok(el('ltr-results').classList.contains('is-stale'), 'K6 the utilities field is a material input');
+globalThis.analyzeLtr();
+ok(!el('ltr-results').classList.contains('is-stale') && ltr.getLastLtrResult().util === 500, 'K7 re-Analyze clears the stale state and produces the current result');
+el('l-self-manage-toggle').checked = true; el('rental-view-ltr').dispatchEvent({ type: 'change', isTrusted: true });
+ok(el('ltr-results').classList.contains('is-stale'), 'K8 a toggle change marks stale too');
+el('l-self-manage-toggle').checked = false; bump('rental-view-ltr');
+ok(!el('ltr-results').classList.contains('is-stale'), 'K8b toggling back un-stales');
+// Programmatic writers count: an UNTYPED vacancy follows the market preset, so a
+// market switch after Analyze changes the form under the result.
+globalThis.clearNewDeal('ltr');
+delete el('l-vac').dataset.userEdited;          // a fresh session: vacancy never typed
+globalThis.switchRentalView('ltr');              // Bridgeport preset fills 7
+for (const [id, val] of Object.entries(orange2)) if (id !== 'l-vac') typed(id, val);
+ok(v('l-vac') === '7' && !ue('l-vac'), `K9a vacancy is the market preset, not typed (got "${v('l-vac')}", ue=${ue('l-vac')})`);
+globalThis.analyzeLtr();
+globalThis.handleSlotClick(1, 'charlotte-nc');
+ok(v('l-vac') === '5' && el('ltr-results').classList.contains('is-stale'), `K9 a market switch that rewrites an untyped input marks stale (vac now "${v('l-vac')}")`);
+globalThis.handleSlotClick(0, 'bridgeport-ct');
+ok(v('l-vac') === '7' && !el('ltr-results').classList.contains('is-stale'), 'K10 …and switching back un-stales');
+// review-mode coexistence
+globalThis.reviewDeal(savedU.id);
+ok(!el('ltr-results').classList.contains('is-stale') && el('ltr-stale').style.display === 'none', 'K11 entering a review hides the result and drops the stale watch');
+globalThis.analyzeLtr();
+typed('l-util', '900'); bump('rental-view-ltr');
+const staleUpd = await globalThis.saveDeal('ltr');
+ok(staleUpd.status === 'refused-stale' && storage.getDeals().find(d => d.id === savedU.id).data.util === 1200, 'K12 Update Saved Deal is refused while stale; snapshot untouched');
+globalThis.analyzeLtr();
+const okUpd = await globalThis.saveDeal('ltr');
+ok(okUpd.mode === 'updated' && storage.getDeals().find(d => d.id === savedU.id).data.util === 900, 'K13 after re-Analyze the update lands with the current inputs');
+// other analyzers share the behaviour
+globalThis.reviewDeal(STR.id); globalThis.analyzeRental();
+typed('v-occ', '60'); bump('rental-view-str');
+ok(el('rental-results').classList.contains('is-stale'), 'K14 STR stale');
+globalThis.cancelDealReview('rental');
+globalThis.reviewDeal(BRRR.id); globalThis.analyzeBrrr();
+typed('b-rent', '2500'); bump('rental-view-brrr');
+ok(el('brrr-results').classList.contains('is-stale'), 'K15 BRRRR stale');
+globalThis.cancelDealReview('brrr');
+globalThis.reviewDeal(FLIP.id); globalThis.analyzeFlip();
+typed('f-ask', '195000'); bump('page-flip');
+ok(el('flip-results').classList.contains('is-stale'), 'K16 flip stale');
+globalThis.cancelDealReview('flip');
+
+// ── §L · numeric-input integrity (badInput → blocking error, never a default) ──
+console.log('— §L incomplete numbers —');
+globalThis.clearNewDeal('ltr');
+for (const [id, val] of Object.entries(orange2)) typed(id, val);
+el('l-vac').value = ''; el('l-vac').validity = { badInput: true };     // what a browser reports for "7."
+globalThis.analyzeLtr();
+ok(ltr.getLastLtrResult() === null && el('ltr-results').style.display === 'none', 'L1 an incomplete vacancy blocks the analysis (no band default stood in)');
+el('l-vac').validity = { badInput: false }; typed('l-vac', '7');
+globalThis.analyzeLtr();
+ok(ltr.getLastLtrResult() && ltr.getLastLtrResult().vac === 7, 'L2 completing the number lets the analysis run at the typed value');
+el('l-units').validity = { badInput: true }; el('l-units').value = ''; el('l-units').dispatchEvent({ type: 'input', isTrusted: true });
+ok(v('l-vac') === '7' && v('l-pm') === '8', 'L3 a half-typed unit count never fires the band-default rewrite');
+el('l-units').validity = { badInput: false }; typed('l-units', '3');
+globalThis.reviewDeal(STR.id);
+el('v-occ').value = ''; el('v-occ').validity = { badInput: true };
+globalThis.analyzeRental();
+ok(rental.getLastRentalResult() === null, 'L4 STR: incomplete occupancy blocks (the old code defaulted it to 65)');
+el('v-occ').validity = { badInput: false }; globalThis.cancelDealReview('rental');
+globalThis.reviewDeal(FLIP.id);
+el('f-hold').value = ''; el('f-hold').validity = { badInput: true };
+globalThis.analyzeFlip();
+ok(flip.getLastFlipResult() === null, 'L5 flip: incomplete hold blocks (the old code defaulted it to 5)');
+el('f-hold').validity = { badInput: false }; globalThis.cancelDealReview('flip');
+const fmtSrc2 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'format.js'), 'utf8');
+const mainSrc2 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'main.js'), 'utf8');
+ok(/export function inputIsIncomplete\(el\)/.test(fmtSrc2) && /el\.validity && el\.validity\.badInput/.test(fmtSrc2), 'L6 one shared incomplete-number detector');
+ok(/initCurrencyInputs\(\);\n\/\/ User-edited guards/.test(mainSrc2) && mainSrc2.indexOf("['l-down','l-vac','l-pm'") < mainSrc2.indexOf('\nrenderAllSlots();'), 'L7 user-edited guards + currency mask are armed BEFORE the first preset render');
+ok(/el\.value !== '' && el\.value !== \(el\.defaultValue == null \? '' : String\(el\.defaultValue\)\)\) el\.dataset\.userEdited = '1';/.test(mainSrc2) && /el\.dataset\.userEdited = '1';\n    \/\/ Format any pre-populated values on init/.test(fmtSrc2), 'L8 a value already differing from the HTML default at arm time is treated as the user\'s');
+
 console.log(`\ndealreview: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -1,6 +1,6 @@
 // ─── STR / Rental analyzer ────────────────────────────────────────────────────
 
-import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, parseNumOpt, renderInputIssues } from './format.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, parseNumOpt, renderInputIssues, inputIsIncomplete } from './format.js';
 import { STR_MARKETS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
 import { validateInputs, plausibilityWarnings } from './finance.js';
@@ -65,6 +65,7 @@ export function analyzeRental() {
   const tax     = taxRaw ?? 0;
   const maint   = parseComma(document.getElementById('v-maint').value);
   const furnish = parseComma(document.getElementById('v-furnish').value);
+  const util    = parseComma(document.getElementById('v-util')?.value || '0') || 0;   // owner-paid utilities (annual $)
   const tgtCoc  = +document.getElementById('v-target').value || 6;
   // Item 14: editable interest rate field — default 6.75%
   const interestRate = (+document.getElementById('v-interest-rate')?.value || 6.75) / 100;
@@ -72,14 +73,17 @@ export function analyzeRental() {
 
   // B2 (STR): validate pre-compute — out-of-range inputs abort (no compute, no "Strong
   // STR", no funnel). STR % fields are whole numbers, so read the RAW values (pre /100).
+  // Numeric-input integrity: a half-typed number reads as NaN → blocking error.
+  const numRaw = (id) => { const e = document.getElementById(id); return inputIsIncomplete(e) ? NaN : +(e ? e.value : 0); };
   const strRaw = {
     price,
     revenue: rent,
-    down:  +document.getElementById('v-down').value,
-    occ:   +document.getElementById('v-occ').value,
-    mgmt:  +document.getElementById('v-mgmt').value,
-    pm:    selfManage ? 0 : +document.getElementById('v-pm').value,
-    rate:  +(document.getElementById('v-interest-rate')?.value),
+    down:  numRaw('v-down'),
+    occ:   numRaw('v-occ'),
+    mgmt:  numRaw('v-mgmt'),
+    pm:    selfManage ? 0 : numRaw('v-pm'),
+    rate:  numRaw('v-interest-rate'),
+    tgtCoc: numRaw('v-target'),
     tax: taxRaw, maint, furnish,
   };
   const { errors: strErrors } = validateInputs('str', strRaw);
@@ -98,7 +102,7 @@ export function analyzeRental() {
   const strP = strExpensePresentation(tStat); // non-null → Pending overlay
 
   const { effRent, platformFee, pmFee, noi, capRate, downAmt, loan, debt, cashflow, dscr, coc, grm, verdict, vsub, cls } =
-    computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate });
+    computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate, util });
   const rateDisplay = (interestRate * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
 
   document.getElementById('rental-verdict').className = 'verdict ' + (strP ? 'warm' : cls);
@@ -120,6 +124,7 @@ export function analyzeRental() {
     { l: 'Property manager' + (pm > 0 ? ' (' + Math.round(pm * 100) + '%)' : ' (self)'), v: pm > 0 ? '–' + fmt(pmFee) : '$0' },
     { l: 'Taxes + insurance' + (strP ? ' (not entered)' : ''),             v: strP ? '— pending' : '–' + fmt(tax) },
     { l: 'Maintenance',                                                    v: '–' + fmt(maint) },
+    ...(util > 0 ? [{ l: 'Owner-paid utilities', v: '–' + fmt(util) }] : []),
     { l: 'Net operating income',                                           v: strP ? strP.pendingText : fmt(noi) },
     { l: 'Annual debt service (' + rateDisplay + ')',                      v: '–' + fmt(debt) },
     { l: 'Net cash flow (annual)', v: strP ? strP.pendingText : fmt(cashflow), tot: true, color: strP ? '' : (cashflow >= 0 ? 'var(--accent)' : 'var(--danger)') },
@@ -137,7 +142,7 @@ export function analyzeRental() {
     occ:          +document.getElementById('v-occ').value,
     mgmt:         +document.getElementById('v-mgmt').value,
     pm:           selfManage ? 0 : +document.getElementById('v-pm').value,
-    tax, taxStatus: tStat, maint, furnish, tgtCoc, interestRate,
+    tax, taxStatus: tStat, maint, furnish, util, tgtCoc, interestRate,
     cashflow, coc, capRate, noi, debt, downAmt, grm, dscr,
     verdict, cls,
     hot: cls === 'hot',

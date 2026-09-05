@@ -4,7 +4,7 @@
 // rental.js (STR) conventions: l-* field IDs, getLtrMarket regional fallback,
 // lastLtrResult, maybeShowFundingButton reuse.
 
-import { fmt, pct, cClass, buildMetrics, buildRows, parseNumOpt, renderInputIssues } from './format.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseNumOpt, renderInputIssues, inputIsIncomplete } from './format.js';
 import { computeLtr, ltrVerdict, mosLabel, validateInputs, plausibilityWarnings, propertyBand, BAND_RULES } from './finance.js';
 import { LTR_MARKETS, ALL_MARKETS } from './markets.js';
 import { maybeShowFundingButton } from './clearpath.js';
@@ -37,7 +37,7 @@ export function clearLastLtrResult() { lastLtrResult = null; }
 
 // Field readers — return undefined when blank so finance.js applies its defaults.
 const elv = id => document.getElementById(id);
-function numOpt(id) { const el = elv(id); return el ? parseNumOpt(el.value) : undefined; }
+function numOpt(id) { const el = elv(id); if (!el) return undefined; if (inputIsIncomplete(el)) return NaN; return parseNumOpt(el.value); }
 function moneyOpt(id) { return numOpt(id); }
 
 export function setLtrPreset(slug, el) {
@@ -86,6 +86,7 @@ export function analyzeLtr() {
     tax:    moneyOpt('l-tax'),
     ins:    moneyOpt('l-ins'),
     hoa:    moneyOpt('l-hoa'),
+    util:   moneyOpt('l-util'),    // owner-paid utilities (annual $)
     maint:  numOpt('l-maint'),
     pm:     numOpt('l-pm'),
     selfManage,
@@ -163,6 +164,7 @@ export function analyzeLtr() {
     { l: 'Property taxes' + (tStat === INS_MISSING ? ' (not entered)' : ''),     v: tStat === INS_MISSING ? '— pending' : '–' + fmt(input.tax || 0) },
     { l: 'Insurance' + (insStatus === INS_MISSING ? ' (not entered)' : insStatus === INS_EXPLICIT_ZERO ? ' (entered $0 — confirm)' : ''), v: insStatus === INS_MISSING ? '— pending' : '–' + fmt(input.ins || 0) },
     ...((input.hoa || 0) > 0 ? [{ l: 'HOA', v: '–' + fmt((input.hoa || 0) * 12) }] : []),
+    ...((input.util || 0) > 0 ? [{ l: 'Owner-paid utilities', v: '–' + fmt(input.util) }] : []),
     { l: 'Net operating income',                                                 v: insP ? insP.pendingText : fmt(m.NOI) },
     { l: 'Annual debt service (' + rateDisp + ')',                               v: '–' + fmt(m.debtYr) },
     { l: 'CapEx reserve (' + capexPct + '%, below NOI)', v: '–' + fmt(m.capexRes) },
@@ -181,7 +183,7 @@ export function analyzeLtr() {
     type: 'ltr', addr: input.addr, price: m.price,
     units: units || null, band,
     down: input.down == null ? BAND_RULES[band].down : input.down,
-    rent, vac: vacPct, tax: input.tax || 0, taxStatus: tStat, ins: input.ins || 0, insStatus, hoa: input.hoa || 0,
+    rent, vac: vacPct, tax: input.tax || 0, taxStatus: tStat, ins: input.ins || 0, insStatus, hoa: input.hoa || 0, util: input.util || 0,
     maint: maintPct, pm, capex: capexPct,
     rate: input.rate == null ? 7.25 : input.rate, amort: input.amort == null ? 30 : input.amort,
     points: input.points == null ? 1 : input.points, cc: input.cc == null ? 2 : input.cc,

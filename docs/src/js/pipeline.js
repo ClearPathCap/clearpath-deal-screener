@@ -64,12 +64,15 @@ function savedInputsLine(d) {
   let parts;
   if (d.type === 'ltr') {
     parts = [money(x.rent) && 'Rent ' + money(x.rent) + '/mo', pctOf(x.vac) && 'Vacancy ' + pctOf(x.vac),
-             pctOf(x.down) && 'Down ' + pctOf(x.down), (+x.units > 1) && (+x.units) + ' units'];
+             pctOf(x.down) && 'Down ' + pctOf(x.down), (+x.units > 1) && (+x.units) + ' units',
+             (+x.util > 0) && 'Utilities ' + money(x.util) + '/yr'];
   } else if (d.type === 'brrr') {
     parts = [money(x.price) && 'Price ' + money(x.price), money(x.rehab) && 'Rehab ' + money(x.rehab),
-             money(x.arv) && 'ARV ' + money(x.arv), money(x.rent) && 'Rent ' + money(x.rent) + '/mo', pctOf(x.vac) && 'Vacancy ' + pctOf(x.vac)];
+             money(x.arv) && 'ARV ' + money(x.arv), money(x.rent) && 'Rent ' + money(x.rent) + '/mo', pctOf(x.vac) && 'Vacancy ' + pctOf(x.vac),
+             (+x.util > 0) && 'Utilities ' + money(x.util) + '/yr'];
   } else if (d.type === 'rental') {
-    parts = [money(x.rent) && 'Rent ' + money(x.rent) + '/yr', pctOf(x.occ) && 'Occupancy ' + pctOf(x.occ), pctOf(x.down) && 'Down ' + pctOf(x.down)];
+    parts = [money(x.rent) && 'Rent ' + money(x.rent) + '/yr', pctOf(x.occ) && 'Occupancy ' + pctOf(x.occ), pctOf(x.down) && 'Down ' + pctOf(x.down),
+             (+x.util > 0) && 'Utilities ' + money(x.util) + '/yr'];
   } else {
     parts = [money(x.ask) && 'Ask ' + money(x.ask), money(x.arv) && 'ARV ' + money(x.arv),
              money(x.rep) && 'Repairs ' + money(x.rep), (+x.hold > 0) && (+x.hold) + ' mo hold'];
@@ -367,6 +370,7 @@ function buildLtrDetail(d, deal) {
     { l: 'Purchase price',    v: d.price != null ? fmt(d.price) : '—' },
     { l: 'Monthly rent',      v: d.rent != null ? fmt(d.rent) : '—' },
     { l: 'Down payment',      v: d.down != null ? d.down + '%' : '—' },
+    { l: 'Owner-paid utilities', v: fmt(d.util || 0) + '/yr' },
     { l: 'NOI',               v: pend ? 'Pending' : (d.NOI != null ? fmt(d.NOI) : '—') },
     { l: 'DSCR',              v: pend ? 'Pending' : (d.dscr != null ? d.dscr.toFixed(2) : 'n/a') },
     { l: 'Cap rate',          v: pend ? 'Pending' : (d.capRate != null ? pct(d.capRate) : '—') },
@@ -384,6 +388,7 @@ function buildBrrrDetail(d) {
     { l: 'ARV',                       v: d.arv != null ? fmt(d.arv) : '—' },
     { l: 'All-in cost',               v: d.allInCost != null ? fmt(d.allInCost) : '—' },
     { l: 'Refi loan',                 v: d.refiLoan != null ? fmt(d.refiLoan) : '—' },
+    { l: 'Owner-paid utilities',      v: fmt(d.util || 0) + '/yr' },
     { l: 'Cash out',                  v: d.cashOut != null ? fmt(d.cashOut) : '—' },
     { l: 'Capital left',              v: d.capitalLeft != null ? fmt(d.capitalLeft) : '—' },
     { l: 'Cash recovered',            v: d.cashRecoveredPct != null ? pct(d.cashRecoveredPct) : '—' },
@@ -934,6 +939,7 @@ function buildRentalDetail(d) {
     { l: 'Property manager',       v: d.pm      != null ? d.pm + '%'    : '—' },
     { l: 'Taxes + insurance',      v: pend ? 'Pending' : (d.tax != null ? fmt(d.tax) : '—') },
     { l: 'Maintenance',            v: d.maint   != null ? fmt(d.maint)  : '—' },
+    { l: 'Owner-paid utilities',   v: fmt(d.util || 0) + '/yr' },
     { l: 'Furnishing (one-time)',  v: d.furnish != null ? fmt(d.furnish): '—' },
   ];
   const metrics = [

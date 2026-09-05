@@ -644,5 +644,27 @@ ok(F.computeLtr({ price: 100000, rentMo: 1000, vac: 7 }).vac === 7 && F.ltrGuida
 const mainSrc4 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'main.js'), 'utf8');
 ok(/else \{ clearStaleWatch\(type\); CLEAR_RESULT\[type\]\(\); \}/.test(mainSrc4) && /if \(unitsEl && unitsEl\.validity && unitsEl\.validity\.badInput\) return null;/.test(mainSrc4), 'N6 pins: abort invalidates the result; band guard is badInput-only');
 
+// ── §O · stale-numeric lens correctives ─────────────────────────────────────
+console.log('— §O stale lens correctives —');
+globalThis.clearNewDeal('ltr');
+for (const [id, val] of Object.entries(orange2)) typed(id, val);
+typed('l-addr', '73 Orange Street, Bridgeport, CT 06607');
+globalThis.analyzeLtr();
+ok(el('ltr-funding-btn-trigger').disabled === false && el('lv-whatif').disabled === false, 'O1a fresh result: funding trigger + guidance affordance enabled');
+typed('l-rent', '4000'); bump('rental-view-ltr');
+ok(el('ltr-results').classList.contains('is-stale') && el('ltr-funding-btn-trigger').disabled === true && el('ltr-funding-btn-trigger').getAttribute('aria-disabled') === 'true' && el('lv-whatif').disabled === true, 'O1 while stale, the funding trigger and guidance affordance are DISABLED (keyboard-proof, not CSS-only)');
+globalThis.analyzeLtr();
+ok(!el('ltr-funding-btn-trigger').disabled && !el('lv-whatif').disabled, 'O1b re-Analyze re-enables them');
+typed('l-addr', '99 Other Ave, Stamford, CT'); bump('rental-view-ltr');
+ok(el('ltr-results').classList.contains('is-stale'), 'O2 an address edit marks stale (the saved record and handoff carry the Analyze-time address)');
+const addrSave = await globalThis.saveDeal('ltr');
+ok(addrSave.status === 'refused-stale', 'O2b …so Save is refused until re-analyzed');
+typed('l-addr', '73 Orange Street, Bridgeport, CT 06607'); bump('rental-view-ltr');
+ok(!el('ltr-results').classList.contains('is-stale'), 'O2c reverting the address un-stales');
+const plSrc3 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'pipeline.js'), 'utf8');
+ok(/refused-stale, produced by the main\.js Save wrapper/.test(plSrc3), 'O3 the outcome contract comment lists refused-stale');
+const mainSrc5 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'main.js'), 'utf8');
+ok(/u\.dataset\.band = propertyBand\(parseNumOpt\(u\.defaultValue != null \? u\.defaultValue : u\.value\)\);\n  if \(propertyBand\(parseNumOpt\(u\.value\)\) !== u\.dataset\.band\) syncBandDefaults\(p\);/.test(mainSrc5), 'O4 an early-typed unit count applies its band defaults once at init (executed in inputguard)');
+
 console.log(`\ndealreview: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

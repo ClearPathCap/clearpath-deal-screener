@@ -84,6 +84,7 @@ globalThis.showToast = () => {}; globalThis.openUpgrade = () => {}; globalThis.c
 el('l-vac').value = '9';          // number field (HTML default 5; Bridgeport preset would write 7)
 el('l-rent').value = '4,000';     // currency field (no HTML default; preset would write 1,750)
 el('l-down').value = '20';        // untouched default — must stay preset/default-driven
+el('b-units').value = '6';        // BRRRR: a 5–8 unit count typed before main.js ran
 
 const ltr = await import(JS + 'ltr.js');
 await import(JS + 'main.js');
@@ -106,6 +107,12 @@ ok(el('l-vac').value === '9' && el('l-rent').value === '4,000', 'B1 a sub-tab re
 globalThis.analyzeLtr();
 const r = ltr.getLastLtrResult();
 ok(r && r.vac === 9 && r.rent === 4000, `B2 Analyze ran at vacancy 9 / rent 4,000 (got ${r && r.vac} / ${r && r.rent}) — never the market default`);
+
+console.log('— §C an early-typed unit count gets its band defaults —');
+const sv = (id) => String(el(id).value);   // band sync writes Numbers; a browser input coerces to string
+ok(el('b-units').value === '6' && el('b-units').dataset.band === '5-8', `C1 BRRRR units typed pre-init is kept and the band memory settled on 5-8 (got ${el('b-units').dataset.band})`);
+ok(sv('b-vac') === '10' && sv('b-pm') === '9' && sv('b-maint') === '8' && sv('b-capex') === '6', `C2 the 5–8 defaults were applied once at init (vac ${sv('b-vac')}, pm ${sv('b-pm')}, maint ${sv('b-maint')}, capex ${sv('b-capex')})`);
+ok(el('l-units').dataset.band === '1-4' && sv('l-pm') === '8', 'C3 an untouched unit count keeps the 1–4 defaults');
 
 console.log(`\ninputguard: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

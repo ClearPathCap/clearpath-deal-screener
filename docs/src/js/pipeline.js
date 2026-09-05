@@ -30,6 +30,8 @@ let pendingDeleteId = null;
 // Wave A1 save outcome contract: resolves to {status} where status is exactly one
 // of refused-auth | refused-name | refused-result | refused-cap | refused-busy |
 // saved | save-failed (save-failed adds failureClass:'auth'|'stale'|'other' —
+// (+ refused-stale, produced by the main.js Save wrapper BEFORE this layer when the
+// visible analysis no longer matches the form — stale-result law, 2026-09-05)
 // 'stale' is the UX-wave silent-wipe guard: hydration unproven, nothing written,
 // recover by rehydrate + retry). Success
 // feedback fires ONLY after the durable server write confirms (await-then-commit).

@@ -407,7 +407,7 @@ onDealReviewEnded((type) => { if (type) { exitReviewUI(type); releaseReviewProte
 // Review & Re-analyze (a review hides the result and drops the watch; an
 // Analyze inside a review re-arms it; Save / Update refuse while stale).
 const STALE_FIELDS = Object.fromEntries(Object.entries(REVIEW_FIELDS).map(([t, rows]) =>
-  [t, rows.map(r => r[0]).filter(id => !/addr$/.test(id)).concat(SELF_ID[t] ? [SELF_ID[t]] : [])]));
+  [t, rows.map(r => r[0]).concat(SELF_ID[t] ? [SELF_ID[t]] : [])]));   // address included: the saved record + handoff carry it
 const staleSignature = { flip: null, rental: null, ltr: null, brrr: null };   // null = no watch armed
 function formSignature(type) {
   return (STALE_FIELDS[type] || []).map(id => {
@@ -423,6 +423,16 @@ function setStaleUI(type, on) {
   if (res) res.classList.toggle('is-stale', !!on);
   const note = document.getElementById(type + '-stale');
   if (note) note.style.display = on ? '' : 'none';
+  // The prior-input analysis must not be handed off or explored from the
+  // keyboard either: disable the funding trigger + guidance affordance
+  // (re-rendered / re-enabled by the next Analyze).
+  for (const id of [type + '-funding-btn-trigger', type === 'flip' ? 'fv-whatif' : type === 'ltr' ? 'lv-whatif' : null]) {
+    if (!id) continue;
+    const b = document.getElementById(id);
+    if (!b) continue;
+    b.disabled = !!on;
+    if (on) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
+  }
 }
 function isStale(type) { return staleSignature[type] != null && formSignature(type) !== staleSignature[type]; }
 function refreshStale(type) { if (staleSignature[type] == null) return; setStaleUI(type, isStale(type)); }
@@ -2120,6 +2130,7 @@ function syncBandDefaults(prefix) {
   if (!u) return;
   // Seed the remembered band from the initial unit count so a same-band edit
   // (1 → 3) is a no-op and only a real crossing (4 → 5, 8 → 9, back) refreshes.
-  u.dataset.band = propertyBand(parseNumOpt(u.value));
+  u.dataset.band = propertyBand(parseNumOpt(u.defaultValue != null ? u.defaultValue : u.value));
+  if (propertyBand(parseNumOpt(u.value)) !== u.dataset.band) syncBandDefaults(p);   // early-typed 5–8 count gets its band defaults (userEdited respected)
   u.addEventListener('input', () => syncBandDefaults(p));
 });

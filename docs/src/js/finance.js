@@ -815,6 +815,7 @@ export function ltrGuidance(data) {
     gates,
     current: {
       price: m.price, rentMo: inp.rentMo, down: inp.down == null ? null : +inp.down,
+      vac: m.vac, rentYr: m.rentYr, EGI: m.EGI,
       dscr: m.dscr, coc: m.coc, cashFlowYr: m.cashFlowYr, cashFlowMo: m.cashFlowMo,
       NOI: m.NOI, debtYr: m.debtYr, stressedDscr: m.stressedDscr, stressedCfMo: m.stressedCfMo,
       marginOfSafety: m.marginOfSafety, band: m.band, target: m.target,

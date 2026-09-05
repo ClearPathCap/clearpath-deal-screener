@@ -92,7 +92,17 @@ export function initCurrencyInputs() {
   document.querySelectorAll('[data-currency]').forEach(el => {
     // Format any pre-populated values on init
     if (el.value) fmtCurrencyInput(el);
-    el.addEventListener('input', () => fmtCurrencyInput(el));
+    el.addEventListener('input', (e) => {
+      // LIVE INPUT-BINDING DEFECT (Orange Street, 2026-09-04): a dollar value the
+      // user typed was never marked userEdited, so the market presets
+      // (setLtrPreset / setBrrrPreset, re-run on every slot re-render: sub-tab
+      // switch, market hydration, slot click, Clear & New Deal) silently replaced
+      // a typed monthly rent / tax with the market default. Only a REAL keystroke
+      // marks the field — programmatic .value writes fire no event, and the one
+      // synthetic re-format dispatch (flip.js → f-carry) is untrusted by design.
+      if (!e || e.isTrusted) el.dataset.userEdited = '1';
+      fmtCurrencyInput(el);
+    });
   });
 }
 

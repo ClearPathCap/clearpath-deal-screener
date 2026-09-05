@@ -1797,6 +1797,16 @@ function syncBandDefaults(prefix) {
 
   const rules = BAND_RULES[band];
   if (!rules) return band;                          // 9+ has no calculator defaults
+  // LIVE INPUT-BINDING DEFECT (Orange Street, 2026-09-04): this refresh ran on
+  // EVERY units keystroke, not only on a band change — so typing "3" into a
+  // 1-unit form (still band 1–4) rewrote a market-preset vacancy (Tampa 7%) to
+  // the generic band default (5%) before Analyze, and the result was computed
+  // at 5% while the form later showed 7% again. Band-derived defaults are now
+  // (re)applied ONLY when the band actually changes; within a band, the unit
+  // count never touches the % fields. The last synced band is remembered on the
+  // units element (seeded at init below) so the first keystroke is band-aware.
+  if (unitsEl && unitsEl.dataset.band === band) return band;
+  if (unitsEl) unitsEl.dataset.band = band;
   const fields = prefix === 'l'
     ? { down: rules.down, vac: rules.vac, pm: rules.pm, maint: rules.maint, capex: rules.capex }
     : { vac: rules.vac, pm: rules.pm, maint: rules.maint, capex: rules.capex };   // BRRR has no down field
@@ -1808,5 +1818,9 @@ function syncBandDefaults(prefix) {
 }
 ['l','b'].forEach(p => {
   const u = document.getElementById(p + '-units');
-  if (u) u.addEventListener('input', () => syncBandDefaults(p));
+  if (!u) return;
+  // Seed the remembered band from the initial unit count so a same-band edit
+  // (1 → 3) is a no-op and only a real crossing (4 → 5, 8 → 9, back) refreshes.
+  u.dataset.band = propertyBand(parseNumOpt(u.value));
+  u.addEventListener('input', () => syncBandDefaults(p));
 });

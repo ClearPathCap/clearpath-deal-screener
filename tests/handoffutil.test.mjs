@@ -199,5 +199,33 @@ console.log('— §8 source pins (contract diff) —');
   ok(typeof FU.buildCpcUrl === 'function', 'buildCpcUrl exported');
 }
 
+console.log('— §9 accepted 25%-down Orange Street fixture: the raw assumptions CPC recomputes from (Step 1 parity pins) —');
+{
+  // Owner ruling 2026-09-05: the accepted live Orange Street case is 25% down
+  // (loan 487,425). CPC's operator-basis estimate (clearpath-capital-site,
+  // cpcDecision.ts) mirrors incomeBlock + amortizedPaymentMonthly from the raw
+  // handoff assumptions; the constants below are the SAME figures its suite pins,
+  // so a drift on either side fails here and there.
+  const r = ltrResult({ ...ORANGE_IN, down: 25 });
+  const p = paramsOf(viaPipeline(r, 25));
+  eq(p.loan, '487425', '§9 loan travels as the 25%-down amount');
+  eq(p.vacancyPct, '7', '§9 vacancyPct travels raw');   eq(p.pmPct, '8', '§9 pmPct travels raw');
+  eq(p.maintPct, '5', '§9 maintPct travels raw');       eq(p.capexPct, '5', '§9 capexPct travels raw');
+  eq(p.loanRate, '7.25', '§9 loanRate travels raw');    eq(p.amortYears, '30', '§9 amortYears travels raw');
+  eq(p.annualUtilities, '1200', '§9 annualUtilities travels raw');
+  eq(p.screenerNoi, '46445', '§9 screenerNoi = engine NOI (context only at CPC)');
+  ok(Math.abs(r.NOI - 46445.2) < 1e-6, `§9 engine NOI 46,445.20 (got ${r.NOI})`);
+  ok(Math.abs(r.debtYr - 39901.172796766616) < 1e-6, `§9 engine amortizing debt 39,901.17 (got ${r.debtYr})`);
+  ok(Math.abs(r.dscr - 1.164005886156902) < 1e-9, `§9 engine DSCR 1.164005886 (got ${r.dscr})`);
+  eq(r.dscr.toFixed(2), '1.16', '§9 displayed DSCR 1.16');
+  // Closed-form mirror of what CPC ships (EGI − (EGI·pm + rent·maint + tax + ins + hoa + util); P&I on the requested loan).
+  const rentYr = 72000, egi = rentYr * (1 - 0.07);
+  const mirrorNoi = egi - (egi * 0.08 + rentYr * 0.05 + 8000 + 2358 + 0 + 1200);
+  const i = 0.0725 / 12, n = 360, piMo = (487425 * i * Math.pow(1 + i, n)) / (Math.pow(1 + i, n) - 1);
+  ok(Math.abs(mirrorNoi - r.NOI) < 1e-6, '§9 CPC operator-basis NOI formula reproduces the engine NOI exactly');
+  ok(Math.abs(piMo * 12 - r.debtYr) < 1e-6, '§9 CPC amortization mirror reproduces the engine debt service exactly');
+  ok(Math.abs(r.capexRes - 3600) < 1e-6 && Math.abs((r.NOI - r.debtYr - r.capexRes) - r.cashFlowYr) < 1e-6, '§9 CapEx 3,600 sits BELOW NOI (cash flow only) — the classification CPC preserves');
+}
+
 console.log(`\nhandoffutil: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

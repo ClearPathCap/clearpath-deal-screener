@@ -161,7 +161,7 @@ ok(!el('b-state').dataset.explicitBlank && !el('b-city').dataset.userEdited, 'E2
   const mainSrc = src('docs/src/js/main.js');
   ok(/delete el\.dataset\.explicitBlank;\s+\/\/ any other value, or a different record, releases a marker/.test(mainSrc), 'E2d reviewSetField releases a leaked marker when a later record carries a real value');
   ok(/delete el\.dataset\.explicitBlank;\s+\/\/ a record without the key resets fully unprotected/.test(mainSrc), 'E2e reviewResetField releases the marker for a pre-A1 record');
-  ok(/if \(el\) \{ delete el\.dataset\.userEdited; delete el\.dataset\.explicitBlank; \}/.test(mainSrc), 'E2f ending or cancelling a review releases the marker (releaseReviewProtection)');
+  ok(/if \(el\.dataset\.reviewPrefill\) \{\s+delete el\.dataset\.userEdited; delete el\.dataset\.explicitBlank;/.test(mainSrc), 'E2f ending or cancelling a review releases the marker (releaseReviewProtection) for every field the PREFILL protected');
 }
 
 console.log('— §E3 "Update Saved Deal" ends the review AND releases the protection (pass-3 corrective, real parser + real storage) —');
@@ -200,6 +200,28 @@ console.log('— §E3 "Update Saved Deal" ends the review AND releases the prote
   globalThis.analyzeLtr();
   const r2 = ltrMod.getLastLtrResult();
   ok(r2 && r2.city === 'Myrtle Beach' && r2.state === 'SC', 'E3j the analysis carries Myrtle Beach / SC, never the previous record\'s values');
+  // pass 4 (verification refuter): the released City / State belong to the PARSER again — a next address that
+  // does NOT parse must WITHDRAW them (blank, never the retired record's "Charlotte, NC").
+  globalThis.clearNewDeal('ltr');
+  globalThis.reviewDeal(9002); globalThis.analyzeLtr(); const upd3 = await globalThis.saveDeal('ltr');
+  ok(upd3 && upd3.mode === 'updated' && el('l-city').dataset.autoFilled === '1' && !el('l-city').dataset.userEdited, 'E3k after the update the record\'s City is parser-owned (autoFilled), not the user\'s');
+  typed('l-addr', '18 Ridge Road');
+  ok(el('l-city').value === '' && el('l-state').value === '', `E3l a NON-parsing next address withdraws the retired record's City / State (got "${el('l-city').value}" / "${el('l-state').value}")`);
+  globalThis.analyzeLtr();
+  const r3 = ltrMod.getLastLtrResult();
+  ok(r3 && r3.city === null && r3.state === null, 'E3m …so the analysis (record, handoff) carries no City / State for it — blank, never wrong');
+  globalThis.clearNewDeal('ltr');
+  globalThis.reviewDeal(9002); globalThis.analyzeLtr(); await globalThis.saveDeal('ltr');
+  typed('l-addr', '123 Main St, SC 29575');
+  ok(el('l-city').value === '' && el('l-state').value === 'SC', `E3n a state-only next address never produces an impossible "Charlotte, SC" (got "${el('l-city').value}" / "${el('l-state').value}")`);
+  globalThis.clearNewDeal('ltr');
+  globalThis.reviewDeal(9002); globalThis.cancelDealReview('ltr');
+  typed('l-addr', '18 Ridge Road');
+  ok(el('l-city').value === '' && el('l-state').value === '', 'E3o the cancel exit hands City / State back to the parser too');
+  // A value the user TYPED during the review keeps its own protection through the update.
+  globalThis.clearNewDeal('ltr');
+  globalThis.reviewDeal(9002); typed('l-rent', '7,777'); globalThis.analyzeLtr(); const upd4 = await globalThis.saveDeal('ltr');
+  ok(upd4 && upd4.mode === 'updated' && el('l-rent').dataset.userEdited === '1' && !el('l-rent').dataset.reviewPrefill && !el('l-price').dataset.userEdited, 'E3p a rent the user typed during the review stays userEdited after the update; the untouched prefilled price is released');
   globalThis.clearNewDeal('ltr'); globalThis.__signedIn = false;
 }
 

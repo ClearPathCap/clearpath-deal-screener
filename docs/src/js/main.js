@@ -17,7 +17,7 @@ import { saveDeal as _saveDeal, renderPipeline,
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
-import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct, escapeHtml, revealBlockingField, clearBlockingMarks } from './format.js';
+import { initCurrencyInputs, fmtCurrencyInput, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct, escapeHtml, revealBlockingField, clearBlockingMarks, markBlockingField } from './format.js';
 import { propertyBand, BAND_RULES,
          computeNegotiationScenario, flipProfitClass, mosLabel,
          ltrGuidance }                                                from './finance.js';
@@ -280,10 +280,13 @@ function reviewSetField(id, value, kind, status) {
   // it before saving) hydrates blank AND stays protected, so the address
   // auto-fill can never resurrect a value the user removed. A record without
   // the key at all (pre-A1) resets unprotected below, as every other field.
-  if (value === null && /-(city|state)$/.test(id)) { el.value = ''; el.dataset.explicitBlank = '1'; delete el.dataset.userEdited; delete el.dataset.autoFilled; return true; }
+  // `reviewPrefill` marks a protection the PREFILL set (as opposed to one the user
+  // set by typing during the review); a trusted keystroke clears it, and the
+  // release at the end of the review honours the difference (pass-4 corrective).
+  if (value === null && /-(city|state)$/.test(id)) { el.value = ''; el.dataset.explicitBlank = '1'; el.dataset.reviewPrefill = '1'; delete el.dataset.userEdited; delete el.dataset.autoFilled; return true; }
   delete el.dataset.explicitBlank;   // any other value, or a different record, releases a marker left by an earlier review (verification corrective, pass 2)
   if (status === 'missing') {          // pending taxes / insurance: blank, and protected from presets
-    el.value = ''; el.dataset.userEdited = '1'; delete el.dataset.autoFilled; return true;
+    el.value = ''; el.dataset.userEdited = '1'; el.dataset.reviewPrefill = '1'; delete el.dataset.autoFilled; return true;
   }
   if (kind === 'sel') {
     if (value == null || value === '') return false;
@@ -303,8 +306,17 @@ function reviewSetField(id, value, kind, status) {
   // Protected from every programmatic writer (market presets, band defaults,
   // estimator auto-fill) until the review ends or the user clears the form.
   el.dataset.userEdited = '1';
+  el.dataset.reviewPrefill = '1';
   delete el.dataset.autoFilled;
+  refreshMask(el);
   return true;
+}
+// A programmatic value write fires no input event, so the currency mask never
+// re-evaluates: malformed text the user abandoned would keep its red class,
+// aria-invalid and "Not a valid dollar amount" under the value just written.
+// Re-run the mask after every such write (verification corrective, pass 4).
+function refreshMask(el) {
+  if (el && typeof el.hasAttribute === 'function' && el.hasAttribute('data-currency')) fmtCurrencyInput(el);
 }
 // A field the saved record does not carry starts from the analyzer's default
 // (the HTML value attribute, or blank) and stays unprotected.
@@ -312,6 +324,7 @@ function reviewResetField(id, kind) {
   const el = document.getElementById(id);
   if (!el) return;
   delete el.dataset.explicitBlank;   // a record without the key resets fully unprotected (verification corrective, pass 2)
+  delete el.dataset.reviewPrefill;
   if (kind === 'sel') {
     // A4: an OPTIONAL select (one that offers a blank "Not specified" option)
     // resets to unknown; the LTR / BRRRR type selects have no blank option and
@@ -323,6 +336,7 @@ function reviewResetField(id, kind) {
   el.value = el.defaultValue != null ? String(el.defaultValue) : '';
   delete el.dataset.userEdited;
   delete el.dataset.autoFilled;
+  refreshMask(el);
 }
 
 const reviewPrefilledIds = { flip: [], rental: [], ltr: [], brrr: [] };
@@ -359,7 +373,6 @@ function reviewDeal(id) {
   clearStaleWatch(type);
   const hide = (elId, wipe) => { const e = document.getElementById(elId); if (!e) return; e.style.display = 'none'; if (wipe) { e.innerHTML = ''; } };
   hide(RESULTS_ID[type]); hide(type + '-input-errors', true);
-  clearBlockingMarks(type === 'rental' ? 'rental' : type);   // A6: the rows just wiped were describedby targets — release the marks with them
   // Verification corrective 2026-09-06 (pre-existing since f41337c): the funding
   // container used to get display:none here and NOTHING ever restored it, so
   // after a review the CTA never rendered again until reload. The results panel
@@ -375,6 +388,10 @@ function reviewDeal(id) {
     else reviewResetField(fid, kind);
   }
   reviewPrefilledIds[type] = filled;
+  // A6: the rows wiped above were describedby targets — release the marks AFTER
+  // the prefill, so the value-based mask rule judges the saved values rather
+  // than the malformed text the user abandoned (verification corrective, pass 4).
+  clearBlockingMarks(type === 'rental' ? 'rental' : type);
   const selfEl = document.getElementById(SELF_ID[type]);
   if (selfEl) selfEl.checked = type === 'flip' ? !!data.self : (data.pm === 0);
   if (type === 'rental') updateSelfManage();                       // PM field/label follow the toggle
@@ -421,10 +438,22 @@ function cancelDealReview(type) {
   return { status: 'cancelled' };
 }
 function releaseReviewProtection(type) {
-  // Ending or cancelling a review releases BOTH protections the prefill set —
-  // userEdited and the A1 explicitBlank marker — so nothing leaks into the next
-  // record or the next deal on this analyzer (verification corrective, pass 2).
-  for (const fid of reviewPrefilledIds[type] || []) { const el = document.getElementById(fid); if (el) { delete el.dataset.userEdited; delete el.dataset.explicitBlank; } }
+  // Ending or cancelling a review releases the protections the PREFILL set —
+  // userEdited and the A1 explicitBlank marker (verification corrective, pass 2)
+  // — and hands City / State back to the parser (dataset.autoFilled), so the
+  // next address edit either re-fills them from a confident parse or WITHDRAWS
+  // them: a retired record's "Charlotte, NC" never rides onto the next property,
+  // its saved record or the CPC handoff (verification corrective, pass 4). A
+  // field the user retyped during the review (a trusted keystroke cleared its
+  // reviewPrefill mark) keeps its own userEdited — the user's value always wins.
+  for (const fid of reviewPrefilledIds[type] || []) {
+    const el = document.getElementById(fid); if (!el) continue;
+    if (el.dataset.reviewPrefill) {
+      delete el.dataset.userEdited; delete el.dataset.explicitBlank;
+      if (/-(city|state)$/.test(fid)) { if (el.value) el.dataset.autoFilled = '1'; else delete el.dataset.autoFilled; }
+    }
+    delete el.dataset.reviewPrefill;
+  }
   reviewPrefilledIds[type] = [];
 }
 // Deleting the deal under review ends the review (pipeline.js owns the delete).
@@ -516,7 +545,7 @@ function autofillAddressComponents(prefix) {
 function wireAddressComponents(prefix) {
   const addr = document.getElementById(prefix + '-addr'), city = document.getElementById(prefix + '-city'), state = document.getElementById(prefix + '-state');
   if (!addr || !city || !state) return;
-  const markUser = (el) => (e) => { if (!e || e.isTrusted) { el.dataset.userEdited = '1'; delete el.dataset.autoFilled; delete el.dataset.explicitBlank; } };
+  const markUser = (el) => (e) => { if (!e || e.isTrusted) { el.dataset.userEdited = '1'; delete el.dataset.autoFilled; delete el.dataset.explicitBlank; delete el.dataset.reviewPrefill; } };
   city.addEventListener('input', markUser(city));
   state.addEventListener('input', markUser(state));
   addr.addEventListener('input',  () => autofillAddressComponents(prefix));
@@ -544,9 +573,11 @@ function resetAnalyzerProtection(type) {
     delete el.dataset.userEdited;
     delete el.dataset.autoFilled;
     delete el.dataset.explicitBlank;   // A1: a cleared City / State from a reviewed record is released with the rest
+    delete el.dataset.reviewPrefill;
     if (el.type === 'checkbox' || el.tagName === 'SELECT' || el.options) continue;   // per-type clear owns these
     if (/addr$/.test(id)) continue;                                                  // per-type clear blanks the address
     el.value = el.defaultValue != null ? String(el.defaultValue) : '';
+    refreshMask(el);
   }
   const unitsEl = document.getElementById(type === 'ltr' ? 'l-units' : type === 'brrr' ? 'b-units' : '');
   if (unitsEl) unitsEl.dataset.band = propertyBand(parseNumOpt(unitsEl.value));
@@ -1108,7 +1139,7 @@ function validateRequiredFields(type) {
   // first cut had the operands swapped and revealed the LAST field.)
   const earlier = (a, b) => (a && a.el && typeof a.el.compareDocumentPosition === 'function' && typeof Node !== 'undefined'
     ? !!(a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) : false);
-  const noteBlocking = (el, message) => { const c = { el, id: el.id, message }; if (!first || earlier(c, first)) first = c; };
+  const noteBlocking = (el, message) => { markBlockingField(el, prefix); const c = { el, id: el.id, message }; if (!first || earlier(c, first)) first = c; };   // every blocking field is tracked (pass-4 corrective), one is revealed
   fields.forEach(f => {
     const el  = document.getElementById(f.id);
     if (!el) return;
@@ -2108,7 +2139,7 @@ initCurrencyInputs();
   const el = document.getElementById(id);
   if (!el) return;
   if (el.value !== '' && el.value !== (el.defaultValue == null ? '' : String(el.defaultValue))) el.dataset.userEdited = '1';
-  el.addEventListener('input', () => { el.dataset.userEdited = '1'; });
+  el.addEventListener('input', (e) => { el.dataset.userEdited = '1'; if (!e || e.isTrusted) delete el.dataset.reviewPrefill; });   // a real keystroke during a review makes the value the user's own (pass-4 corrective)
 });
 initTierBadge();
 handleCheckoutReturn();   // Wave 5: checkout return is a sync TRIGGER, never entitlement

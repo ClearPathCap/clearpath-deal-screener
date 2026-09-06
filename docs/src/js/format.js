@@ -112,7 +112,7 @@ export function initCurrencyInputs() {
       // a typed monthly rent / tax with the market default. Only a REAL keystroke
       // marks the field — programmatic .value writes fire no event, and the one
       // synthetic re-format dispatch (flip.js → f-carry) is untrusted by design.
-      if (!e || e.isTrusted) el.dataset.userEdited = '1';
+      if (!e || e.isTrusted) { el.dataset.userEdited = '1'; delete el.dataset.reviewPrefill; }   // a real keystroke during a review makes the value the user's own (pass-4 corrective)
       fmtCurrencyInput(el);
     });
   });
@@ -179,6 +179,14 @@ export function revealBlockingField(fieldId, message, prefix, msgId = fieldId + 
   if (typeof el.focus === 'function') { try { el.focus({ preventScroll: true }); } catch { el.focus(); } }
   return true;
 }
+// Every blocking field of a run is tracked here (not only the one revealed), so a
+// later clear releases the red field state and message from all of them
+// (verification corrective, pass 4).
+export function markBlockingField(el, prefix) {
+  if (!el || !prefix) return;
+  if (!_marked.has(prefix)) _marked.set(prefix, new Set());
+  _marked.get(prefix).add(el);
+}
 // A valid run clears the marks of the previous blocked run (and the announcement).
 export function clearBlockingMarks(prefix) {
   const set = _marked.get(prefix);
@@ -194,6 +202,10 @@ export function clearBlockingMarks(prefix) {
       if (!stillMalformed) {
         el.removeAttribute?.('aria-invalid');
         if (isCurrency && el.classList && el.classList.remove) el.classList.remove('input-invalid');
+        // …and the mask's own message, which only fmtCurrencyInput rewrites — a
+        // programmatic value write would otherwise leave "Not a valid dollar
+        // amount" under a blank or valid field (verification corrective, pass 4).
+        if (isCurrency) { const wrap = typeof el.closest === 'function' ? el.closest('.field') : null; const cm = wrap && typeof wrap.querySelector === 'function' ? wrap.querySelector('.currency-msg') : null; if (cm) cm.textContent = ''; }
       }
       el.removeAttribute?.('aria-describedby');
       // The reveal's visible marks go with the aria ones: the red field state and

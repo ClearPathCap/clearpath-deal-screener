@@ -291,7 +291,7 @@ ok(v('b-rent') === '4,200' && ue('b-rent'), 'J6 BRRR typed rent is user-edited (
 const mainSrc = readFileSync(join(ROOT, 'docs', 'src', 'js', 'main.js'), 'utf8');
 const fmtSrc  = readFileSync(join(ROOT, 'docs', 'src', 'js', 'format.js'), 'utf8');
 ok(/if \(unitsEl && unitsEl\.dataset\.band === band\) return band;/.test(mainSrc) && /u\.dataset\.band = propertyBand\(parseNumOpt\(u\.defaultValue != null \? u\.defaultValue : u\.value\)\);/.test(mainSrc), 'K1 syncBandDefaults is band-change gated and seeded at init');
-ok(/if \(!e \|\| e\.isTrusted\) el\.dataset\.userEdited = '1';/.test(fmtSrc), 'K2 the currency mask marks trusted keystrokes user-edited (shared source)');
+ok(/if \(!e \|\| e\.isTrusted\) \{ el\.dataset\.userEdited = '1'; delete el\.dataset\.reviewPrefill; \}/.test(fmtSrc), 'K2 the currency mask marks trusted keystrokes user-edited (shared source; a keystroke during a review makes the value the user\'s own)');
 ok(!/l-vac[\s\S]{0,200}=\s*5\b/.test(readFileSync(join(ROOT, 'docs', 'src', 'js', 'ltr.js'), 'utf8').replace(/BAND_RULES\[band\]\.vac/g, '')), 'K3 ltr.js never hard-forces 5% outside the band default');
 
 console.log(`\nltrbinding: ${pass} passed, ${fail} failed`);

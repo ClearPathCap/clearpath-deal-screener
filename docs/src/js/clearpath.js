@@ -82,12 +82,18 @@ const CITY_OK = /^[A-Za-z][A-Za-z .'-]*$/;
 // "Key West", "Front Royal", "Upper Arlington", "Ste. Genevieve" are cities.
 const ID_DESIG = /^(apt|apartment|suite|ste|unit|fl|floor|bldg|building|rm|room|dept|department|hngr|hangar|slip|stop|spc|space|lot|pier|key|ofc|office)\.?\s+#?\s*(\d[\w-]*|[A-Za-z]\d*|[A-Za-z]-\d+)$/i;   // a SPACE before the identifier: "Unity" is a city, "Unit y" is not typed
 const BARE_DESIG = /^(rear|frnt|front|bsmt|basement|lbby|lobby|uppr|upper|lowr|lower|ph|penthouse|side|trlr|trailer|ofc|office)\.?$/i;
-const MAIL_LINE = /^(c\/o|care of|attn|attention|p\.?o\.?\s*box|#)/i;
+const MAIL_LINE = /^(c\/o|care of|attn|attention|p\.?o\.?\s*box|post office box|general delivery|rural route|star route|highway contract|rr\s*\d|hc\s*\d|#)/i;
 const isSecondary = (s) => ID_DESIG.test(s) || BARE_DESIG.test(s) || MAIL_LINE.test(s);
-// A street line without its number ("Main St", "Peachtree St NE" minus the
-// directional) is not a city either: a candidate ending in a street suffix is
-// rejected. Word-bounded, so Broadway / Conway / Rockaway are untouched.
-const STREETISH = /\b(st|ave|rd|blvd|dr|ln|ct|way|pl|hwy|pkwy|cir|ter|trl|sq|ctr|expy|fwy)\.?$/i;
+// A street line without its number ("Main St", "Elm Avenue", "Peachtree St NE")
+// is not a city either: a candidate ending in a street suffix — abbreviated or
+// spelled out, with or without a trailing directional — is rejected. Word-
+// bounded, so Broadway / Conway / Rockaway / Rockville Centre are untouched; a
+// city whose WHOLE name is a suffix word (Circle AK, Lane KS) is the known cost.
+const STREETISH = /\b(st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|ct|court|way|pl|place|hwy|highway|pkwy|parkway|cir|circle|ter|terrace|trl|trail|sq|square|ctr|expy|expressway|fwy|freeway|aly|alley)\.?(\s+(n|s|e|w|ne|nw|se|sw)\.?)?$/i;
+// Court / Lane / Alley / Mount: a Title-case "Ct" / "La" / "Al" / "Mt" is a street
+// word, never a state — even beside an agreeing ZIP ("…, Oak Ct 06604" is Oak
+// Court, not Oak / CT). A code typed as a code ("CT", "ct") is unaffected.
+const SUFFIX_CODES = new Set(['CT', 'LA', 'AL', 'MT']);
 // An administrative segment that geocoders (OpenStreetMap / Nominatim, county GIS
 // portals) place between the city and the state: "Charlotte, Mecklenburg County,
 // North Carolina". Never a city — the city is the segment before it.
@@ -107,9 +113,12 @@ function resolveCity(candidate, before) {
 }
 export function parseCityState(addr) {
   if (!addr) return {};
-  let s = String(addr).trim();
+  // Pasted shapes: newlines / semicolons / tabs are segment separators, and a
+  // trailing separator ("…, NC 28202,") is noise (verification corrective, pass 4).
+  let s = String(addr).replace(/[\r\n;\t]+/g, ',').trim().replace(/[\s,]+$/, '');
   s = s.replace(/[,\s]+(?:usa|u\.s\.a\.?|us|u\.s\.?|united states(?: of america)?)\.?\s*$/i, '');   // trailing country token
-  const zip = /[ ,]+(\d{5})(?:-\d{4})?\s*$/.exec(s);
+  s = s.replace(/[\s,]+$/, '');
+  const zip = /[ ,]+(\d{5})(?:-?\d{4})?\s*$/.exec(s);     // ZIP, ZIP+4, or a 9-digit ZIP without the hyphen
   const zipSt = zip ? zipState(zip[1]) : null;          // the ZIP's own state, when the prefix is known
   if (zip) s = s.slice(0, zip.index);
   s = s.trim().replace(/[\s,]+$/, '');
@@ -139,8 +148,9 @@ export function parseCityState(addr) {
       const st = normalizeStateToken(tok);
       if (!st) continue;
       const cityPart = words.slice(0, -k).join(' ');
-      if (contradictsZip(st)) break;                                 // "418 Oak Ct 29577", "Peachtree St NE 30309", "West New York 07093"
+      if (contradictsZip(st)) continue;                              // "418 Oak Ct 29577", "West New York 07093" — but "Charleston West Virginia 25301" still finds WV at k=2
       const isCode = k === 1 && /^[A-Za-z]{2}$/.test(tok.replace(/\./g, ''));
+      if (isCode && SUFFIX_CODES.has(st) && /^[A-Z][a-z]$/.test(tok.replace(/\./g, ''))) break;   // "…, Oak Ct 06604" → blank, never Oak / CT
       let confident;
       if (agreesWithZip(st)) confident = true;                       // "…, Bridgeport CT 06604"
       else if (zipSt === null && zip) confident = false;             // an unknown ZIP prefix vouches for nothing

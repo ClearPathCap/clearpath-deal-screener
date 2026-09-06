@@ -109,26 +109,36 @@ Contract law:
   address by `parseCityState` only on confident evidence, in this order. **State:** a comma-free address never
   parses. With a ZIP whose USPS three-digit prefix is known, the state token must **agree** with it or the whole
   parse is discarded (`418 Oak Ct 29577` is South Carolina, never CT; `…, Delaware 43015` is Ohio; `…, Mount
-  Washington 21209` is Maryland; `…, West New York 07093` is New Jersey). With no ZIP, or a ZIP whose prefix is
-  unknown (territories, military — it neither vouches nor vetoes), the token must be its own comma segment
-  (`…, Myrtle Beach, SC` / `…, South Carolina`) or an in-segment upper-case two-letter code that is not NE / NW /
-  SE / SW, beside a mixed-case city (`…, Myrtle Beach SC`); an agreeing ZIP relaxes those in-segment tests
-  (`…, Bridgeport ct 06604` parses). A full state name inside a segment needs an agreeing ZIP (`Port Washington`
-  is a city). **City:** the segment before the state, which must be letters only and not a USPS secondary line
-  (`Apt B`, `Suite 400`, `Unit 4B`, bare `Rear` / `Basement` / `Penthouse`, `c/o …`, `Attn …`, `PO Box …`), not a
-  county / parish / borough / township (that segment steps back to the city before it: `Charlotte, Mecklenburg
-  County, North Carolina, 28202` → Charlotte), not a street line (digits, or ending in St / Ave / Rd / Blvd …), and
-  not itself a two-letter state code (`…, Charlotte, NC, NC 28202` → state only). When the state is confident but
-  no segment qualifies as the city, the state ships alone. Trailing `USA` / `United States` is stripped. **Known
-  limits (blank, never wrong):** a city that is a state name typed without a comma before its state (`…, Nevada
-  64772` → blank; `…, Nevada, MO 64772` and `…, Washington DC 20001` are fine); Nebraska in the `City NE` shape
-  with no ZIP (`…, Omaha NE` → blank; `…, Omaha, NE` and `…, Omaha NE 68102` are fine); all-caps input without a
-  ZIP; a city with a non-ASCII letter (`Cañon City`). Values are **never** written over a user's explicit edit or
-  clearing (in the session, or carried as an explicit blank on a reviewed record; that marker and the review's
-  edit protection are released when the review ends — Update Saved Deal, Cancel, delete-under-review — when
-  another record is reviewed, on a real keystroke, and on Clear & New Deal). The handoff sends the stored values
-  (state normalized to its two-letter code, sent only when it is a real state); a record without the keys (pre-A1)
-  falls back to the parser. The 9+ unit referral handoffs carry the same `city` / `state`.
+  Washington 21209` is Maryland; `…, West New York 07093` is New Jersey; a token that contradicts the ZIP is
+  skipped, so `…, Charleston West Virginia 25301` still finds West Virginia). With no ZIP, the token must be its
+  own comma segment (`…, Myrtle Beach, SC` / `…, South Carolina`) or an in-segment upper-case two-letter code
+  that is not NE / NW / SE / SW, beside a mixed-case city (`…, Myrtle Beach SC`); an agreeing ZIP relaxes those
+  in-segment tests (`…, Bridgeport ct 06604` parses), except that a Title-case street word that doubles as a
+  code — `Ct`, `La`, `Al`, `Mt` — is never a state (`…, Oak Ct 06604` → blank, never Oak / CT). A ZIP whose prefix
+  is unknown (territories, military) neither vouches nor vetoes, and only the whole-segment form is accepted
+  with it. A full state name inside a segment needs an agreeing ZIP (`Port Washington` is a city). **City:** the
+  segment before the state, which must be letters only and not a USPS secondary or mail-handling line (`Apt B`,
+  `Suite 400`, `Unit 4B`, bare `Rear` / `Basement` / `Penthouse`, `c/o …`, `Attn …`, `PO Box …`, `General
+  Delivery`, `Rural Route`), not a county / parish / borough / township (that segment steps back to the city
+  before it: `Charlotte, Mecklenburg County, North Carolina, 28202` → Charlotte), not a street line (digits, or
+  ending in a street suffix — abbreviated or spelled out, with or without a trailing directional: `Elm Ave`,
+  `Elm Avenue`, `Main St NE`), and not itself a two-letter state code (`…, Charlotte, NC, NC 28202` → state only).
+  When an agreeing ZIP makes the state confident but no segment qualifies as the city, the state ships alone;
+  with no ZIP, no qualifying city means no auto-fill. Newlines, semicolons and tabs are read as separators, a
+  trailing separator is ignored, a 9-digit ZIP may omit its hyphen, and a trailing `USA` / `United States` is
+  stripped. **Known limits (blank, never wrong):** a city that is a state name typed without a comma before its
+  state (`…, Nevada 64772` → blank; `…, Nevada, MO 64772` and `…, Washington DC 20001` are fine); Nebraska in the
+  `City NE` shape with no ZIP (`…, Omaha NE` → blank; `…, Omaha, NE` and `…, Omaha NE 68102` are fine); all-caps
+  input without a ZIP; a city with a non-ASCII letter (`Cañon City`); a municipality whose name ends in Township /
+  Borough (`Old Bridge Township` → state only); a city whose whole name is a street-suffix word (`Circle, AK` →
+  state only). Values are **never** written over a user's explicit edit or clearing (in the session, or carried
+  as an explicit blank on a reviewed record). When a review ends — Update Saved Deal, Cancel, delete-under-review,
+  reviewing another record, Clear & New Deal — the record's City / State return to **parser ownership**: the next
+  address edit either re-fills them from a confident parse or withdraws them, so a retired record's values never
+  ride onto the next property, its saved record or the CPC handoff; a value the user typed during the review
+  keeps its own protection. The handoff sends the stored values (state normalized to its two-letter code, sent
+  only when it is a real state); a record without the keys (pre-A1) falls back to the parser. The 9+ unit
+  referral handoffs carry the same `city` / `state`.
 
 ## Measurement (success metrics from PROJECT_BRIEF)
 - Every screener-sourced submission is identifiable via the email source tag → count monthly: submissions, packaged, closed. Quarter-1 target: 5+ submissions, 1+ closed loan.

@@ -197,6 +197,15 @@ console.log('— §C2 pass-2 correctives: stale rows across paths, Clear & New D
   ok(el('l-price').classList.contains('field-error'), 'C20 blocked again');
   globalThis.clearNewDeal('ltr');
   ok(!el('l-price').classList.contains('field-error') && !el('l-price').attrs['aria-invalid'], 'C21 Clear & New Deal removes the red field state with the aria marks');
+  // pass 4: EVERY blocking field of a run is tracked, not only the revealed one.
+  el('l-price').value = ''; el('l-rent').value = ''; globalThis.analyzeLtr();
+  ok(el('l-price').classList.contains('field-error') && el('l-rent').classList.contains('field-error') && el('l-price').attrs['aria-invalid'] === 'true' && !el('l-rent').attrs['aria-invalid'], 'C22 two required blocks: both red, only the first revealed');
+  globalThis.clearNewDeal('ltr');
+  ok(!el('l-price').classList.contains('field-error') && !el('l-rent').classList.contains('field-error'), 'C23 Clear & New Deal releases the red state from BOTH');
+  typed('l-price', '12abc'); typed('l-tax', '9x9'); typed('l-rent', '2,100'); globalThis.analyzeLtr();
+  ok(el('l-price').classList.contains('field-error') && el('l-tax').classList.contains('field-error'), 'C24 two malformed amounts: both red');
+  globalThis.clearNewDeal('ltr');
+  ok(!el('l-tax').classList.contains('field-error') && !el('l-tax').classList.contains('input-invalid') && !el('l-tax').attrs['aria-invalid'], 'C25 …and the second one is released with the first');
   typed('v-price', '250,000'); typed('v-rent', '90,000'); typed('v-down', '20');
 }
 
@@ -238,7 +247,7 @@ console.log('— §H pure helper + source pins —');
   ok(/a\.el\.compareDocumentPosition\(b\.el\) & Node\.DOCUMENT_POSITION_FOLLOWING/.test(mainSrc), 'H8 the document-order comparator reads "b follows a" (operands in spec order)');
   ok(/clearBlockingMarks\(prefix\);\s+\/\/ A6: aria marks describe THIS run only/.test(mainSrc) && /clearBlockingMarks\(prefix\);\s+\/\/ A6: marks describe THIS run only/.test(fmtSrc), 'H9 both paths clear last run\'s marks at the start of a run');
   ok(/id="\$\{x\.field\}-issue"/.test(fmtSrc) && /msg\.id = f\.id \+ '-error'/.test(mainSrc), 'H10 the two message kinds live in distinct id namespaces (-error / -issue) — no duplicate ids');
-  ok(/clearBlockingMarks\(type === 'rental' \? 'rental' : type\);\s+\/\/ A6: the rows just wiped/.test(mainSrc), 'H11 entering a review releases the marks with the rows it wipes (no dangling describedby)');
+  ok(/reviewPrefilledIds\[type\] = filled;\s+\/\/ A6: the rows wiped above were describedby targets — release the marks AFTER\s+\/\/ the prefill[^\n]*\n[^\n]*\n\s+clearBlockingMarks\(type === 'rental' \? 'rental' : type\);/.test(mainSrc), 'H11 entering a review releases the marks with the rows it wipes — AFTER the prefill, so the value-based rule sees the saved values (no dangling describedby)');
   ok(/clearBlockingMarks\(prefix\); const box = document\.getElementById\(prefix \+ '-input-errors'\); if \(box\) \{ box\.innerHTML = ''; box\.style\.display = 'none'; \}/.test(mainSrc), 'H12 Clear & New Deal resets validation state');
   ok(/const stillMalformed = isCurrency && isMalformedCurrency\(el\.value\);/.test(fmtSrc) && /if \(!stillMalformed\) \{\s+el\.removeAttribute\?\.\('aria-invalid'\);/.test(fmtSrc), 'H13 clearBlockingMarks keeps aria-invalid only on a currency field whose VALUE is still malformed (value-based, never class-based)');
   ok(/preventScroll: true/.test(fmtSrc) && /block: 'center'/.test(fmtSrc), 'H7 focus never triggers a second scroll; the scroll centres the field');

@@ -243,7 +243,7 @@ ok(payload && payload.args.p_deals.length === 4 && payload.args.p_deals.find(d =
 ok(deals.filter(d => d.id !== ORANGE.id).every(d => JSON.stringify(d) === JSON.stringify(JSON.parse(BASELINE).find(x => x.id === d.id))), 'C9 the other three deals are byte-identical');
 ok(pipeline.getReviewingDealId() === null && el('ltr-review-banner').style.display === 'none', 'C10 review mode ended; banner gone');
 ok(el('ltr-save-btn').textContent === 'Saved ✓', 'C11 Save button follows the normal Saved ✓ path');
-ok(!ue('l-vac') && !ue('l-price') && !ue('l-addr') && !el('l-city').dataset.userEdited && !el('l-city').dataset.explicitBlank, 'C11b Update Saved Deal releases the prefill protection exactly as cancel / clear do (pass-3 corrective: the next property on this form must not inherit the reviewed record\'s City / State)');
+ok(ue('l-vac') && !ue('l-price') && !ue('l-addr') && !el('l-city').dataset.userEdited && !el('l-city').dataset.explicitBlank, 'C11b Update Saved Deal releases the PREFILL protection (price, address, City) exactly as cancel / clear do, while the vacancy the user typed in §B keeps its own (pass-3/4 correctives)');
 const AFTER_UPDATE = snapshot();
 pipeline.renderPipeline();
 const cardHtml = el('pipeline-list').innerHTML;
@@ -351,7 +351,7 @@ ok(/\.\.\.reviewing, name, notes,/.test(plSrc) && /updatedAt: now\.toISOString\(
 ok(/id:      Date\.now\(\),/.test(plSrc) && /candidate = \[deal, \.\.\.deals\]/.test(plSrc), 'H3 new-deal path unchanged');
 ok(/reviewDeal\(\$\{d\.id\}\)/.test(plSrc) && /Review &amp; Re-analyze/.test(plSrc) && /savedInputsLine\(d\)/.test(plSrc), 'H4 card carries the action + saved-inputs line');
 ok(/function reviewDeal\(id\)/.test(mainSrc) && !/analyzeLtr\(\)|analyzeFlip\(\)|analyzeRental\(\)|analyzeBrrr\(\)/.test(mainSrc.slice(mainSrc.indexOf('function reviewDeal(id)'), mainSrc.indexOf('function exitReviewUI'))), 'H5 reviewDeal never calls an analyzer');
-ok(/el\.dataset\.userEdited = '1';\s*\n\s*delete el\.dataset\.autoFilled;/.test(mainSrc), 'H6 prefill marks every value user-edited');
+ok(/el\.dataset\.userEdited = '1';\s*\n\s*el\.dataset\.reviewPrefill = '1';\s*\n\s*delete el\.dataset\.autoFilled;/.test(mainSrc), 'H6 prefill marks every value user-edited (and as a PREFILL protection, pass-4 corrective)');
 const htmlText = html.replace(/<!--[\s\S]*?-->/g, '');
 ok(/🔄 BRRRR<\/button>/.test(htmlText) && /BRRRR Breakdown/.test(htmlText) && /e\.g\. BRRRR 77 Birch St/.test(htmlText) && !/BRRR[^R]/.test(htmlText.replace(/[a-z-]*brrr[a-z-]*/g, '')), 'H7 index.html user-visible copy says BRRRR (tab, breakdown, placeholder)');
 ok(/'BRRRR \(Bridge → DSCR Refi\)'/.test(plSrc) && /'brrr' \? 'BRRRR'/.test(plSrc), 'H8 pipeline card copy says BRRRR');
@@ -690,6 +690,27 @@ console.log('— §P update-path release —');
   ok(updN && updN.mode === 'updated' && pipeline.getReviewingDealId() === null, `P2 Update Saved Deal lands and ends the review (${JSON.stringify(updN)})`);
   ok(!el('l-city').dataset.explicitBlank && !el('l-state').dataset.explicitBlank && !ue('l-addr') && !ue('l-price'), 'P3 …and releases BOTH the marker and the review userEdited protection — nothing leaks onto the next property screened on this form');
   ok(/if \(outcome && outcome\.mode === 'updated'\) \{ exitReviewUI\(type\); releaseReviewProtection\(type\); \}/.test(mainSrc5), 'P4 the Save wrapper releases on the update path (same law as cancel and delete-under-review)');
+  // pass 4: a value the user typed DURING the review is the user's — the release must not strip it.
+  globalThis.clearNewDeal('ltr');
+  globalThis.reviewDeal(ORANGE.id);
+  ok(el('l-vac').dataset.reviewPrefill === '1' && ue('l-vac'), 'P5 a prefilled field carries the reviewPrefill mark');
+  typed('l-vac', '9');
+  ok(!el('l-vac').dataset.reviewPrefill && ue('l-vac'), 'P6 a trusted keystroke clears the mark (the value is now the user\'s)');
+  globalThis.analyzeLtr();
+  const updT = await globalThis.saveDeal('ltr');
+  ok(updT && updT.mode === 'updated' && ue('l-vac') && !ue('l-price') && !el('l-price').dataset.reviewPrefill, 'P7 after the update the typed vacancy keeps its protection; the untouched prefilled price is released');
+  // pass 4: review prefill clears the marks AFTER it writes and re-runs the currency mask — a saved value never
+  // lands under a stale aria-invalid / red state, whether or not the malformed text was ever analyzed.
+  globalThis.clearNewDeal('ltr');
+  typed('l-price', '12abc'); el('l-rent').value = ''; globalThis.analyzeLtr();
+  ok(el('l-price').attrs['aria-invalid'] === 'true' && el('l-price').classList.contains('input-invalid') && el('l-rent').classList.contains('field-error'), 'P8 a malformed price (mask-flagged) and a blank rent (red, revealed)');
+  globalThis.reviewDeal(ORANGE.id);
+  ok(!el('l-price').attrs['aria-invalid'] && !el('l-price').classList.contains('input-invalid') && !el('l-price').classList.contains('field-error'), `P9 the prefilled price carries no aria-invalid, no mask class, no red state (value ${el('l-price').value})`);
+  ok(!el('l-rent').classList.contains('field-error') && !el('l-rent').attrs['aria-invalid'], `P10 the blank-rent block is released too (value ${el('l-rent').value})`);
+  globalThis.cancelDealReview('ltr');
+  typed('l-price', '9x9');   // malformed, never analyzed
+  globalThis.clearNewDeal('ltr');
+  ok(!el('l-price').attrs['aria-invalid'] && !el('l-price').classList.contains('input-invalid') && el('l-price').value === '', 'P11 Clear & New Deal re-runs the mask on the reset value — no stale red state from text that was never analyzed');
 }
 
 console.log(`\ndealreview: ${pass} passed, ${fail} failed`);

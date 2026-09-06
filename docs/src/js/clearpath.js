@@ -96,10 +96,13 @@ const isSecondary = (s) => ID_DESIG.test(s) || BARE_DESIG.test(s) || MAIL_LINE.t
 const DIR = '(n|s|e|w|ne|nw|se|sw|north|south|east|west|northeast|northwest|southeast|southwest)';
 // The abbreviations are the USPS Publication 28 forms (a real city never uses one).
 const STREETISH = new RegExp('(\\b(st|ave|rd|blvd|dr|ln|ct|pl|hwy|pkwy|cir|ter|terr|trl|trce|sq|sqr|ctr|expy|fwy|aly|wy|xing|rdg|lndg|cv|bnd|sta|ext|byp|plz|vw|vis|mnr|ests|frk|grn|gln|holw|knl|cmns|crst|ovl|ml|ldg|cyn|mdws|crk|hbr|hts|is|jct|lk|mtn|orch|pt|shr|spg|spgs|vly|vlg|xrd|street|avenue|boulevard|road|drive|highway|parkway|trail|expressway|freeway|alley|turnpike)\\.?(\\s+' + DIR + '\\.?)?|\\b(way|terrace|square|place|lane|court|circle)\\s+' + DIR + '\\.?)$', 'i');
-// Court / Lane / Alley / Mount: a Title-case "Ct" / "La" / "Al" / "Mt" is a street
-// word, never a state — even beside an agreeing ZIP ("…, Oak Ct 06604" is Oak
-// Court, not Oak / CT). A code typed as a code ("CT", "ct") is unaffected.
-const SUFFIX_CODES = new Set(['CT', 'LA', 'AL', 'MT']);
+// Court / Lane / Alley / Mount / Way: a Title-case "Ct" / "La" / "Al" / "Mt" / "Wy"
+// is a street word, never a state — even beside an agreeing ZIP ("…, Oak Ct
+// 06604" is Oak Court, not Oak / CT). A code typed as a code ("CT", "ct") is
+// unaffected on purpose: "12 ORANGE ST, BRIDGEPORT CT 06604" is a real all-caps
+// MLS paste, so the all-caps / lower-case shape cannot be told from a street
+// word — a city-less "12 ELM RD, OAK CT 06604" echoes "OAK" (documented echo).
+const SUFFIX_CODES = new Set(['CT', 'LA', 'AL', 'MT', 'WY']);
 // An administrative segment that geocoders (OpenStreetMap / Nominatim, county GIS
 // portals) place between the city and the state: "Charlotte, Mecklenburg County,
 // North Carolina". Never a city — the city is the segment before it.

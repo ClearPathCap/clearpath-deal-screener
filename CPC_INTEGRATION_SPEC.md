@@ -116,7 +116,7 @@ Contract law:
   Nevada` → blank, `…, Miami, Florida 33139` parses) or an in-segment upper-case two-letter code
   that is not NE / NW / SE / SW, beside a mixed-case city (`…, Myrtle Beach SC`); an agreeing ZIP relaxes those
   in-segment tests (`…, Bridgeport ct 06604` parses), except that a Title-case street word that doubles as a
-  code — `Ct`, `La`, `Al`, `Mt` — is never a state (`…, Oak Ct 06604` → blank, never Oak / CT). A ZIP whose prefix
+  code — `Ct`, `La`, `Al`, `Mt`, `Wy` — is never a state (`…, Oak Ct 06604` → blank, never Oak / CT). A ZIP whose prefix
   is unknown (territories, military) neither vouches nor vetoes, and only the whole-segment form is accepted
   with it. A full state name inside a segment needs an agreeing ZIP (`Port Washington` is a city). **City:** the
   segment before the state, which must be letters only and not a USPS secondary or mail-handling line (`Apt B`,
@@ -141,7 +141,10 @@ Contract law:
   ends in Township / Borough (`Old Bridge Township` → state only); a municipality whose whole name is a street
   word (`Trail, MN`, `Highway, KY` → state only). **Known echo (the user's own text, state right):** a city-less
   paste whose last segment before the state is a place-name word or an unlisted street word (`…, Oak Court, CT
-  06604` → city "Oak Court"; `Oak Cove, Horry County, South Carolina, 29577` → city "Oak Cove"). Values
+  06604` → city "Oak Court"; `Oak Cove, Horry County, South Carolina, 29577` → city "Oak Cove"); and a city-less
+  ALL-CAPS or lower-case paste whose last segment is `<word> <suffix-code> <ZIP>` (`12 ELM RD, OAK CT 06604` →
+  city "OAK", state CT) — the code cannot be told from a street word there, because `12 ORANGE ST, BRIDGEPORT CT
+  06604` is a real all-caps MLS paste that must keep parsing. Values
   are **never** written over a user's explicit edit or clearing (in the session, or carried as an explicit blank
   on a reviewed record). **During a review**, a real keystroke in the address hands a City / State the prefill
   owns back to the parser (they were derived from the address being replaced) — the pair re-fills from a

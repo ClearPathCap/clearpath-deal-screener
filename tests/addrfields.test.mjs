@@ -222,7 +222,38 @@ console.log('— §E3 "Update Saved Deal" ends the review AND releases the prote
   globalThis.clearNewDeal('ltr');
   globalThis.reviewDeal(9002); typed('l-rent', '7,777'); globalThis.analyzeLtr(); const upd4 = await globalThis.saveDeal('ltr');
   ok(upd4 && upd4.mode === 'updated' && el('l-rent').dataset.userEdited === '1' && !el('l-rent').dataset.reviewPrefill && !el('l-price').dataset.userEdited, 'E3p a rent the user typed during the review stays userEdited after the update; the untouched prefilled price is released');
-  globalThis.clearNewDeal('ltr'); globalThis.__signedIn = false;
+  // pass 5 (verification refuter): editing the ADDRESS DURING the review hands the prefilled City / State back to
+  // the parser at once — the wrong pair must never reach the result, the record or the handoff.
+  globalThis.clearNewDeal('ltr');
+  globalThis.reviewDeal(9002);
+  typed('l-addr', '900 Beach Blvd, Myrtle Beach, SC 29577');
+  ok(el('l-city').value === 'Myrtle Beach' && el('l-state').value === 'SC' && el('l-city').dataset.autoFilled === '1' && !el('l-city').dataset.userEdited, `E3q a mid-review address edit re-derives City / State (got "${el('l-city').value}" / "${el('l-state').value}")`);
+  globalThis.analyzeLtr();
+  { const r = ltrMod.getLastLtrResult(); ok(r && r.city === 'Myrtle Beach' && r.state === 'SC', 'E3r …and the analysis carries the NEW pair, never "Charlotte, NC" under a Myrtle Beach address'); }
+  const upd5 = await globalThis.saveDeal('ltr');
+  { const rec = storage.getDeals().find(d => d.id === 9002); ok(upd5 && upd5.mode === 'updated' && rec.data.city === 'Myrtle Beach' && rec.data.state === 'SC', 'E3s …and so does the updated record'); }
+  globalThis.clearNewDeal('ltr');
+  globalThis.reviewDeal(9002);
+  typed('l-addr', '18 Ridge Road');
+  ok(el('l-city').value === '' && el('l-state').value === '', `E3t a mid-review NON-parsing address withdraws the prefilled pair (got "${el('l-city').value}" / "${el('l-state').value}") — blank, never the retired values`);
+  globalThis.cancelDealReview('ltr'); globalThis.clearNewDeal('ltr');
+  // …a City the user typed during the review is the user's, whatever the address does.
+  globalThis.reviewDeal(9002);
+  typed('l-city', 'Concord'); typed('l-addr', '900 Beach Blvd, Myrtle Beach, SC 29577');
+  ok(el('l-city').value === 'Concord' && el('l-city').dataset.userEdited === '1' && el('l-state').value === 'SC', 'E3u a City typed during the review survives an address edit; the untouched State follows the address');
+  globalThis.cancelDealReview('ltr'); globalThis.clearNewDeal('ltr');
+  // …and an explicit blank carried by the record still stands against a confident mid-review address (ruled).
+  await storage.saveDeals([A, B, rec(9003, { addr: '5 Shore Rd, Wilmington NC 28401' })]);
+  globalThis.reviewDeal(9001);
+  typed('l-addr', '900 Beach Blvd, Myrtle Beach, SC 29577');
+  ok(el('l-city').value === '' && el('l-city').dataset.explicitBlank === '1', 'E3v an explicit-blank City on the record is never resurrected by a mid-review address edit (ruled)');
+  globalThis.cancelDealReview('ltr'); globalThis.clearNewDeal('ltr');
+  // A pre-A1 record (no city/state keys) derives them from its prefilled address on review.
+  globalThis.reviewDeal(9003);
+  ok(el('l-city').value === 'Wilmington' && el('l-state').value === 'NC' && el('l-city').dataset.autoFilled === '1', `E3w reviewing a pre-A1 record derives City / State from the prefilled address (got "${el('l-city').value}" / "${el('l-state').value}")`);
+  globalThis.analyzeLtr();
+  { const r = ltrMod.getLastLtrResult(); ok(r && r.city === 'Wilmington' && r.state === 'NC', 'E3x …so its re-analysis and handoff carry them (production parsed the address; Wave A must not ship less)'); }
+  globalThis.cancelDealReview('ltr'); globalThis.clearNewDeal('ltr'); globalThis.__signedIn = false;
 }
 
 console.log('— §F source pins —');

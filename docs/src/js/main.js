@@ -286,7 +286,7 @@ function reviewSetField(id, value, kind, status) {
   if (value === null && /-(city|state)$/.test(id)) { el.value = ''; el.dataset.explicitBlank = '1'; el.dataset.reviewPrefill = '1'; delete el.dataset.userEdited; delete el.dataset.autoFilled; return true; }
   delete el.dataset.explicitBlank;   // any other value, or a different record, releases a marker left by an earlier review (verification corrective, pass 2)
   if (status === 'missing') {          // pending taxes / insurance: blank, and protected from presets
-    el.value = ''; el.dataset.userEdited = '1'; el.dataset.reviewPrefill = '1'; delete el.dataset.autoFilled; return true;
+    el.value = ''; el.dataset.userEdited = '1'; el.dataset.reviewPrefill = '1'; delete el.dataset.autoFilled; refreshMask(el); return true;
   }
   if (kind === 'sel') {
     if (value == null || value === '') return false;
@@ -392,6 +392,12 @@ function reviewDeal(id) {
   // the prefill, so the value-based mask rule judges the saved values rather
   // than the malformed text the user abandoned (verification corrective, pass 4).
   clearBlockingMarks(type === 'rental' ? 'rental' : type);
+  // A1: a record without the structured keys (pre-Wave-A) resets City / State
+  // unprotected; derive them from the prefilled address as the parser would on a
+  // keystroke (the address is written programmatically, so no event fires). Fields
+  // the record filled or explicitly blanked are protected and stay as prefilled
+  // (verification corrective, pass 5).
+  autofillAddressComponents({ flip: 'f', rental: 'v', ltr: 'l', brrr: 'b' }[type]);
   const selfEl = document.getElementById(SELF_ID[type]);
   if (selfEl) selfEl.checked = type === 'flip' ? !!data.self : (data.pm === 0);
   if (type === 'rental') updateSelfManage();                       // PM field/label follow the toggle
@@ -548,8 +554,20 @@ function wireAddressComponents(prefix) {
   const markUser = (el) => (e) => { if (!e || e.isTrusted) { el.dataset.userEdited = '1'; delete el.dataset.autoFilled; delete el.dataset.explicitBlank; delete el.dataset.reviewPrefill; } };
   city.addEventListener('input', markUser(city));
   state.addEventListener('input', markUser(state));
-  addr.addEventListener('input',  () => autofillAddressComponents(prefix));
-  addr.addEventListener('change', () => autofillAddressComponents(prefix));
+  // A real keystroke in the ADDRESS during a saved-deal review hands a City / State
+  // the review PREFILL owns back to the parser: the pair was derived from the address
+  // being replaced, and left protected it froze "Charlotte, NC" under a Myrtle Beach
+  // address into the result, the record and the CPC handoff (verification corrective,
+  // pass 5). A City the user typed (no reviewPrefill mark) and an explicit blank
+  // carried by the record (no userEdited mark) are untouched — the user's own wins.
+  const releasePrefillOwned = (e) => {
+    if (e && !e.isTrusted) return;
+    for (const el of [city, state]) {
+      if (el.dataset.reviewPrefill && el.dataset.userEdited) { delete el.dataset.userEdited; delete el.dataset.reviewPrefill; if (el.value) el.dataset.autoFilled = '1'; }
+    }
+  };
+  addr.addEventListener('input',  (e) => { releasePrefillOwned(e); autofillAddressComponents(prefix); });
+  addr.addEventListener('change', (e) => { releasePrefillOwned(e); autofillAddressComponents(prefix); });
   // A value already present before this module ran (form restore, fast typing) is the user's.
   for (const el of [city, state]) if (el.value !== '') el.dataset.userEdited = '1';
   if (addr.value) autofillAddressComponents(prefix);

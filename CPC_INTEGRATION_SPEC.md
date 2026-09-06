@@ -121,8 +121,11 @@ Contract law:
   `Suite 400`, `Unit 4B`, bare `Rear` / `Basement` / `Penthouse`, `c/o …`, `Attn …`, `PO Box …`, `General
   Delivery`, `Rural Route`), not a county / parish / borough / township (that segment steps back to the city
   before it: `Charlotte, Mecklenburg County, North Carolina, 28202` → Charlotte), not a street line (digits, or
-  ending in a street suffix — abbreviated or spelled out, with or without a trailing directional: `Elm Ave`,
-  `Elm Avenue`, `Main St NE`), and not itself a two-letter state code (`…, Charlotte, NC, NC 28202` → state only).
+  ending in an abbreviated suffix or a spelled-out street word — `Elm Ave`, `Elm Avenue`, `Ocean Drive` — with or
+  without a trailing directional, abbreviated or spelled out: `Main St NE`, `Peachtree Street Northeast`; place-name
+  words that double as suffixes — Way, Terrace, Square, Place, Lane, Court, Circle — reject only when abbreviated or
+  followed by a directional, so `Federal Way`, `Temple Terrace`, `Franklin Square`, `Circle, AK` stay cities), and
+  not itself a two-letter state code (`…, Charlotte, NC, NC 28202` → state only).
   When an agreeing ZIP makes the state confident but no segment qualifies as the city, the state ships alone;
   with no ZIP, no qualifying city means no auto-fill. Newlines, semicolons and tabs are read as separators, a
   trailing separator is ignored, a 9-digit ZIP may omit its hyphen, and a trailing `USA` / `United States` is
@@ -130,15 +133,20 @@ Contract law:
   state (`…, Nevada 64772` → blank; `…, Nevada, MO 64772` and `…, Washington DC 20001` are fine); Nebraska in the
   `City NE` shape with no ZIP (`…, Omaha NE` → blank; `…, Omaha, NE` and `…, Omaha NE 68102` are fine); all-caps
   input without a ZIP; a city with a non-ASCII letter (`Cañon City`); a municipality whose name ends in Township /
-  Borough (`Old Bridge Township` → state only); a city whose whole name is a street-suffix word (`Circle, AK` →
-  state only). Values are **never** written over a user's explicit edit or clearing (in the session, or carried
-  as an explicit blank on a reviewed record). When a review ends — Update Saved Deal, Cancel, delete-under-review,
-  reviewing another record, Clear & New Deal — the record's City / State return to **parser ownership**: the next
-  address edit either re-fills them from a confident parse or withdraws them, so a retired record's values never
-  ride onto the next property, its saved record or the CPC handoff; a value the user typed during the review
-  keeps its own protection. The handoff sends the stored values (state normalized to its two-letter code, sent
-  only when it is a real state); a record without the keys (pre-A1) falls back to the parser. The 9+ unit
-  referral handoffs carry the same `city` / `state`.
+  Borough (`Old Bridge Township` → state only); a city-less paste whose last segment before the state is a
+  place-name word without a directional (`…, Oak Court, CT 06604` → city "Oak Court", the user's own text). Values
+  are **never** written over a user's explicit edit or clearing (in the session, or carried as an explicit blank
+  on a reviewed record). **During a review**, a real keystroke in the address hands a City / State the prefill
+  owns back to the parser (they were derived from the address being replaced) — the pair re-fills from a
+  confident parse or withdraws; a City the user typed and an explicit blank on the record are untouched. A
+  record without the structured keys (pre-A1) derives City / State from its prefilled address when reviewed.
+  When a review ends — Update Saved Deal, Cancel, delete-under-review, reviewing another record, Clear & New
+  Deal — the record's City / State return to **parser ownership**: the next address edit either re-fills them
+  from a confident parse or withdraws them, so a retired record's values never ride onto the next property, its
+  saved record or the CPC handoff; a value the user typed during the review keeps its own protection. The
+  handoff sends the stored values (state normalized to its two-letter code, sent only when it is a real state);
+  a record without the keys (pre-A1) falls back to the parser. The 9+ unit referral handoffs carry the same
+  `city` / `state`.
 
 ## Measurement (success metrics from PROJECT_BRIEF)
 - Every screener-sourced submission is identifiable via the email source tag → count monthly: submissions, packaged, closed. Quarter-1 target: 5+ submissions, 1+ closed loan.

@@ -711,6 +711,18 @@ console.log('— §P update-path release —');
   typed('l-price', '9x9');   // malformed, never analyzed
   globalThis.clearNewDeal('ltr');
   ok(!el('l-price').attrs['aria-invalid'] && !el('l-price').classList.contains('input-invalid') && el('l-price').value === '', 'P11 Clear & New Deal re-runs the mask on the reset value — no stale red state from text that was never analyzed');
+  // pass 5: the pending-tax ('missing' status) prefill path re-runs the mask too.
+  {
+    const src1 = storage.getDeals().find(d => d.id === ORANGE.id);
+    const PENDING = { ...src1, id: 990002, name: 'Pending tax', data: { ...src1.data, tax: null, taxStatus: 'missing' } };
+    await storage.saveDeals([...storage.getDeals(), PENDING]); await tick();
+    globalThis.clearNewDeal('ltr');
+    typed('l-tax', '12ab');   // malformed, never analyzed
+    ok(el('l-tax').classList.contains('input-invalid') && el('l-tax').attrs['aria-invalid'] === 'true', 'P12 the mask flags the junk');
+    globalThis.reviewDeal(990002);
+    ok(el('l-tax').value === '' && !el('l-tax').classList.contains('input-invalid') && !el('l-tax').attrs['aria-invalid'] && ue('l-tax'), 'P13 a pending-tax prefill lands blank, protected, and with NO stale mask state');
+    globalThis.cancelDealReview('ltr'); globalThis.clearNewDeal('ltr');
+  }
 }
 
 console.log(`\ndealreview: ${pass} passed, ${fail} failed`);

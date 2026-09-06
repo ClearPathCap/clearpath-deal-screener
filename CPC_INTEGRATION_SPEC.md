@@ -92,7 +92,7 @@ link keeps today's behaviour at CPC.
 | Param | Screener source field | CPC intake field | Example |
 |---|---|---|---|
 | `monthlyHoa` + `hoaStatus` | HOA (monthly) — **now also STR** (`v-hoa`, explicit `$0` default) | HOA Status control + Annual HOA (×12 once) | `0` + `none` · `150` + `applies` |
-| `units`, `ptype`, `band` | STR / F&F **optional** Unit Count and Property Type | Number of Units / Property Type | `4` / `2–4 Unit` / `1-4` |
+| `units`, `ptype` | STR / F&F **optional** Unit Count and Property Type (no `band` — CPC derives band from units and never reads the key) | Number of Units / Property Type | `4` / `2–4 Unit` |
 | `city`, `state` | structured City / State inputs (all four analyzers), auto-filled from the address, user-editable | City / State dropdown | `Myrtle Beach` / `SC` |
 
 Contract law:
@@ -101,10 +101,10 @@ Contract law:
   `hoaBasisHandoff` rule (`0` → `none`, positive → `applies`, absent / negative / non-finite → both keys omitted).
   A pre-A2 STR record has no `hoa` key and therefore sends no token — CPC keeps its legacy `Not sure` rule.
 - **Unknown stays unknown (A4):** STR and Fix & Flip collect Unit Count and Property Type as **optional** facts with a
-  blank initial state. `units` / `ptype` / `band` travel only when the user supplied them; a blank never serializes
-  a default (`SFR`, `1`), so CPC may still ask for them. The only translation is the LTR / BRRRR one: a selected
-  `5–8 Unit` / `9+ Unit` type is sent as `Multifamily` (CPC has no 5–8 option). No analyzer computation depends on
-  either value.
+  blank initial state. `units` / `ptype` travel only when the user supplied them; a blank never serializes a
+  default (`SFR`, `1`), so CPC may still ask for them. The only translation is the LTR / BRRRR one: a selected
+  `5–8 Unit` / `9+ Unit` type is sent as `Multifamily` (CPC has no 5–8 option). No `band` is emitted for STR / F&F.
+  No analyzer computation depends on either value.
 - **City / State (A1):** each analyzer stores structured `city` and `state` values. They are auto-filled from the
   address by `parseCityState` only when the parse is confident (a comma- or ZIP-delimited two-letter state, or a
   full state name; trailing `USA` / `United States` stripped) and are **never** written over a user's explicit edit

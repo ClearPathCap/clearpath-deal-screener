@@ -57,8 +57,8 @@ function oob(v, [lo, hi]) { return v !== undefined && v !== null && Number.isFin
 const NAN_FIELD_IDS = {
   ltr:  { units:'l-units', down:'l-down', vac:'l-vac', pm:'l-pm', maint:'l-maint', capex:'l-capex', rate:'l-rate', amort:'l-amort', points:'l-points', cc:'l-cc', target:'l-target' },
   brrr: { units:'b-units', contingency:'b-contingency', cc:'b-cc', hold:'b-hold', acqRate:'b-acqrate', acqPoints:'b-acqpoints', refiLtv:'b-refiltv', refiRate:'b-refirate', refiAmort:'b-refiamort', reficost:'b-reficost', season:'b-season', vac:'b-vac', maint:'b-maint', pm:'b-pm', capex:'b-capex', targetDscr:'b-targetdscr' },
-  str:  { down:'v-down', occ:'v-occ', mgmt:'v-mgmt', pm:'v-pm', rate:'v-interest-rate', tgtCoc:'v-target' },
-  flip: { hold:'f-hold', cc1:'f-cc1', cc2:'f-cc2', rate:'f-rate', points:'f-points', sqft:'sqft' },
+  str:  { down:'v-down', occ:'v-occ', mgmt:'v-mgmt', pm:'v-pm', rate:'v-interest-rate', tgtCoc:'v-target', units:'v-units' },
+  flip: { hold:'f-hold', cc1:'f-cc1', cc2:'f-cc2', rate:'f-rate', points:'f-points', sqft:'sqft', units:'f-units' },
 };
 const NAN_FIELD_LABELS = { units:'Units', down:'Down payment', vac:'Vacancy', pm:'Property mgmt', maint:'Maintenance', capex:'CapEx reserve', rate:'Interest rate', amort:'Amortization', points:'Points', cc:'Closing costs', target:'Target CoC', contingency:'Contingency', hold:'Hold period', acqRate:'Bridge rate', acqPoints:'Bridge points', refiLtv:'Refi LTV', refiRate:'Refi rate', refiAmort:'Refi amortization', reficost:'Refi costs', season:'Seasoning', targetDscr:'Target DSCR', occ:'Occupancy', mgmt:'Platform fee', tgtCoc:'Target CoC', cc1:'Buying costs', cc2:'Selling costs', sqft:'Square footage' };
 
@@ -110,7 +110,9 @@ export function validateInputs(type, raw) {
     if (raw.maint   !== undefined && Number.isFinite(+raw.maint)   && +raw.maint   < 0) err('v-maint','Maintenance','can\'t be negative.');
     if (raw.furnish !== undefined && Number.isFinite(+raw.furnish) && +raw.furnish < 0) err('v-furnish','Furnishing','can\'t be negative.');
     if (raw.hoa     !== undefined && Number.isFinite(+raw.hoa)     && +raw.hoa     < 0) err('v-hoa','HOA','can\'t be negative.');   // Wave A · A2
+    if (raw.units   !== undefined && Number.isFinite(+raw.units)   && (+raw.units < 1 || !Number.isInteger(+raw.units))) err('v-units','Units','must be a whole number, 1 or more.');   // Wave A · A4 (optional; only when supplied)
   } else { // flip
+    if (raw.units !== undefined && Number.isFinite(+raw.units) && (+raw.units < 1 || !Number.isInteger(+raw.units))) err('f-units','Units','must be a whole number, 1 or more.');   // Wave A · A4 (optional; only when supplied)
     if (oob(raw.cc1, RANGE.pct)) err('f-cc1','Buying costs','must be between 0% and 100%.');
     if (oob(raw.cc2, RANGE.pct)) err('f-cc2','Selling costs','must be between 0% and 100%.');
     if (oob(raw.rate, RANGE.rate)) err('f-rate','Loan rate','must be between 0% and 30%.');

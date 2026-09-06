@@ -893,6 +893,8 @@ export async function saveDealEdits(id) {
 
 function buildFlipDetail(d, deal) {
   const rows = [
+    ...(d.ptype ? [{ l: 'Property type', v: escapeHtml(String(d.ptype)) }] : []),   // A4: only when the user supplied it
+    ...(d.units > 0 ? [{ l: 'Units', v: String(Math.round(d.units)) }] : []),
     { l: 'Asking price',           v: d.ask  != null ? fmt(d.ask)  : '—' },
     { l: 'After Repair Value (ARV)', v: d.arv != null ? fmt(d.arv)  : '—' },
     { l: 'Repair budget',          v: d.rep  != null ? fmt(d.rep) + (d.self ? ' (self-perform)' : '') : '—' },
@@ -933,6 +935,8 @@ function buildFlipDetail(d, deal) {
 function buildRentalDetail(d) {
   const pend = unresolvedInsPresentation('rental', d) != null; // F-6: blank taxes+insurance pends
   const rows = [
+    ...(d.ptype ? [{ l: 'Property type', v: escapeHtml(String(d.ptype)) }] : []),   // A4: only when the user supplied it
+    ...(d.units > 0 ? [{ l: 'Units', v: String(Math.round(d.units)) }] : []),
     { l: 'Purchase price',         v: d.price   != null ? fmt(d.price)  : '—' },
     { l: 'Down payment',           v: d.down    ? d.down + '%'          : '—' },
     { l: 'Gross annual rent',      v: d.rent    != null ? fmt(d.rent)   : '—' },

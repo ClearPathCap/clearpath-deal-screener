@@ -244,14 +244,16 @@ const CLEAR_RESULT = { flip: clearLastFlipResult, rental: clearLastRentalResult,
 const REVIEW_FIELDS = {
   flip: [['f-addr','addr','t'], ['f-ask','ask','$'], ['f-arv','arv','$'], ['f-rep','rep','$'], ['f-hold','hold','n'],
          ['f-cc1','cc1','n'], ['f-cc2','cc2','n'], ['f-carry','carry','$'], ['f-target','target','$'], ['sqft','sqft','n0'],
-         ['f-loan','loan','$0'], ['f-rate','rate','x100'], ['f-points','points','x100']],
+         ['f-loan','loan','$0'], ['f-rate','rate','x100'], ['f-points','points','x100'],
+         ['f-ptype','ptype','sel'], ['f-units','units','n0']],   // A4: optional facts — a record without them resets to blank
   ltr:  [['l-addr','addr','t'], ['l-price','price','$'], ['l-rent','rent','$'], ['l-units','units','n'], ['l-down','down','n'],
          ['l-vac','vac','n'], ['l-tax','tax','$','taxStatus'], ['l-ins','ins','$','insStatus'], ['l-hoa','hoa','$'], ['l-util','util','$'], ['l-maint','maint','n'],
          ['l-pm','pm','pm'], ['l-capex','capex','n'], ['l-rate','rate','n'], ['l-amort','amort','n'], ['l-points','points','n'],
          ['l-cc','cc','n'], ['l-target','target','n'], ['l-ptype','ptype','sel']],
   rental: [['v-addr','addr','t'], ['v-price','price','$'], ['v-rent','rent','$'], ['v-down','down','n'], ['v-occ','occ','n'],
            ['v-mgmt','mgmt','n'], ['v-pm','pm','pm'], ['v-tax','tax','$','taxStatus'], ['v-maint','maint','$'], ['v-util','util','$'], ['v-hoa','hoa','$'], ['v-furnish','furnish','$'],
-           ['v-target','tgtCoc','n'], ['v-interest-rate','interestRate','x100']],
+           ['v-target','tgtCoc','n'], ['v-interest-rate','interestRate','x100'],
+           ['v-ptype','ptype','sel'], ['v-units','units','n0']],   // A4: optional facts — a record without them resets to blank
   brrr: [['b-addr','addr','t'], ['b-price','price','$'], ['b-rehab','rehab','$'], ['b-arv','arv','$'], ['b-rent','rent','$'],
          ['b-units','units','n'], ['b-contingency','contingency','n'], ['b-cc','cc','n'], ['b-hold','hold','n'], ['b-carry','carry','$'],
          ['b-acqloan','acqLoan','$0'], ['b-acqrate','acqRate','n'], ['b-acqpoints','acqPoints','n'], ['b-refiltv','refiLtv','n'],
@@ -294,7 +296,15 @@ function reviewSetField(id, value, kind, status) {
 // (the HTML value attribute, or blank) and stays unprotected.
 function reviewResetField(id, kind) {
   const el = document.getElementById(id);
-  if (!el || kind === 'sel') return;
+  if (!el) return;
+  if (kind === 'sel') {
+    // A4: an OPTIONAL select (one that offers a blank "Not specified" option)
+    // resets to unknown; the LTR / BRRRR type selects have no blank option and
+    // keep their current value exactly as before.
+    const opts = el.options ? [...el.options].map(o => o.value) : null;
+    if (opts && opts.includes('')) el.value = '';
+    return;
+  }
   el.value = el.defaultValue != null ? String(el.defaultValue) : '';
   delete el.dataset.userEdited;
   delete el.dataset.autoFilled;
@@ -506,6 +516,7 @@ function clearNewDeal(type) {
     const targetEl = document.getElementById('f-target');
     if (targetEl) { delete targetEl.dataset.userEdited; targetEl.value = '40,000'; }
     document.getElementById('self-reno').checked = false; // item 7: default unchecked (70% rule)
+    { const s = document.getElementById('f-ptype'); if (s) s.value = ''; const u = document.getElementById('f-units'); if (u) u.value = ''; }   // A4: unknown again
     resetFlip();
     renderMarketSlots('flip-slots', 'flip');
     const btn = document.getElementById('flip-save-btn');
@@ -550,6 +561,7 @@ function clearNewDeal(type) {
     document.getElementById('v-maint').value          = '3,000';
     document.getElementById('v-furnish').value        = '15,000';
     { const h = document.getElementById('v-hoa'); if (h) h.value = '0'; }   // Wave A · A2: explicit $0 default (confirmed no HOA)
+    { const s = document.getElementById('v-ptype'); if (s) s.value = ''; const u = document.getElementById('v-units'); if (u) u.value = ''; }   // A4: unknown again
     document.getElementById('v-target').value         = 6;
     document.getElementById('v-interest-rate').value  = 6.75;
     document.getElementById('self-manage-toggle').checked = false; // default: hired PM

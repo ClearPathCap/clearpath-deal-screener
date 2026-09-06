@@ -50,6 +50,23 @@ function hoaBasisHandoff(v) {
   return n > 0 ? 'applies' : 'none';
 }
 
+// ─── Wave A · A4 (2026-09-06): optional property facts on STR / F&F ──────────
+// `units` and `ptype` travel ONLY when the user supplied them — a blank stays
+// unknown at CPC (which may then ask), never a fabricated SFR / 1. The one
+// translation mirrors LTR / BRRRR: the "5–8 Unit" / "9+ Unit" options are sent
+// as CPC's "Multifamily" (CPC has no 5–8 option). No `band` is emitted for
+// STR / F&F — CPC never reads it, and DealFit's STR / flip gating does not
+// depend on it, so the value would be an inference with no consumer.
+function optionalUnitsHandoff(units) {
+  const n = +units;
+  return Number.isFinite(n) && n >= 1 ? Math.round(n) : undefined;
+}
+function optionalPtypeHandoff(ptype) {
+  const t = ptype == null ? '' : String(ptype).trim();
+  if (!t) return undefined;
+  return /^(5[–-]8|9\+)\s*Unit/i.test(t) ? 'Multifamily' : t;
+}
+
 // ─── Carry the screener's economics into the CPC handoff (LTR/BRRR income deals) ──
 // so CPC DISPLAYS the operator-view math rather than re-deriving a conflicting one.
 // r already holds everything (lastLtrResult/lastBrrrResult) — pass through, no recompute.
@@ -117,6 +134,8 @@ function buildDealParams(r) {
       ltc:     rawLoan !== undefined && cost ? rawLoan / cost : undefined,
       gateLoan,
       gateLtc: cost ? gateLoan / cost : undefined,
+      ptype:   optionalPtypeHandoff(r.ptype),      // A4: only when supplied
+      units:   optionalUnitsHandoff(r.units),      // A4: only when supplied
       addr:    r.addr || undefined,
       city, state,
       purpose: 'flip',
@@ -176,6 +195,8 @@ function buildDealParams(r) {
     // key, sends neither, and CPC keeps its legacy "Not sure" rule.
     monthlyHoa: r.hoa == null ? undefined : Math.round(r.hoa),
     hoaStatus: hoaBasisHandoff(r.hoa),
+    ptype:   optionalPtypeHandoff(r.ptype),      // A4: only when supplied
+    units:   optionalUnitsHandoff(r.units),      // A4: only when supplied
     addr:    r.addr || undefined,
     city, state,
     purpose: 'str',
@@ -220,6 +241,8 @@ function buildFlipSummary(r, tag) {
   const lines = [
     'DEAL SCREENER SUMMARY — Fix & Flip',
     r.addr ? 'Address: ' + r.addr : null,
+    r.ptype ? 'Property Type: ' + r.ptype : null,          // A4: only when supplied
+    (r.units > 1 ? 'Units: ' + r.units : null),
     'Verdict: ' + r.verdict,
     tag,
     '---',
@@ -251,6 +274,8 @@ function buildRentalSummary(r, tag) {
   const lines = [
     'DEAL SCREENER SUMMARY — STR / Rental',
     r.addr ? 'Address: ' + r.addr : null,
+    r.ptype ? 'Property Type: ' + r.ptype : null,          // A4: only when supplied
+    (r.units > 1 ? 'Units: ' + r.units : null),
     'Verdict: ' + (expOk ? r.verdict : strP.label),
     tag,
     strExpenseSummaryWarning(tStat),

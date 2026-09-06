@@ -82,6 +82,12 @@ export function analyzeFlip() {
   const target = parseComma(document.getElementById('f-target').value) || 40000;
   const sqft   = +document.getElementById('sqft').value || 0;
   const self   = document.getElementById('self-reno').checked;
+  // Wave A · A4: optional property facts (handoff only). Blank stays unknown — no
+  // default is ever assumed, stored or serialized; the flip math ignores both.
+  const ptypeEl = document.getElementById('f-ptype');
+  const ptype   = ptypeEl && ptypeEl.value ? String(ptypeEl.value).trim() : null;
+  const unitsEl = document.getElementById('f-units');
+  const units   = unitsEl && unitsEl.value !== '' && unitsEl.value != null ? +unitsEl.value : null;
   if (!ask || !arv) { return; } // validation handled by wrapper in main.js
 
   // Financing model (opt-in, estimates only). Blank loan = all-cash view: numbers
@@ -103,6 +109,7 @@ export function analyzeFlip() {
     cc1: incomplete('f-cc1') ? NaN : cc1 * 100, cc2: incomplete('f-cc2') ? NaN : cc2 * 100,
     rate: incomplete('f-rate') ? NaN : rate * 100, points: incomplete('f-points') ? NaN : points * 100,
     hold: incomplete('f-hold') ? NaN : hold, sqft: incomplete('sqft') ? NaN : sqft,
+    ...(units == null && !incomplete('f-units') ? {} : { units: incomplete('f-units') ? NaN : units }),   // A4: validated only when supplied
   });
   if (renderInputIssues('flip', vErr.errors, vErr.warnings)) {
     document.getElementById('flip-results').style.display = 'none';
@@ -199,6 +206,7 @@ export function analyzeFlip() {
 
   lastFlipResult = {
     type: 'flip', addr, ask, arv, rep, hold,
+    ptype, units,                 // A4: null when the user left them unknown (never SFR / 1)
     cc1: +document.getElementById('f-cc1').value,
     cc2: +document.getElementById('f-cc2').value,
     carry, target, sqft, self,

@@ -272,5 +272,34 @@ console.log('— §11 Wave A · A2: STR states its HOA basis (2026-09-06) —');
   ok(Math.abs((s0.noi - s150.noi) - 1800) < 1e-9, '§11 [A2] the engine charges HOA exactly once, annualized (150 × 12 = 1,800 off NOI)');
 }
 
+console.log('— §12 Wave A · A4: optional property facts on STR / F&F — unknown stays unknown —');
+{
+  const strRec = (extra) => ({ type: 'rental', addr: '5 Shore Rd, Wilmington NC 28401', price: 400000, down: 20, rent: 90000, occ: 65, mgmt: 3, pm: 8, tax: 4000, taxStatus: 'valid', maint: 2000, furnish: 15000, util: 0, hoa: 0,
+    tgtCoc: 6, interestRate: 0.0675, cls: 'warm', verdict: 'x', coc: 5, capRate: 6, dscr: 1.2, cashflow: 1000, ...extra });
+  const flipRec = (extra) => ({ type: 'flip', ask: 225000, rep: 75000, arv: 425000, loan: 250000, addr: '412 Oak St, Charlotte NC', verdict: 'Strong Flip', cls: 'hot', hot: true, profit: 60000, roi: 20, financed: true, hold: 6, self: false, ...extra });
+  // Blank facts (the analyzer stores null) → no keys, never a default.
+  const pS = paramsOf(viaAnalyzer(strRec({ ptype: null, units: null })));
+  ok(!('ptype' in pS) && !('units' in pS) && !('band' in pS), '§12 [A4] STR with unknown type / units sends no ptype, units or band (never SFR / 1)');
+  eq(keysOf(viaAnalyzer(strRec({ ptype: null, units: null }))), 'addr,annualUtilities,city,exit,hoaStatus,loan,monthlyHoa,pp,purpose,src,state,tier', '§12 [A4] STR key set unchanged when the facts are unknown');
+  const pF = paramsOf(viaAnalyzer(flipRec({ ptype: null, units: null })));
+  ok(!('ptype' in pF) && !('units' in pF) && !('band' in pF), '§12 [A4] F&F with unknown type / units sends no ptype, units or band');
+  eq(keysOf(viaAnalyzer(flipRec({ ptype: null, units: null }))), 'addr,arv,city,exit,loan,pp,purpose,rehab,src,state,tier', '§12 [A4] F&F 11-key contract unchanged when the facts are unknown');
+  // Supplied facts travel verbatim; the 5–8 / 9+ options translate to CPC's Multifamily (LTR / BRRRR law).
+  const pS2 = paramsOf(viaPipeline(strRec({ ptype: '2–4 Unit', units: 3 }), 50));
+  eq(pS2.ptype, '2–4 Unit', '§12 [A4] a supplied STR type travels verbatim'); eq(pS2.units, '3', '§12 [A4] a supplied STR unit count travels'); ok(!('band' in pS2), '§12 [A4] no band is emitted for STR (CPC derives it from units)');
+  const pF2 = paramsOf(viaPipeline(flipRec({ ptype: 'Condo', units: 1 }), 51));
+  eq(pF2.ptype, 'Condo', '§12 [A4] a supplied F&F type travels verbatim'); eq(pF2.units, '1', '§12 [A4] a supplied unit count of 1 travels because the USER supplied it');
+  eq(paramsOf(viaPipeline(strRec({ ptype: '5–8 Unit', units: 6 }), 52)).ptype, 'Multifamily', '§12 [A4] "5–8 Unit" → Multifamily (CPC has no 5–8 option)');
+  eq(paramsOf(viaPipeline(flipRec({ ptype: '9+ Unit', units: 12 }), 53)).ptype, 'Multifamily', '§12 [A4] "9+ Unit" → Multifamily');
+  ok(!('units' in paramsOf(viaPipeline(strRec({ units: 0 }), 54))) && !('units' in paramsOf(viaPipeline(strRec({ units: -2 }), 55))), '§12 [A4] a non-positive unit count is omitted, never repaired');
+  ok(!('ptype' in paramsOf(viaPipeline(strRec({ ptype: '   ' }), 56))), '§12 [A4] a whitespace type is omitted');
+  // Pre-A4 records (no keys at all) behave exactly as before.
+  const legacy = strRec({}); delete legacy.ptype; delete legacy.units;
+  eq(keysOf(viaPipeline(legacy, 57)), 'addr,annualUtilities,city,exit,hoaStatus,loan,monthlyHoa,pp,purpose,src,state,tier', '§12 [A4] a pre-A4 STR record keeps its key set');
+  // LTR / BRRRR are untouched by A4 (their type / units law was already in force).
+  const pL = paramsOf(viaPipeline(ltrResult({ ...ORANGE_IN, down: 25, util: 0 }), 58));
+  eq(pL.ptype, 'SFR', '§12 [A4] LTR still sends its selected type'); eq(pL.units, '1', '§12 [A4] LTR still sends its unit count'); eq(pL.band, '1-4', '§12 [A4] LTR still sends band');
+}
+
 console.log(`\nhandoffutil: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

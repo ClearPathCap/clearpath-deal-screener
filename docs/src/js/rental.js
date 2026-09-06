@@ -70,6 +70,12 @@ export function analyzeRental() {
   const tgtCoc  = +document.getElementById('v-target').value || 6;
   // Item 14: editable interest rate field — default 6.75%
   const interestRate = (+document.getElementById('v-interest-rate')?.value || 6.75) / 100;
+  // Wave A · A4: optional property facts (handoff only). Blank stays unknown — no
+  // default is ever assumed, stored or serialized; the STR math ignores both.
+  const ptypeEl = document.getElementById('v-ptype');
+  const ptype   = ptypeEl && ptypeEl.value ? String(ptypeEl.value).trim() : null;
+  const unitsEl = document.getElementById('v-units');
+  const units   = unitsEl && unitsEl.value !== '' && unitsEl.value != null ? +unitsEl.value : null;
   if (!price || !rent) { return; } // empty-required handled by main.js wrapper
 
   // B2 (STR): validate pre-compute — out-of-range inputs abort (no compute, no "Strong
@@ -86,6 +92,7 @@ export function analyzeRental() {
     rate:  numRaw('v-interest-rate'),
     tgtCoc: numRaw('v-target'),
     tax: taxRaw, maint, furnish, hoa,
+    ...(units == null && !inputIsIncomplete(unitsEl) ? {} : { units: inputIsIncomplete(unitsEl) ? NaN : units }),   // A4: validated only when supplied
   };
   const { errors: strErrors } = validateInputs('str', strRaw);
   if (renderInputIssues('rental', strErrors, [])) {
@@ -139,6 +146,7 @@ export function analyzeRental() {
 
   lastRentalResult = {
     type: 'rental', addr, price,
+    ptype, units,                 // A4: null when the user left them unknown (never SFR / 1)
     down:         +document.getElementById('v-down').value,
     rent,
     occ:          +document.getElementById('v-occ').value,

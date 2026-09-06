@@ -97,6 +97,25 @@
     <label>Address <span>(optional)</span></label>
     <input type="text" id="f-addr" placeholder="123 Oak Street, Charlotte NC">
   </div>
+  <!-- Wave A · A4 (2026-09-06): optional property facts for the CPC handoff. Blank = unknown — nothing is defaulted, stored or serialized until the user supplies it; no flip computation depends on either. -->
+  <div class="field-row">
+    <div class="field">
+      <label>Property Type <span>(optional)</span></label>
+      <select id="f-ptype">
+        <option value="">Not specified</option>
+        <option>SFR</option>
+        <option>2–4 Unit</option>
+        <option>5–8 Unit</option>
+        <option>9+ Unit</option>
+        <option>Condo</option>
+        <option>Townhome</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Units <span>(optional)</span></label>
+      <div class="input-wrap"><input type="number" id="f-units" class="has-sfx" min="1" step="1" placeholder="e.g. 1"><span class="sfx">#</span></div>
+    </div>
+  </div>
   <div class="field-row">
     <div class="field">
       <label>Asking Price</label>
@@ -310,6 +329,25 @@
   <div class="field full">
     <label>Address <span>(optional)</span></label>
     <input type="text" id="v-addr" placeholder="6001 South Kings Hwy, Myrtle Beach SC">
+  </div>
+  <!-- Wave A · A4 (2026-09-06): optional property facts for the CPC handoff. Blank = unknown — nothing is defaulted, stored or serialized until the user supplies it; no STR computation depends on either. -->
+  <div class="field-row">
+    <div class="field">
+      <label>Property Type <span>(optional)</span></label>
+      <select id="v-ptype">
+        <option value="">Not specified</option>
+        <option>SFR</option>
+        <option>2–4 Unit</option>
+        <option>5–8 Unit</option>
+        <option>9+ Unit</option>
+        <option>Condo</option>
+        <option>Townhome</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Units <span>(optional)</span></label>
+      <div class="input-wrap"><input type="number" id="v-units" class="has-sfx" min="1" step="1" placeholder="e.g. 1"><span class="sfx">#</span></div>
+    </div>
   </div>
   <div class="field-row">
     <div class="field">

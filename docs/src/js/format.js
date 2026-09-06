@@ -136,11 +136,64 @@ export function buildRows(rows) {
   ).join('');
 }
 
+// ─── Wave A · A6 (2026-09-06): first blocking field navigation ───────────────
+// Owner/GPT ruling (live Android defect: Analyze tapped with a required field
+// missing above the viewport — nothing visibly happened). When Analyze is
+// blocked, the FIRST blocking field is scrolled into a useful position, focused
+// (without a second scroll), given accessible invalid semantics
+// (aria-invalid + aria-describedby → its visible message), and announced through
+// one polite live region per analyzer. Exactly one reveal per run; no other
+// input is ever written. Shared by both error paths: the required / malformed
+// loop in main.js and the range / incomplete path below.
+const _marked = new Map();   // prefix → Set of elements carrying our aria marks
+function ensureLiveRegion(prefix) {
+  let r = document.getElementById(prefix + '-a11y-status');
+  if (!r && typeof document.createElement === 'function') {
+    r = document.createElement('div');
+    r.id = prefix + '-a11y-status';
+    r.className = 'sr-only';
+    if (r.setAttribute) { r.setAttribute('role', 'status'); r.setAttribute('aria-live', 'polite'); }
+    const anchor = document.getElementById(prefix + '-results');
+    anchor?.parentNode?.insertBefore?.(r, anchor);
+  }
+  return r || null;
+}
+export function revealBlockingField(fieldId, message, prefix) {
+  const el = document.getElementById(fieldId);
+  if (!el) return false;
+  const msgId = fieldId + '-error';
+  if (typeof el.setAttribute === 'function') {
+    el.setAttribute('aria-invalid', 'true');
+    if (document.getElementById(msgId)) el.setAttribute('aria-describedby', msgId);
+  }
+  if (prefix) {
+    if (!_marked.has(prefix)) _marked.set(prefix, new Set());
+    _marked.get(prefix).add(el);
+    const live = ensureLiveRegion(prefix);
+    if (live) live.textContent = message || 'Please correct the highlighted field.';
+  }
+  const reduced = typeof matchMedia === 'function' && !!matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+  if (typeof el.focus === 'function') { try { el.focus({ preventScroll: true }); } catch { el.focus(); } }
+  return true;
+}
+// A valid run clears the marks of the previous blocked run (and the announcement).
+export function clearBlockingMarks(prefix) {
+  const set = _marked.get(prefix);
+  if (set) {
+    for (const el of set) { el.removeAttribute?.('aria-invalid'); el.removeAttribute?.('aria-describedby'); }
+    set.clear();
+  }
+  const live = document.getElementById(prefix + '-a11y-status');
+  if (live) live.textContent = '';
+}
+
 // ─── Inline input errors / warnings (B2) ──────────────────────────────────────
 // Renders blocking errors + soft warnings into a box above `<prefix>-results`
 // (created on first use). Returns true when there is at least one blocking error
 // (caller aborts compute). Pure-DOM; safe to leave unused in Node (document only
-// touched when called).
+// touched when called). A6: each error row carries `<field>-error` so the field's
+// aria-describedby can point at it, and the first blocking field is revealed.
 export function renderInputIssues(prefix, errors, warnings) {
   let box = document.getElementById(prefix + '-input-errors');
   if (!box) {
@@ -150,9 +203,14 @@ export function renderInputIssues(prefix, errors, warnings) {
     const anchor = document.getElementById(prefix + '-results');
     anchor?.parentNode?.insertBefore(box, anchor);
   }
-  const e = (errors || []).map(x => `<div class="input-error">⚠ ${x.label}: ${x.message}</div>`).join('');
+  const e = (errors || []).map(x => `<div class="input-error" id="${x.field}-error">⚠ ${x.label}: ${x.message}</div>`).join('');
   const w = (warnings || []).map(x => `<div class="input-warn">• ${x.label}: ${x.message}</div>`).join('');
   box.innerHTML = e + w;
   box.style.display = (e || w) ? 'block' : 'none';
-  return errors && errors.length > 0; // true = blocked
+  if (errors && errors.length > 0) {
+    revealBlockingField(errors[0].field, `${errors[0].label}: ${errors[0].message}`, prefix);   // A6: one reveal, the first error
+    return true;   // blocked
+  }
+  clearBlockingMarks(prefix);   // A6: a run that reaches here without errors is valid
+  return false;
 }

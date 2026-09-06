@@ -17,7 +17,7 @@ import { saveDeal as _saveDeal, renderPipeline,
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
-import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct, escapeHtml } from './format.js';
+import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct, escapeHtml, revealBlockingField, clearBlockingMarks } from './format.js';
 import { propertyBand, BAND_RULES,
          computeNegotiationScenario, flipProfitClass, mosLabel,
          ltrGuidance }                                                from './finance.js';
@@ -1038,6 +1038,14 @@ function validateRequiredFields(type) {
     : [{ id: 'v-price', label: 'Purchase Price' }, { id: 'v-rent', label: 'Potential Annual Revenue' }];
 
   let valid = true;
+  // A6: the FIRST blocking field in document order gets revealed (scroll, focus,
+  // aria, announcement) — see revealBlockingField. `earlier` keeps document order
+  // when the DOM can tell us; the required loop already runs in form order.
+  const prefix = type === 'rental' ? 'rental' : type;
+  let first = null;
+  const earlier = (a, b) => (a && a.el && typeof a.el.compareDocumentPosition === 'function' && typeof Node !== 'undefined'
+    ? !!(b.el.compareDocumentPosition(a.el) & Node.DOCUMENT_POSITION_FOLLOWING) : false);
+  const noteBlocking = (el, message) => { const c = { el, id: el.id, message }; if (!first || earlier(c, first)) first = c; };
   fields.forEach(f => {
     const el  = document.getElementById(f.id);
     if (!el) return;
@@ -1047,11 +1055,14 @@ function validateRequiredFields(type) {
     if (!msg && wrap) {
       msg = document.createElement('div');
       msg.className = 'validation-msg';
+      msg.id = f.id + '-error';   // A6: the field's aria-describedby target
       wrap.appendChild(msg);
     }
+    if (msg && !msg.id) msg.id = f.id + '-error';
     if (!val || parseComma(val) === 0) {
       el.classList.add('field-error');
       if (msg) msg.textContent = 'Required — enter ' + f.label;
+      noteBlocking(el, 'Required — enter ' + f.label);
       valid = false;
     } else {
       el.classList.remove('field-error');
@@ -1080,12 +1091,18 @@ function validateRequiredFields(type) {
       if (!msg && wrap) {
         msg = document.createElement('div');
         msg.className = 'validation-msg';
+        msg.id = el.id + '-error';   // A6
         wrap.appendChild(msg);
       }
+      if (msg && !msg.id) msg.id = el.id + '-error';
       if (msg) msg.textContent = 'Enter a valid dollar amount';
+      noteBlocking(el, 'Enter a valid dollar amount');
       valid = false;
     });
   }
+  // A6: exactly one reveal per blocked run; a valid run clears the previous marks.
+  if (!valid && first) revealBlockingField(first.id, first.message, prefix);
+  else if (valid) clearBlockingMarks(prefix);
   return valid;
 }
 

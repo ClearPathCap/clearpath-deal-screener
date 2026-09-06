@@ -486,6 +486,8 @@ body.beginner-mode span.beginner-only{display:inline}
 /* VALIDATION */
 input.field-error{border-color:var(--danger)!important}
 .validation-msg{font-size:11px;color:var(--danger);margin-top:3px}
+/* Wave A · A6: visually-hidden live region that announces the first blocking field */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 /* F-3: malformed currency input — flagged in place, never reshaped */
 input.input-invalid{border-color:var(--danger)!important}
 .currency-msg{font-size:11px;color:var(--danger);margin-top:3px}

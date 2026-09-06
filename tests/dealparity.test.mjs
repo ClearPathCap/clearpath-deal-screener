@@ -147,15 +147,22 @@ ok("E2: ltr.js shows the affordance after a valid analysis and hides it while in
    /elv\('lv-whatif'\)/.test(ltrJs) && /whatif\.style\.display = insP \? 'none' : ''/.test(ltrJs));
 ok("E3: flip's own affordance is untouched (fv-whatif → 'analyzer')",
    /id="fv-whatif"/.test(html) && /showMaxOfferScenario\('analyzer'\)/.test(html));
-ok("E4: pipeline badge gate — flip literal PRESERVED, LTR added, STR/BRRR excluded",
-   /\(d\.type === 'flip' && !insP && data\.maxOffer > 0\) \|\| \(d\.type === 'ltr' && !insP && data\.price > 0\)/.test(plJs)
+// Wave A · A10 re-pin (same-commit law): the LTR gate now requires the RENT
+// basis as well as the price — ltrGuidance returns null without rent
+// (finance.js `if (!(inp.price > 0) || !(inp.rentMo > 0)) return null`), and
+// showMaxOfferScenario returns before opening on null, so a price-only gate
+// rendered an actionable badge that opened nothing.
+ok("E4: pipeline badge gate — flip literal PRESERVED, LTR requires price AND rent, STR/BRRR excluded",
+   /\(d\.type === 'flip' && !insP && data\.maxOffer > 0\) \|\| \(d\.type === 'ltr' && !insP && data\.price > 0 && data\.rent > 0\)/.test(plJs)
    && !/d\.type === 'rental' && !insP/.test(plJs) && !/d\.type === 'brrr' && !insP/.test(plJs));
+ok("E4b: the LTR gate mirrors the engine's own precondition (price AND rent)",
+   /if \(!\(inp\.price > 0\) \|\| !\(inp\.rentMo > 0\)\) return null;/.test(src("docs/src/js/finance.js")));
 ok("E5: badge button title is per type", /title="\$\{d\.type === 'ltr' \? 'See what to dig into' : /.test(plJs));
 ok("E6: exactly 2 badge slots per card (button + inert div) — no duplicate badge",
    (plJs.slice(plJs.indexOf('function buildDealCard')).match(/class="deal-badge/g) || []).length === 2);
 ok("E7: LTR detail carries the isolated guidance action (stopPropagation first), never while pending",
    /function buildLtrDetail\(d, deal\)/.test(plJs)
-   && /deal && !pend && d\.price > 0/.test(plJs)
+   && /deal && !pend && d\.price > 0 && d\.rent > 0/.test(plJs)   // A10: rent basis required
    && /class="whatif-link" onclick="event\.stopPropagation\(\);showMaxOfferScenario\(\$\{deal\.id\}\)">See what to dig into →<\/button>/.test(plJs)
    && /buildLtrDetail\(data, d\)/.test(plJs));
 ok("E8: flip detail's own whatif-link is unchanged (parity, not replacement)",

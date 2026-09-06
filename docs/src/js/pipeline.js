@@ -365,7 +365,11 @@ function buildLtrDetail(d, deal) {
   const pend = unresolvedInsPresentation('ltr', d) != null;
   // Parity corrective: the same isolated guidance action the flip detail
   // carries — never while income is pending (the verdict itself is pending).
-  const guide = (deal && !pend && d.price > 0)
+  // Wave A · A10 (2026-09-06): ltrGuidance needs BOTH a price and a rent basis
+  // (finance.js: `if (!(inp.price > 0) || !(inp.rentMo > 0)) return null`), so
+  // the affordance is offered only when the modal can actually open — never an
+  // actionable control that does nothing.
+  const guide = (deal && !pend && d.price > 0 && d.rent > 0)
     ? `<button class="whatif-link" onclick="event.stopPropagation();showMaxOfferScenario(${deal.id})">See what to dig into →</button>`
     : '';
   return guide + detailSection('Long-Term Rental (DSCR)', [
@@ -467,7 +471,7 @@ function buildDealCard(d) {
             ${address}
             <div class="deal-region">${dealRegionLabel(d.type)}</div>
           </div>
-          ${((d.type === 'flip' && !insP && data.maxOffer > 0) || (d.type === 'ltr' && !insP && data.price > 0))
+          ${((d.type === 'flip' && !insP && data.maxOffer > 0) || (d.type === 'ltr' && !insP && data.price > 0 && data.rent > 0))
             /* LIVE DEFECT FIX: the verdict badge was an inert div inside the
                header's toggleDeal delegation, so tapping "COUNTER AT MAX
                OFFER" only expanded the card. A verdict with a governed

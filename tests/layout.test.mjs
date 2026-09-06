@@ -268,6 +268,21 @@ ok("plan Close row is sticky and reachable while scrolling",
    /#modal-maxoffer \.modal-actions\{position:sticky;bottom:-22px/.test(css) &&
    /background:var\(--surface\)/.test((css.match(/#modal-maxoffer \.modal-actions\{[^}]*\}/) || [''])[0]));
 
+// ── Wave A · A8 (2026-09-06): the funding CTA sits ABOVE the long breakdown ──
+// Owner/GPT ruling: the STR CTA was never missing for eligible deals; the
+// defect was discoverability on a phone (verdict + tiles + a 13-row breakdown
+// above it). The ONE container per analyzer now follows the metric tiles and
+// precedes the breakdown. Renderer, gating and the canonical handoff builder
+// are untouched — placement only, and still exactly one implementation.
+for (const id of ['flip', 'rental', 'ltr', 'brrr']) {
+  const results = html.slice(html.indexOf(`id="${id}-results"`));
+  const metrics = results.indexOf(`id="${id}-metrics"`), cta = results.indexOf(`id="${id}-funding-btn"`), bd = results.indexOf(`id="${id}-breakdown"`);
+  ok(`A8: ${id} funding CTA renders after the metric tiles and BEFORE the breakdown`, metrics > -1 && cta > metrics && bd > cta);
+  ok(`A8: ${id} has exactly one funding container (no second implementation)`, (html.match(new RegExp(`id="${id}-funding-btn"`, 'g')) || []).length === 1);
+}
+ok("A8: the analyzer CTA still renders through clearpath.js maybeShowFundingButton into BTN_IDS (unchanged renderer)",
+   /const BTN_IDS = \{ flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: 'ltr-funding-btn', brrr: 'brrr-funding-btn' \};/.test(src("docs/src/js/clearpath.js")));
+
 console.log(`\nlayout: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Nav-lock invariants hold ✓");

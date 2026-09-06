@@ -274,6 +274,7 @@ function reviewSetField(id, value, kind, status) {
   // auto-fill can never resurrect a value the user removed. A record without
   // the key at all (pre-A1) resets unprotected below, as every other field.
   if (value === null && /-(city|state)$/.test(id)) { el.value = ''; el.dataset.explicitBlank = '1'; delete el.dataset.userEdited; delete el.dataset.autoFilled; return true; }
+  delete el.dataset.explicitBlank;   // any other value, or a different record, releases a marker left by an earlier review (verification corrective, pass 2)
   if (status === 'missing') {          // pending taxes / insurance: blank, and protected from presets
     el.value = ''; el.dataset.userEdited = '1'; delete el.dataset.autoFilled; return true;
   }
@@ -303,6 +304,7 @@ function reviewSetField(id, value, kind, status) {
 function reviewResetField(id, kind) {
   const el = document.getElementById(id);
   if (!el) return;
+  delete el.dataset.explicitBlank;   // a record without the key resets fully unprotected (verification corrective, pass 2)
   if (kind === 'sel') {
     // A4: an OPTIONAL select (one that offers a blank "Not specified" option)
     // resets to unknown; the LTR / BRRRR type selects have no blank option and
@@ -350,6 +352,7 @@ function reviewDeal(id) {
   clearStaleWatch(type);
   const hide = (elId, wipe) => { const e = document.getElementById(elId); if (!e) return; e.style.display = 'none'; if (wipe) { e.innerHTML = ''; } };
   hide(RESULTS_ID[type]); hide(type + '-input-errors', true);
+  clearBlockingMarks(type === 'rental' ? 'rental' : type);   // A6: the rows just wiped were describedby targets — release the marks with them
   // Verification corrective 2026-09-06 (pre-existing since f41337c): the funding
   // container used to get display:none here and NOTHING ever restored it, so
   // after a review the CTA never rendered again until reload. The results panel
@@ -411,7 +414,10 @@ function cancelDealReview(type) {
   return { status: 'cancelled' };
 }
 function releaseReviewProtection(type) {
-  for (const fid of reviewPrefilledIds[type] || []) { const el = document.getElementById(fid); if (el) delete el.dataset.userEdited; }
+  // Ending or cancelling a review releases BOTH protections the prefill set —
+  // userEdited and the A1 explicitBlank marker — so nothing leaks into the next
+  // record or the next deal on this analyzer (verification corrective, pass 2).
+  for (const fid of reviewPrefilledIds[type] || []) { const el = document.getElementById(fid); if (el) { delete el.dataset.userEdited; delete el.dataset.explicitBlank; } }
   reviewPrefilledIds[type] = [];
 }
 // Deleting the deal under review ends the review (pipeline.js owns the delete).
@@ -547,6 +553,9 @@ function clearNewDeal(type) {
   // protection so market presets and band defaults apply to the next deal.
   releaseReviewProtection(type);
   clearStaleWatch(type);
+  // A6: a fresh deal starts with no validation state — marks, live region and the
+  // range/incomplete error box all go (verification corrective, pass 2).
+  { const prefix = type === 'rental' ? 'rental' : type; clearBlockingMarks(prefix); const box = document.getElementById(prefix + '-input-errors'); if (box) { box.innerHTML = ''; box.style.display = 'none'; } }
   resetAnalyzerProtection(type);
   { const rid = getReviewingDealId(); const rd = rid != null ? getDeals().find(d => d.id === rid) : null; if (rid != null && (!rd || rd.type === type)) cancelDealReview(type); }
   if (type === 'flip') {
@@ -1080,6 +1089,9 @@ function validateRequiredFields(type) {
   // when the DOM can tell us; the required loop already runs in form order.
   const prefix = type === 'rental' ? 'rental' : type;
   clearBlockingMarks(prefix);   // A6: aria marks describe THIS run only — a field that passed loses last run's marks
+  // …and so do the visible range / incomplete rows of the previous run: if THIS
+  // run blocks here, the analyzer never reaches renderInputIssues to rebuild them.
+  { const box = document.getElementById(prefix + '-input-errors'); if (box) { box.innerHTML = ''; box.style.display = 'none'; } }
   let first = null;
   // `a` is earlier than `b` when b FOLLOWS a: node.compareDocumentPosition(other)
   // describes OTHER relative to NODE, so a.compareDocumentPosition(b) & FOLLOWING

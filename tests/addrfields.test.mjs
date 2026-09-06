@@ -156,6 +156,13 @@ typed('b-city', 'Carmel');
 ok(el('b-city').value === 'Carmel' && el('b-city').dataset.userEdited === '1' && !el('b-city').dataset.explicitBlank, 'E2b a real keystroke replaces the explicit-blank marker with user-edited');
 el('b-state').dataset.explicitBlank = '1'; globalThis.clearNewDeal('brrr');
 ok(!el('b-state').dataset.explicitBlank && !el('b-city').dataset.userEdited, 'E2c Clear & New Deal releases the marker with the rest of the protection');
+// pass-2 corrective: the marker must not leak across reviews or survive a review exit.
+{
+  const mainSrc = src('docs/src/js/main.js');
+  ok(/delete el\.dataset\.explicitBlank;\s+\/\/ any other value, or a different record, releases a marker/.test(mainSrc), 'E2d reviewSetField releases a leaked marker when a later record carries a real value');
+  ok(/delete el\.dataset\.explicitBlank;\s+\/\/ a record without the key resets fully unprotected/.test(mainSrc), 'E2e reviewResetField releases the marker for a pre-A1 record');
+  ok(/if \(el\) \{ delete el\.dataset\.userEdited; delete el\.dataset\.explicitBlank; \}/.test(mainSrc), 'E2f ending or cancelling a review releases the marker (releaseReviewProtection)');
+}
 
 console.log('— §F source pins —');
 {

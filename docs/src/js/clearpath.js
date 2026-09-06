@@ -15,14 +15,18 @@ const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: '
 // then matched nothing and CPC's City / State arrived blank. The parser now:
 //   • strips a trailing country token (USA / U.S. / United States [of America]);
 //   • accepts a two-letter code OR a full state name, with or without a ZIP;
-//   • PREFERS BLANK OVER WRONG — a state is trusted only when the address
-//     delimits it: the last comma segment IS the state ("…, Myrtle Beach, SC" /
-//     "…, South Carolina 29575"), or the last segment ends in an UPPER-CASE
-//     two-letter code ("…, Myrtle Beach SC"), or a ZIP vouches for the token.
-//     A full state name inside a segment counts only with a ZIP ("Port
-//     Washington", "Mount Washington" are cities). A comma-free address never
-//     auto-fills ("12 Oak Ct", "418 Oak Ct 29577", "1234 Peachtree St NE 30309"
-//     all yield nothing — never CT / NE). Verification corrective 2026-09-06.
+//   • PREFERS BLANK OVER WRONG — a state is trusted only on confident evidence:
+//     a known ZIP that AGREES with the token (the ZIP prefix table below; a
+//     disagreeing ZIP discards the parse), or, with no ZIP, a whole-segment
+//     state ("…, Myrtle Beach, SC" / "…, South Carolina") or an in-segment
+//     upper-case code that is not a directional beside a mixed-case city
+//     ("…, Myrtle Beach SC"). A full state name inside a segment needs an
+//     agreeing ZIP ("Port Washington" is a city). Secondary-address lines
+//     ("Apt B", "Suite 400") are never a city. A comma-free address never
+//     auto-fills. So "12 Oak Ct", "418 Oak Ct 29577", "Unit 2, 418 Oak Ct
+//     29577", "Suite 400, 1234 Peachtree St NE", "12 ELM RD, OAK CT",
+//     "…, Delaware 43015", "…, Mount Washington 21209" all yield nothing.
+//     Verification correctives 2026-09-06 (two passes).
 // Structured City / State inputs on every analyzer are auto-filled from this
 // parse (never over a user's edit) and are what the handoff sends — see
 // addressHandoff below. Exported for the Node suites.
@@ -36,56 +40,85 @@ const STATE_NAMES = {
   'south carolina':'SC','south dakota':'SD','tennessee':'TN','texas':'TX','utah':'UT','vermont':'VT','virginia':'VA',
   'washington':'WA','west virginia':'WV','wisconsin':'WI','wyoming':'WY','district of columbia':'DC',
 };
-// A state token → its two-letter code, or null. Accepts "SC", "sc", "South Carolina".
+// A state token → its two-letter code, or null. Accepts "SC", "sc", "S.C.", "South Carolina".
 export function normalizeStateToken(t) {
-  const x = String(t == null ? '' : t).trim().replace(/\.$/, '');
+  let x = String(t == null ? '' : t).trim();
   if (!x) return null;
-  if (/^[A-Za-z]{2}$/.test(x)) return US_STATES.has(x.toUpperCase()) ? x.toUpperCase() : null;
-  return STATE_NAMES[x.toLowerCase().replace(/\s+/g, ' ')] || null;
+  const undotted = x.replace(/\./g, '');
+  if (/^[A-Za-z]{2}$/.test(undotted)) return US_STATES.has(undotted.toUpperCase()) ? undotted.toUpperCase() : null;
+  return STATE_NAMES[x.replace(/\.$/, '').toLowerCase().replace(/\s+/g, ' ')] || null;
 }
+// USPS three-digit ZIP prefix → state. A ZIP is the one objective witness in a
+// free-text address: when it is present, a state token must AGREE with it or
+// the parse is discarded ("418 Oak Ct 29577" is South Carolina, never CT;
+// "Delaware 43015" is Ohio, never DE; "Mount Washington 21209" is Maryland,
+// never WA). Unknown prefixes (APO / territories) neither vouch nor veto.
+const ZIP3 = [[5,5,'NY'],[6,9,'PR'],[10,27,'MA'],[28,29,'RI'],[30,38,'NH'],[39,49,'ME'],[50,59,'VT'],[60,69,'CT'],[70,89,'NJ'],
+  [100,149,'NY'],[150,196,'PA'],[197,199,'DE'],[200,200,'DC'],[201,201,'VA'],[202,205,'DC'],[206,219,'MD'],[220,246,'VA'],[247,268,'WV'],
+  [270,289,'NC'],[290,299,'SC'],[300,319,'GA'],[320,349,'FL'],[350,369,'AL'],[370,385,'TN'],[386,397,'MS'],[398,399,'GA'],[400,427,'KY'],
+  [430,459,'OH'],[460,479,'IN'],[480,499,'MI'],[500,528,'IA'],[530,549,'WI'],[550,567,'MN'],[570,577,'SD'],[580,588,'ND'],[590,599,'MT'],
+  [600,629,'IL'],[630,658,'MO'],[660,679,'KS'],[680,693,'NE'],[700,714,'LA'],[716,729,'AR'],[730,732,'OK'],[733,733,'TX'],[734,749,'OK'],
+  [750,799,'TX'],[800,816,'CO'],[820,831,'WY'],[832,838,'ID'],[840,847,'UT'],[850,865,'AZ'],[870,884,'NM'],[885,885,'TX'],[889,898,'NV'],
+  [900,961,'CA'],[967,968,'HI'],[970,979,'OR'],[980,994,'WA'],[995,999,'AK']];
+export function zipState(zip5) {
+  const p = parseInt(String(zip5 || '').slice(0, 3), 10);
+  if (!Number.isFinite(p)) return null;
+  for (const [lo, hi, st] of ZIP3) if (p >= lo && p <= hi) return st;
+  return null;
+}
+// A segment that can be a city: letters only, and not a secondary-address line
+// ("Apt B", "Suite 400", "Unit 2", "c/o …", "PO Box …") or a street line (digits).
 const CITY_OK = /^[A-Za-z][A-Za-z .'-]*$/;
+const SECONDARY = /^(apt|apartment|suite|ste|unit|fl|floor|bldg|building|rm|room|c\/o|p\.?o\.? ?box|po box|#)\b/i;
+const DIRECTIONAL = new Set(['NE', 'NW', 'SE', 'SW']);
+const cityOk = (s) => !!s && CITY_OK.test(s) && !SECONDARY.test(s);
 export function parseCityState(addr) {
   if (!addr) return {};
   let s = String(addr).trim();
   s = s.replace(/[,\s]+(?:usa|u\.s\.a\.?|us|u\.s\.?|united states(?: of america)?)\.?\s*$/i, '');   // trailing country token
   const zip = /[ ,]+(\d{5})(?:-\d{4})?\s*$/.exec(s);
-  const hasZip = !!zip;
+  const zipSt = zip ? zipState(zip[1]) : null;          // the ZIP's own state, when the prefix is known
   if (zip) s = s.slice(0, zip.index);
   s = s.trim().replace(/[\s,]+$/, '');
   const parts = s.split(',').map(p => p.trim()).filter(Boolean);
+  // A comma-free address never auto-fills: without a city delimiter every
+  // trailing token — "Ct", "NE", "SC" — is ambiguous. Prefer blank.
+  if (parts.length < 2) return {};
+  const last = parts[parts.length - 1], prev = parts[parts.length - 2];
   let city = null, state = null;
-  if (parts.length >= 2) {
-    // "…, City, ST" · "…, City, South Carolina" · "…, City ST" · "…, City South Carolina"
-    const last = parts[parts.length - 1], prev = parts[parts.length - 2];
-    const whole = normalizeStateToken(last);
-    if (whole) {
-      // "…, City, ST": the previous segment must read as a city. "318 Greenwood
-      // Ave, Washington" is ambiguous (Washington the city or the state?) — with
-      // no ZIP to vouch for the token, prefer blank; with a ZIP keep the state alone.
-      if (CITY_OK.test(prev)) { state = whole; city = prev; }
-      else if (hasZip) state = whole;
-    }
-    else {
-      const words = last.split(/\s+/);
-      for (const k of [1, 2, 3]) {
-        if (words.length <= k) break;                          // the city must keep at least one word
-        const tok = words.slice(-k).join(' ');
-        const st = normalizeStateToken(tok);
-        if (!st) continue;
-        // Inside a segment, a two-letter token is trusted only when typed as a
-        // code (upper case: "Myrtle Beach SC") or vouched for by a ZIP — "Oak Ct"
-        // / "Palm La" stay blank. A full state name is trusted only with a ZIP —
-        // "Port Washington" / "Mount Washington" are cities.
-        const isCode = k === 1 && /^[A-Za-z]{2}$/.test(tok);
-        if (isCode ? (tok === tok.toUpperCase() || hasZip) : hasZip) { state = st; city = words.slice(0, -k).join(' '); }
-        break;
-      }
+  // Accept a state token only when the evidence is confident: a known ZIP that
+  // AGREES with it, or — with no ZIP — a whole-segment state, or an in-segment
+  // upper-case code that is not a directional, beside a mixed-case city.
+  const agreesWithZip = (st) => zipSt !== null && zipSt === st;
+  const contradictsZip = (st) => zipSt !== null && zipSt !== st;
+  const whole = normalizeStateToken(last);
+  if (whole) {
+    // "…, City, ST" · "…, City, South Carolina" — the state is its own segment.
+    if (contradictsZip(whole)) return {};                            // "…, Delaware 43015" is Ohio
+    if (cityOk(prev)) { state = whole; city = prev; }
+    else if (agreesWithZip(whole)) state = whole;                    // "123 Main St, SC 29575" → state only
+  } else {
+    const words = last.split(/\s+/);
+    for (const k of [1, 2, 3]) {
+      if (words.length <= k) break;                                  // the city must keep at least one word
+      const tok = words.slice(-k).join(' ');
+      const st = normalizeStateToken(tok);
+      if (!st) continue;
+      const cityPart = words.slice(0, -k).join(' ');
+      if (contradictsZip(st)) break;                                 // "418 Oak Ct 29577", "Peachtree St NE 30309", "West New York 07093"
+      const isCode = k === 1 && /^[A-Za-z]{2}$/.test(tok.replace(/\./g, ''));
+      let confident;
+      if (agreesWithZip(st)) confident = true;                       // "…, Bridgeport CT 06604"
+      else if (zipSt === null && zip) confident = false;             // an unknown ZIP prefix vouches for nothing
+      else if (isCode) confident = tok === tok.toUpperCase() && !DIRECTIONAL.has(st) && cityPart !== cityPart.toUpperCase();   // "…, Myrtle Beach SC"; never "OAK CT", never "St NE"
+      else confident = false;                                        // a full state name inside a segment needs a ZIP
+      if (confident && cityOk(cityPart)) { state = st; city = cityPart; }
+      else if (confident && agreesWithZip(st)) state = st;           // "…, Unit B, SC 29575"-style: state only, never "Unit B" as a city
+      break;
     }
   }
-  // A comma-free address (parts.length === 1) never auto-fills: without a city
-  // delimiter every trailing token — "Ct", "NE", "SC" — is ambiguous. Prefer blank.
   const out = {};
-  if (city && CITY_OK.test(city)) out.city = city.trim();
+  if (city) out.city = city.trim();
   if (state) out.state = state;
   return out;
 }

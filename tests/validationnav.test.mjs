@@ -159,6 +159,29 @@ globalThis.analyzeRental();
   typed('v-rent', '90,000');
 }
 
+console.log('— §C2 pass-2 correctives: stale rows across paths, Clear & New Deal, malformed-mask aria —');
+{
+  // run N blocks on the RANGE path, run N+1 blocks on the REQUIRED path → the old range row must not linger.
+  typed('v-down', '150'); typed('v-price', '250,000'); typed('v-rent', '90,000'); globalThis.analyzeRental();
+  ok(/v-down-issue/.test((document.getElementById('rental-input-errors') || {}).innerHTML || ''), 'C9a range row rendered');
+  typed('v-down', '20'); el('v-price').value = ''; resetSpies(); globalThis.analyzeRental();
+  const boxHtml = (document.getElementById('rental-input-errors') || {}).innerHTML || '';
+  ok(!/v-down-issue/.test(boxHtml) && document.getElementById('rental-input-errors').style.display === 'none', 'C9 a required-path block wipes the previous run\'s visible range rows (no stale error for a field that passed)');
+  ok(!el('v-down').attrs['aria-invalid'] && el('v-price').attrs['aria-invalid'] === 'true', 'C10 …and its aria marks');
+  // Clear & New Deal resets validation state entirely.
+  typed('v-price', '250,000'); typed('v-down', '150'); globalThis.analyzeRental();
+  globalThis.clearNewDeal('rental');
+  ok(!el('v-down').attrs['aria-invalid'] && !el('v-down').attrs['aria-describedby'] && live() === '' && document.getElementById('rental-input-errors').style.display === 'none', 'C11 Clear & New Deal clears the marks, the live region and the error box');
+  // A malformed currency field keeps the mask's own aria-invalid even when the reveal's marks are cleared.
+  typed('l-price', '12abc'); typed('l-rent', '2,100'); globalThis.analyzeLtr();
+  ok(el('l-price').attrs['aria-invalid'] === 'true' && el('l-price').classList.contains('input-invalid'), 'C12 a malformed amount is revealed and the mask flags it');
+  el('l-rent').value = ''; globalThis.analyzeLtr();   // still malformed; another field also blocks — the malformed one is first in form order
+  ok(el('l-price').attrs['aria-invalid'] === 'true', 'C13 the mask\'s aria-invalid on a still-malformed field survives a later run\'s clear');
+  typed('l-price', '260,000'); typed('l-rent', '2,100'); globalThis.analyzeLtr();
+  ok(!el('l-price').attrs['aria-invalid'] && !el('l-price').classList.contains('input-invalid'), 'C14 …and goes when the amount is fixed');
+  typed('v-price', '250,000'); typed('v-rent', '90,000'); typed('v-down', '20');
+}
+
 console.log('— §D a valid run clears everything and analyzes —');
 typed('v-down', '20'); resetSpies();
 globalThis.analyzeRental();
@@ -197,6 +220,9 @@ console.log('— §H pure helper + source pins —');
   ok(/a\.el\.compareDocumentPosition\(b\.el\) & Node\.DOCUMENT_POSITION_FOLLOWING/.test(mainSrc), 'H8 the document-order comparator reads "b follows a" (operands in spec order)');
   ok(/clearBlockingMarks\(prefix\);\s+\/\/ A6: aria marks describe THIS run only/.test(mainSrc) && /clearBlockingMarks\(prefix\);\s+\/\/ A6: marks describe THIS run only/.test(fmtSrc), 'H9 both paths clear last run\'s marks at the start of a run');
   ok(/id="\$\{x\.field\}-issue"/.test(fmtSrc) && /msg\.id = f\.id \+ '-error'/.test(mainSrc), 'H10 the two message kinds live in distinct id namespaces (-error / -issue) — no duplicate ids');
+  ok(/clearBlockingMarks\(type === 'rental' \? 'rental' : type\);\s+\/\/ A6: the rows just wiped/.test(mainSrc), 'H11 entering a review releases the marks with the rows it wipes (no dangling describedby)');
+  ok(/clearBlockingMarks\(prefix\); const box = document\.getElementById\(prefix \+ '-input-errors'\); if \(box\) \{ box\.innerHTML = ''; box\.style\.display = 'none'; \}/.test(mainSrc), 'H12 Clear & New Deal resets validation state');
+  ok(/contains\('input-invalid'\)\)\) el\.removeAttribute\?\.\('aria-invalid'\)/.test(fmtSrc), 'H13 clearBlockingMarks leaves the currency mask\'s aria-invalid on a still-malformed field');
   ok(/preventScroll: true/.test(fmtSrc) && /block: 'center'/.test(fmtSrc), 'H7 focus never triggers a second scroll; the scroll centres the field');
 }
 

@@ -183,7 +183,12 @@ export function revealBlockingField(fieldId, message, prefix, msgId = fieldId + 
 export function clearBlockingMarks(prefix) {
   const set = _marked.get(prefix);
   if (set) {
-    for (const el of set) { el.removeAttribute?.('aria-invalid'); el.removeAttribute?.('aria-describedby'); }
+    for (const el of set) {
+      // A field the currency mask still flags as malformed keeps the mask's own
+      // aria-invalid (fmtCurrencyInput owns it); only the reveal's marks go.
+      if (!(el.classList && el.classList.contains && el.classList.contains('input-invalid'))) el.removeAttribute?.('aria-invalid');
+      el.removeAttribute?.('aria-describedby');
+    }
     set.clear();
   }
   const live = document.getElementById(prefix + '-a11y-status');

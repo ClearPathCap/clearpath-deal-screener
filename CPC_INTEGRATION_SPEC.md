@@ -106,15 +106,19 @@ Contract law:
   `5–8 Unit` / `9+ Unit` type is sent as `Multifamily` (CPC has no 5–8 option). No `band` is emitted for STR / F&F.
   No analyzer computation depends on either value.
 - **City / State (A1):** each analyzer stores structured `city` and `state` values. They are auto-filled from the
-  address by `parseCityState` only when the parse is confident — the last comma segment is the state (`…, Myrtle
-  Beach, SC` / `…, South Carolina 29575`), or the last segment ends in an upper-case two-letter code (`…, Myrtle
-  Beach SC`), or a ZIP vouches for the token; a full state name inside a segment counts only with a ZIP (`Port
-  Washington` is a city); a comma-free address never auto-fills; trailing `USA` / `United States` is stripped —
-  and are **never** written over a user's explicit edit or clearing (in the session, or carried as an explicit
-  blank on a reviewed record). The handoff sends the stored values (state normalized to its two-letter code, sent
-  only when it is a real state); a record without the keys (pre-A1) falls back to the parser. **Prefer blank over
-  wrong:** `12 Oak Ct`, `418 Oak Ct 29577`, `1234 Peachtree St NE 30309` all yield nothing, never a street suffix or
-  directional read as a state. The 9+ unit referral handoffs carry the same `city` / `state`.
+  address by `parseCityState` only on confident evidence: a ZIP whose USPS prefix **agrees** with the state token (a
+  disagreeing ZIP discards the parse — `418 Oak Ct 29577` is South Carolina, never CT; `…, Delaware 43015` is Ohio;
+  `…, Mount Washington 21209` is Maryland), or, with no ZIP, a whole-segment state (`…, Myrtle Beach, SC` /
+  `…, South Carolina`) or an in-segment upper-case two-letter code that is not a directional beside a mixed-case
+  city (`…, Myrtle Beach SC`). A full state name inside a segment needs an agreeing ZIP (`Port Washington` is a
+  city); a secondary-address line (`Apt B`, `Suite 400`, `Unit 2`) is never a city; all-caps input without a ZIP
+  and comma-free input never auto-fill; trailing `USA` / `United States` is stripped. Known limit: a real city whose
+  name is a state name, in the state whose ZIP that is (`Washington DC 20001` is fine; `Nevada, MO` would need the
+  city typed). Values are **never** written over a user's explicit edit or clearing (in the session, or carried as an
+  explicit blank on a reviewed record; that marker is released when the review ends, when another record is
+  reviewed, on a real keystroke, and on Clear & New Deal). The handoff sends the stored values (state normalized to
+  its two-letter code, sent only when it is a real state); a record without the keys (pre-A1) falls back to the
+  parser. The 9+ unit referral handoffs carry the same `city` / `state`.
 
 ## Measurement (success metrics from PROJECT_BRIEF)
 - Every screener-sourced submission is identifiable via the email source tag → count monthly: submissions, packaged, closed. Quarter-1 target: 5+ submissions, 1+ closed loan.

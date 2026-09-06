@@ -24,7 +24,7 @@ const SLOTS = ['bridgeport-ct', 'charlotte-nc'];
 const LABELS = { 'bridgeport-ct': 'Bridgeport, CT', 'charlotte-nc': 'Charlotte, NC' };
 const STUBS = {
   'supabaseClient.js': `export const supabase = { rpc: async () => ({ data: null, error: null }) };`,
-  'auth.js': `export const isSignedIn = () => false; export const getUserEmail = () => '';
+  'auth.js': `export const isSignedIn = () => !!globalThis.__signedIn; export const getUserEmail = () => '';
     const L = []; export const onAuthChange = f => L.push(f);
     export const initAuthAndEntitlement = async () => {}; export const sendOtpCode = async () => ({ ok: true, msg: '' });
     export const verifyOtpCode = async () => ({ ok: true, msg: '' }); export const signOutAccount = async () => {};
@@ -162,6 +162,45 @@ ok(!el('b-state').dataset.explicitBlank && !el('b-city').dataset.userEdited, 'E2
   ok(/delete el\.dataset\.explicitBlank;\s+\/\/ any other value, or a different record, releases a marker/.test(mainSrc), 'E2d reviewSetField releases a leaked marker when a later record carries a real value');
   ok(/delete el\.dataset\.explicitBlank;\s+\/\/ a record without the key resets fully unprotected/.test(mainSrc), 'E2e reviewResetField releases the marker for a pre-A1 record');
   ok(/if \(el\) \{ delete el\.dataset\.userEdited; delete el\.dataset\.explicitBlank; \}/.test(mainSrc), 'E2f ending or cancelling a review releases the marker (releaseReviewProtection)');
+}
+
+console.log('— §E3 "Update Saved Deal" ends the review AND releases the protection (pass-3 corrective, real parser + real storage) —');
+{
+  const storage = await import(JS + 'storage.js');
+  const ltrMod = await import(JS + 'ltr.js');
+  globalThis.__signedIn = true;
+  await storage.hydratePipeline();
+  const LTR_BASE = { type: 'ltr', price: 649900, rent: 6000, units: 3, down: 25, vac: 5, tax: 7044, ins: 2300, hoa: 0, util: 0, maint: 5, pm: 8, capex: 5, rate: 7.25, amort: 30, points: 1, cc: 2, target: 8, ptype: '2–4 Unit', band: '1-4', taxStatus: 'valid', insStatus: 'valid' };
+  const rec = (id, data) => ({ id, name: 'r' + id, type: 'ltr', verdict: 'x', cls: 'warm', notes: '', date: 'Sep 1, 2026', savedAt: '2026-09-01T00:00:00.000Z', data: { ...LTR_BASE, ...data }, stats: [] });
+  const A = rec(9001, { addr: '73 Orange Street, Bridgeport, CT 06607', city: null, state: null });
+  const B = rec(9002, { addr: '12 Oak Ct, Charlotte, NC 28202', city: 'Charlotte', state: 'NC' });
+  const seeded = await storage.saveDeals([A, B]);
+  ok(seeded && seeded.ok === true, `E3a two reviewable records seeded (${JSON.stringify(seeded)})`);
+  globalThis.clearNewDeal('ltr');
+  globalThis.reviewDeal(9001);
+  ok(el('l-city').dataset.explicitBlank === '1' && el('l-city').value === '', 'E3b reviewing the cleared record sets the marker');
+  globalThis.analyzeLtr();
+  const upd = await globalThis.saveDeal('ltr');
+  ok(upd && upd.mode === 'updated', `E3c Update Saved Deal lands (${JSON.stringify(upd)})`);
+  ok(!el('l-city').dataset.explicitBlank && !el('l-state').dataset.explicitBlank && !el('l-addr').dataset.userEdited, 'E3d …and releases the marker and the review protection');
+  typed('l-addr', '900 Beach Blvd, Myrtle Beach, SC 29577');
+  ok(el('l-city').value === 'Myrtle Beach' && el('l-state').value === 'SC', `E3e the NEXT property on this form auto-fills again without Clear & New Deal (${el('l-city').value} / ${el('l-state').value})`);
+  globalThis.analyzeLtr();
+  const r1 = ltrMod.getLastLtrResult();
+  ok(r1 && r1.city === 'Myrtle Beach' && r1.state === 'SC', 'E3f …and the analysis (hence the saved record and the CPC handoff) carries the new City / State');
+  // The wrong-data variant: a record WITH City / State, updated, then a new property typed.
+  globalThis.clearNewDeal('ltr');
+  globalThis.reviewDeal(9002);
+  ok(el('l-city').value === 'Charlotte' && el('l-city').dataset.userEdited === '1', 'E3g reviewing a record with City / State protects them during the review');
+  globalThis.analyzeLtr();
+  const upd2 = await globalThis.saveDeal('ltr');
+  ok(upd2 && upd2.mode === 'updated', `E3h update lands (${JSON.stringify(upd2)})`);
+  typed('l-addr', '900 Beach Blvd, Myrtle Beach, SC 29577');
+  ok(el('l-city').value === 'Myrtle Beach' && el('l-state').value === 'SC', `E3i a Myrtle Beach property never inherits "Charlotte, NC" from the previous review (${el('l-city').value} / ${el('l-state').value})`);
+  globalThis.analyzeLtr();
+  const r2 = ltrMod.getLastLtrResult();
+  ok(r2 && r2.city === 'Myrtle Beach' && r2.state === 'SC', 'E3j the analysis carries Myrtle Beach / SC, never the previous record\'s values');
+  globalThis.clearNewDeal('ltr'); globalThis.__signedIn = false;
 }
 
 console.log('— §F source pins —');

@@ -243,6 +243,7 @@ ok(payload && payload.args.p_deals.length === 4 && payload.args.p_deals.find(d =
 ok(deals.filter(d => d.id !== ORANGE.id).every(d => JSON.stringify(d) === JSON.stringify(JSON.parse(BASELINE).find(x => x.id === d.id))), 'C9 the other three deals are byte-identical');
 ok(pipeline.getReviewingDealId() === null && el('ltr-review-banner').style.display === 'none', 'C10 review mode ended; banner gone');
 ok(el('ltr-save-btn').textContent === 'Saved ✓', 'C11 Save button follows the normal Saved ✓ path');
+ok(!ue('l-vac') && !ue('l-price') && !ue('l-addr') && !el('l-city').dataset.userEdited && !el('l-city').dataset.explicitBlank, 'C11b Update Saved Deal releases the prefill protection exactly as cancel / clear do (pass-3 corrective: the next property on this form must not inherit the reviewed record\'s City / State)');
 const AFTER_UPDATE = snapshot();
 pipeline.renderPipeline();
 const cardHtml = el('pipeline-list').innerHTML;
@@ -674,6 +675,22 @@ const plSrc3 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'pipeline.js'), 'utf
 ok(/refused-stale, produced by the main\.js Save wrapper/.test(plSrc3), 'O3 the outcome contract comment lists refused-stale');
 const mainSrc5 = readFileSync(join(ROOT, 'docs', 'src', 'js', 'main.js'), 'utf8');
 ok(/u\.dataset\.band = propertyBand\(parseNumOpt\(u\.defaultValue != null \? u\.defaultValue : u\.value\)\);\n  if \(propertyBand\(parseNumOpt\(u\.value\)\) !== u\.dataset\.band\) syncBandDefaults\(p\);/.test(mainSrc5), 'O4 an early-typed unit count applies its band defaults once at init (executed in inputguard)');
+
+// ── §P · the update path releases the A1 explicit-blank marker (pass-3 corrective) ──
+console.log('— §P update-path release —');
+{
+  const src0 = storage.getDeals().find(d => d.id === ORANGE.id);
+  const NULLREC = { ...src0, id: 990001, name: 'Cleared city/state', data: { ...src0.data, city: null, state: null } };
+  await storage.saveDeals([...storage.getDeals(), NULLREC]); await tick();
+  globalThis.clearNewDeal('ltr');
+  globalThis.reviewDeal(990001);
+  ok(el('l-city').dataset.explicitBlank === '1' && el('l-state').dataset.explicitBlank === '1' && el('l-city').value === '', 'P1 reviewing a record with explicit-null City / State sets the marker');
+  globalThis.analyzeLtr();
+  const updN = await globalThis.saveDeal('ltr');
+  ok(updN && updN.mode === 'updated' && pipeline.getReviewingDealId() === null, `P2 Update Saved Deal lands and ends the review (${JSON.stringify(updN)})`);
+  ok(!el('l-city').dataset.explicitBlank && !el('l-state').dataset.explicitBlank && !ue('l-addr') && !ue('l-price'), 'P3 …and releases BOTH the marker and the review userEdited protection — nothing leaks onto the next property screened on this form');
+  ok(/if \(outcome && outcome\.mode === 'updated'\) \{ exitReviewUI\(type\); releaseReviewProtection\(type\); \}/.test(mainSrc5), 'P4 the Save wrapper releases on the update path (same law as cancel and delete-under-review)');
+}
 
 console.log(`\ndealreview: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

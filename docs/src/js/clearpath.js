@@ -52,7 +52,13 @@ export function normalizeStateToken(t) {
 // free-text address: when it is present, a state token must AGREE with it or
 // the parse is discarded ("418 Oak Ct 29577" is South Carolina, never CT;
 // "Delaware 43015" is Ohio, never DE; "Mount Washington 21209" is Maryland,
-// never WA). Unknown prefixes (APO / territories) neither vouch nor veto.
+// never WA). The table carries each state's main prefix range. Unmapped
+// prefixes (Guam 969, military 09x / 962–966, DC 569, 004, 963) neither vouch
+// nor veto — the no-ZIP rules apply. 006–009 map to PR, which is not a state,
+// so a PR / VI ZIP always discards. A few sub-range anomalies (340 APO-AA inside
+// FL, 967 American Samoa inside HI, 05501 MA inside VT, 06390 NY inside CT) can
+// only cause a false BLANK, never a wrong state: the emitted state is always the
+// user's own token, which the ZIP merely vouches for or vetoes.
 const ZIP3 = [[5,5,'NY'],[6,9,'PR'],[10,27,'MA'],[28,29,'RI'],[30,38,'NH'],[39,49,'ME'],[50,59,'VT'],[60,69,'CT'],[70,89,'NJ'],
   [100,149,'NY'],[150,196,'PA'],[197,199,'DE'],[200,200,'DC'],[201,201,'VA'],[202,205,'DC'],[206,219,'MD'],[220,246,'VA'],[247,268,'WV'],
   [270,289,'NC'],[290,299,'SC'],[300,319,'GA'],[320,349,'FL'],[350,369,'AL'],[370,385,'TN'],[386,397,'MS'],[398,399,'GA'],[400,427,'KY'],
@@ -69,9 +75,36 @@ export function zipState(zip5) {
 // A segment that can be a city: letters only, and not a secondary-address line
 // ("Apt B", "Suite 400", "Unit 2", "c/o …", "PO Box …") or a street line (digits).
 const CITY_OK = /^[A-Za-z][A-Za-z .'-]*$/;
-const SECONDARY = /^(apt|apartment|suite|ste|unit|fl|floor|bldg|building|rm|room|c\/o|p\.?o\.? ?box|po box|#)\b/i;
+// USPS Pub 28 secondary lines — never a city. Two shapes: a designator that takes
+// an identifier ("Apt B", "Suite 400", "Unit 4B", "Lot 7", "Ste. 12") and a bare
+// designator that stands alone ("Rear", "Basement", "Lobby", "Penthouse"); plus
+// mail-handling lines (c/o, Attn, PO Box). Anchored to those shapes on purpose:
+// "Key West", "Front Royal", "Upper Arlington", "Ste. Genevieve" are cities.
+const ID_DESIG = /^(apt|apartment|suite|ste|unit|fl|floor|bldg|building|rm|room|dept|department|hngr|hangar|slip|stop|spc|space|lot|pier|key|ofc|office)\.?\s+#?\s*(\d[\w-]*|[A-Za-z]\d*|[A-Za-z]-\d+)$/i;   // a SPACE before the identifier: "Unity" is a city, "Unit y" is not typed
+const BARE_DESIG = /^(rear|frnt|front|bsmt|basement|lbby|lobby|uppr|upper|lowr|lower|ph|penthouse|side|trlr|trailer|ofc|office)\.?$/i;
+const MAIL_LINE = /^(c\/o|care of|attn|attention|p\.?o\.?\s*box|#)/i;
+const isSecondary = (s) => ID_DESIG.test(s) || BARE_DESIG.test(s) || MAIL_LINE.test(s);
+// A street line without its number ("Main St", "Peachtree St NE" minus the
+// directional) is not a city either: a candidate ending in a street suffix is
+// rejected. Word-bounded, so Broadway / Conway / Rockaway are untouched.
+const STREETISH = /\b(st|ave|rd|blvd|dr|ln|ct|way|pl|hwy|pkwy|cir|ter|trl|sq|ctr|expy|fwy)\.?$/i;
+// An administrative segment that geocoders (OpenStreetMap / Nominatim, county GIS
+// portals) place between the city and the state: "Charlotte, Mecklenburg County,
+// North Carolina". Never a city — the city is the segment before it.
+const ADMIN = /\b(county|parish|borough|township|twp|municipio)\.?$/i;
 const DIRECTIONAL = new Set(['NE', 'NW', 'SE', 'SW']);
-const cityOk = (s) => !!s && CITY_OK.test(s) && !SECONDARY.test(s);
+// A city candidate: letters only, not a secondary line, not an administrative
+// segment, not itself a two-letter state code ("…, Charlotte, NC, NC 28202" — a
+// doubled code is never the city; "Washington" / "New York" the cities are fine).
+const isStateCode = (s) => /^[A-Za-z]{2}$/.test(String(s || '').replace(/\./g, '')) && !!normalizeStateToken(s);
+const cityOk = (s) => !!s && CITY_OK.test(s) && !isSecondary(s) && !ADMIN.test(s) && !STREETISH.test(s) && !isStateCode(s);
+// Resolve the city for a candidate segment: an administrative segment steps back
+// to the segment before it (which must itself qualify); anything else must
+// qualify as typed. null = no confident city (the state may still ship alone).
+function resolveCity(candidate, before) {
+  if (candidate && ADMIN.test(candidate)) return cityOk(before) ? before : null;
+  return cityOk(candidate) ? candidate : null;
+}
 export function parseCityState(addr) {
   if (!addr) return {};
   let s = String(addr).trim();
@@ -84,7 +117,7 @@ export function parseCityState(addr) {
   // A comma-free address never auto-fills: without a city delimiter every
   // trailing token — "Ct", "NE", "SC" — is ambiguous. Prefer blank.
   if (parts.length < 2) return {};
-  const last = parts[parts.length - 1], prev = parts[parts.length - 2];
+  const last = parts[parts.length - 1], prev = parts[parts.length - 2], prev2 = parts[parts.length - 3];
   let city = null, state = null;
   // Accept a state token only when the evidence is confident: a known ZIP that
   // AGREES with it, or — with no ZIP — a whole-segment state, or an in-segment
@@ -95,7 +128,8 @@ export function parseCityState(addr) {
   if (whole) {
     // "…, City, ST" · "…, City, South Carolina" — the state is its own segment.
     if (contradictsZip(whole)) return {};                            // "…, Delaware 43015" is Ohio
-    if (cityOk(prev)) { state = whole; city = prev; }
+    const c = resolveCity(prev, prev2);                              // "…, Charlotte, Mecklenburg County, NC" → Charlotte
+    if (c) { state = whole; city = c; }
     else if (agreesWithZip(whole)) state = whole;                    // "123 Main St, SC 29575" → state only
   } else {
     const words = last.split(/\s+/);
@@ -112,7 +146,8 @@ export function parseCityState(addr) {
       else if (zipSt === null && zip) confident = false;             // an unknown ZIP prefix vouches for nothing
       else if (isCode) confident = tok === tok.toUpperCase() && !DIRECTIONAL.has(st) && cityPart !== cityPart.toUpperCase();   // "…, Myrtle Beach SC"; never "OAK CT", never "St NE"
       else confident = false;                                        // a full state name inside a segment needs a ZIP
-      if (confident && cityOk(cityPart)) { state = st; city = cityPart; }
+      const c = confident ? resolveCity(cityPart, prev) : null;      // "…, Charlotte, Mecklenburg County NC 28202" → Charlotte
+      if (c) { state = st; city = c; }
       else if (confident && agreesWithZip(st)) state = st;           // "…, Unit B, SC 29575"-style: state only, never "Unit B" as a city
       break;
     }

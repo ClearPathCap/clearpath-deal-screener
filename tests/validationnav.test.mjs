@@ -179,6 +179,24 @@ console.log('— §C2 pass-2 correctives: stale rows across paths, Clear & New D
   ok(el('l-price').attrs['aria-invalid'] === 'true', 'C13 the mask\'s aria-invalid on a still-malformed field survives a later run\'s clear');
   typed('l-price', '260,000'); typed('l-rent', '2,100'); globalThis.analyzeLtr();
   ok(!el('l-price').attrs['aria-invalid'] && !el('l-price').classList.contains('input-invalid'), 'C14 …and goes when the amount is fixed');
+  // pass 3 (critic): the mask's class can go stale after a PROGRAMMATIC value write (Clear & New Deal,
+  // review prefill fire no input event) — the rule must decide by VALUE, never by the class.
+  typed('l-price', '12abc'); globalThis.analyzeLtr();
+  ok(el('l-price').attrs['aria-invalid'] === 'true' && el('l-price').classList.contains('input-invalid'), 'C15 malformed amount revealed, mask class set');
+  el('l-price').value = '260,000';   // programmatic write — no event, the mask never re-ran, its class is stale
+  globalThis.analyzeLtr();
+  ok(!el('l-price').attrs['aria-invalid'] && !el('l-price').classList.contains('input-invalid') && !el('l-price').classList.contains('field-error'), 'C16 a valid run clears aria-invalid, the stale mask class and the red field state once the VALUE is valid');
+  typed('l-price', '12abc'); globalThis.analyzeLtr(); globalThis.clearNewDeal('ltr');
+  ok(!el('l-price').attrs['aria-invalid'] && !el('l-price').classList.contains('input-invalid') && !el('l-price').classList.contains('field-error') && el('l-price').value === '', 'C17 Clear & New Deal on a malformed amount leaves no aria-invalid, no stale mask class, no red field state');
+  el('l-price').value = ''; typed('l-rent', '2,100'); globalThis.analyzeLtr();
+  ok(el('l-price').classList.contains('field-error') && el('l-price').attrs['aria-invalid'] === 'true', 'C18 a required block shows the red field state');
+  el('l-price').value = '260,000'; globalThis.analyzeLtr();
+  ok(!el('l-price').classList.contains('field-error') && !el('l-price').attrs['aria-invalid'], 'C19 …which a later valid run removes');
+  // A review prefill that fills a previously-blocked required field also drops its red state (clearBlockingMarks owns the reveal's visible marks).
+  el('l-price').value = ''; globalThis.analyzeLtr();
+  ok(el('l-price').classList.contains('field-error'), 'C20 blocked again');
+  globalThis.clearNewDeal('ltr');
+  ok(!el('l-price').classList.contains('field-error') && !el('l-price').attrs['aria-invalid'], 'C21 Clear & New Deal removes the red field state with the aria marks');
   typed('v-price', '250,000'); typed('v-rent', '90,000'); typed('v-down', '20');
 }
 
@@ -222,7 +240,7 @@ console.log('— §H pure helper + source pins —');
   ok(/id="\$\{x\.field\}-issue"/.test(fmtSrc) && /msg\.id = f\.id \+ '-error'/.test(mainSrc), 'H10 the two message kinds live in distinct id namespaces (-error / -issue) — no duplicate ids');
   ok(/clearBlockingMarks\(type === 'rental' \? 'rental' : type\);\s+\/\/ A6: the rows just wiped/.test(mainSrc), 'H11 entering a review releases the marks with the rows it wipes (no dangling describedby)');
   ok(/clearBlockingMarks\(prefix\); const box = document\.getElementById\(prefix \+ '-input-errors'\); if \(box\) \{ box\.innerHTML = ''; box\.style\.display = 'none'; \}/.test(mainSrc), 'H12 Clear & New Deal resets validation state');
-  ok(/contains\('input-invalid'\)\)\) el\.removeAttribute\?\.\('aria-invalid'\)/.test(fmtSrc), 'H13 clearBlockingMarks leaves the currency mask\'s aria-invalid on a still-malformed field');
+  ok(/const stillMalformed = isCurrency && isMalformedCurrency\(el\.value\);/.test(fmtSrc) && /if \(!stillMalformed\) \{\s+el\.removeAttribute\?\.\('aria-invalid'\);/.test(fmtSrc), 'H13 clearBlockingMarks keeps aria-invalid only on a currency field whose VALUE is still malformed (value-based, never class-based)');
   ok(/preventScroll: true/.test(fmtSrc) && /block: 'center'/.test(fmtSrc), 'H7 focus never triggers a second scroll; the scroll centres the field');
 }
 

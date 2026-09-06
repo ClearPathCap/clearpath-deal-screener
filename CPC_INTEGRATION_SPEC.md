@@ -106,19 +106,29 @@ Contract law:
   `5–8 Unit` / `9+ Unit` type is sent as `Multifamily` (CPC has no 5–8 option). No `band` is emitted for STR / F&F.
   No analyzer computation depends on either value.
 - **City / State (A1):** each analyzer stores structured `city` and `state` values. They are auto-filled from the
-  address by `parseCityState` only on confident evidence: a ZIP whose USPS prefix **agrees** with the state token (a
-  disagreeing ZIP discards the parse — `418 Oak Ct 29577` is South Carolina, never CT; `…, Delaware 43015` is Ohio;
-  `…, Mount Washington 21209` is Maryland), or, with no ZIP, a whole-segment state (`…, Myrtle Beach, SC` /
-  `…, South Carolina`) or an in-segment upper-case two-letter code that is not a directional beside a mixed-case
-  city (`…, Myrtle Beach SC`). A full state name inside a segment needs an agreeing ZIP (`Port Washington` is a
-  city); a secondary-address line (`Apt B`, `Suite 400`, `Unit 2`) is never a city; all-caps input without a ZIP
-  and comma-free input never auto-fill; trailing `USA` / `United States` is stripped. Known limit: a real city whose
-  name is a state name, in the state whose ZIP that is (`Washington DC 20001` is fine; `Nevada, MO` would need the
-  city typed). Values are **never** written over a user's explicit edit or clearing (in the session, or carried as an
-  explicit blank on a reviewed record; that marker is released when the review ends, when another record is
-  reviewed, on a real keystroke, and on Clear & New Deal). The handoff sends the stored values (state normalized to
-  its two-letter code, sent only when it is a real state); a record without the keys (pre-A1) falls back to the
-  parser. The 9+ unit referral handoffs carry the same `city` / `state`.
+  address by `parseCityState` only on confident evidence, in this order. **State:** a comma-free address never
+  parses. With a ZIP whose USPS three-digit prefix is known, the state token must **agree** with it or the whole
+  parse is discarded (`418 Oak Ct 29577` is South Carolina, never CT; `…, Delaware 43015` is Ohio; `…, Mount
+  Washington 21209` is Maryland; `…, West New York 07093` is New Jersey). With no ZIP, or a ZIP whose prefix is
+  unknown (territories, military — it neither vouches nor vetoes), the token must be its own comma segment
+  (`…, Myrtle Beach, SC` / `…, South Carolina`) or an in-segment upper-case two-letter code that is not NE / NW /
+  SE / SW, beside a mixed-case city (`…, Myrtle Beach SC`); an agreeing ZIP relaxes those in-segment tests
+  (`…, Bridgeport ct 06604` parses). A full state name inside a segment needs an agreeing ZIP (`Port Washington`
+  is a city). **City:** the segment before the state, which must be letters only and not a USPS secondary line
+  (`Apt B`, `Suite 400`, `Unit 4B`, bare `Rear` / `Basement` / `Penthouse`, `c/o …`, `Attn …`, `PO Box …`), not a
+  county / parish / borough / township (that segment steps back to the city before it: `Charlotte, Mecklenburg
+  County, North Carolina, 28202` → Charlotte), not a street line (digits, or ending in St / Ave / Rd / Blvd …), and
+  not itself a two-letter state code (`…, Charlotte, NC, NC 28202` → state only). When the state is confident but
+  no segment qualifies as the city, the state ships alone. Trailing `USA` / `United States` is stripped. **Known
+  limits (blank, never wrong):** a city that is a state name typed without a comma before its state (`…, Nevada
+  64772` → blank; `…, Nevada, MO 64772` and `…, Washington DC 20001` are fine); Nebraska in the `City NE` shape
+  with no ZIP (`…, Omaha NE` → blank; `…, Omaha, NE` and `…, Omaha NE 68102` are fine); all-caps input without a
+  ZIP; a city with a non-ASCII letter (`Cañon City`). Values are **never** written over a user's explicit edit or
+  clearing (in the session, or carried as an explicit blank on a reviewed record; that marker and the review's
+  edit protection are released when the review ends — Update Saved Deal, Cancel, delete-under-review — when
+  another record is reviewed, on a real keystroke, and on Clear & New Deal). The handoff sends the stored values
+  (state normalized to its two-letter code, sent only when it is a real state); a record without the keys (pre-A1)
+  falls back to the parser. The 9+ unit referral handoffs carry the same `city` / `state`.
 
 ## Measurement (success metrics from PROJECT_BRIEF)
 - Every screener-sourced submission is identifiable via the email source tag → count monthly: submissions, packaged, closed. Quarter-1 target: 5+ submissions, 1+ closed loan.

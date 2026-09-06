@@ -184,10 +184,24 @@ export function clearBlockingMarks(prefix) {
   const set = _marked.get(prefix);
   if (set) {
     for (const el of set) {
-      // A field the currency mask still flags as malformed keeps the mask's own
-      // aria-invalid (fmtCurrencyInput owns it); only the reveal's marks go.
-      if (!(el.classList && el.classList.contains && el.classList.contains('input-invalid'))) el.removeAttribute?.('aria-invalid');
+      // A currency field whose VALUE is still malformed keeps the mask's own
+      // aria-invalid (fmtCurrencyInput owns it). Decided by value, not by the
+      // mask's class: Clear & New Deal and review prefill write values with no
+      // input event, so the class can be stale — a valid value must never stay
+      // aria-invalid because of it (verification corrective, pass 3).
+      const isCurrency = typeof el.hasAttribute === 'function' && el.hasAttribute('data-currency');
+      const stillMalformed = isCurrency && isMalformedCurrency(el.value);
+      if (!stillMalformed) {
+        el.removeAttribute?.('aria-invalid');
+        if (isCurrency && el.classList && el.classList.remove) el.classList.remove('input-invalid');
+      }
       el.removeAttribute?.('aria-describedby');
+      // The reveal's visible marks go with the aria ones: the red field state and
+      // the "Required — enter …" message that validateRequiredFields re-derives on
+      // every run (a prefilled review field must not keep last run's message).
+      if (el.classList && el.classList.remove) el.classList.remove('field-error');
+      const msg = el.id ? document.getElementById(el.id + '-error') : null;
+      if (msg && msg.className === 'validation-msg') msg.textContent = '';
     }
     set.clear();
   }

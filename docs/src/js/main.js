@@ -193,7 +193,14 @@ async function saveDeal(type) {
 
   // Saved-deal review: a successful "Update Saved Deal" ends review mode — the
   // banner goes, and the button follows the normal Saved ✓ → Save path below.
-  if (outcome && outcome.mode === 'updated') exitReviewUI(type);
+  // Verification corrective, pass 3 (2026-09-06): ending the review here must
+  // release the prefill protection exactly as cancel and delete-under-review do.
+  // Left in place, the review's userEdited / explicitBlank marks froze City /
+  // State (and every other prefilled field) on the NEXT property screened on
+  // this form — a Myrtle Beach address kept the previous deal's "Charlotte, NC"
+  // into the saved record and the CPC handoff. The values stay on the form; they
+  // simply stop being under review.
+  if (outcome && outcome.mode === 'updated') { exitReviewUI(type); releaseReviewProtection(type); }
 
   // Existing revert-on-input behavior — armed only after a genuine success.
   if (outcome && outcome.status === 'saved') {
@@ -553,9 +560,6 @@ function clearNewDeal(type) {
   // protection so market presets and band defaults apply to the next deal.
   releaseReviewProtection(type);
   clearStaleWatch(type);
-  // A6: a fresh deal starts with no validation state — marks, live region and the
-  // range/incomplete error box all go (verification corrective, pass 2).
-  { const prefix = type === 'rental' ? 'rental' : type; clearBlockingMarks(prefix); const box = document.getElementById(prefix + '-input-errors'); if (box) { box.innerHTML = ''; box.style.display = 'none'; } }
   resetAnalyzerProtection(type);
   { const rid = getReviewingDealId(); const rd = rid != null ? getDeals().find(d => d.id === rid) : null; if (rid != null && (!rd || rd.type === type)) cancelDealReview(type); }
   if (type === 'flip') {
@@ -631,6 +635,11 @@ function clearNewDeal(type) {
     const hint = document.getElementById('rent-range-hint');
     if (hint) hint.style.display = 'none';
   }
+  // A6: a fresh deal starts with no validation state — marks, live region and the
+  // range/incomplete error box all go. Runs AFTER the values above are reset so
+  // the value-based mask rule in clearBlockingMarks sees the fresh values, not
+  // the malformed text the user just abandoned (verification correctives, pass 2 + 3).
+  { const prefix = type === 'rental' ? 'rental' : type; clearBlockingMarks(prefix); const box = document.getElementById(prefix + '-input-errors'); if (box) { box.innerHTML = ''; box.style.display = 'none'; } }
 }
 
 // ─── Picker market list (flip+str only, derived from full ALL_MARKETS) ────────

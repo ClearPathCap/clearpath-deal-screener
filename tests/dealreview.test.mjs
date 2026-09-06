@@ -45,7 +45,8 @@ const STUBS = {
     export const redeemServerCode = async () => ({ ok: false, msg: '' });
     export const syncEntitlement = async () => 'pro';`,
   'clearpath.js': `export const getPipelineFundingButtonHTML = () => '';
-    export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{},getFundingLabel=()=>'';`,
+    export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{},getFundingLabel=()=>'';
+    export const parseCityState=()=>({}),addressHandoff=()=>({});   // Wave A · A1 import surface (real parser proven in handoffutil / addrfields)`,
   'tiers.js': `export const getActiveTier = () => globalThis.__tier;
     const SLOTS = ${JSON.stringify(SLOTS)}; const LABELS = ${JSON.stringify(LABELS)};
     export const isDevMode=()=>false,setDevTier=()=>{},setCachedTier=()=>{},devModeVisible=()=>false,

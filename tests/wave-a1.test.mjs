@@ -47,7 +47,8 @@ const STUBS = {
   'brrr.js': `export const getLastBrrrResult = () => globalThis.__lastResults.brrr;
     export const analyzeBrrr=()=>{},setBrrrPreset=()=>{},resetBrrr=()=>{},clearLastBrrrResult=()=>{};`,
   'clearpath.js': `export const getPipelineFundingButtonHTML = () => '';
-    export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{};`,
+    export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{};
+    export const parseCityState=()=>({}),addressHandoff=()=>({});   // Wave A · A1 import surface (real parser proven in handoffutil / addrfields)`,
   // Mirrors main.js's + pipeline.js's import surface from tiers.js — grow it in
   // the same commit that grows the imports (missing name = hard ESM error).
   // UX wave: + getActiveMarketId (deal market stamping / auto-name).

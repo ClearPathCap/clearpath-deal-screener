@@ -369,6 +369,7 @@ function buildLtrDetail(d, deal) {
     ? `<button class="whatif-link" onclick="event.stopPropagation();showMaxOfferScenario(${deal.id})">See what to dig into →</button>`
     : '';
   return guide + detailSection('Long-Term Rental (DSCR)', [
+    (d.city || d.state) ? { l: 'Location', v: escapeHtml([d.city, d.state].filter(Boolean).join(', ')) } : null,   // A1
     { l: 'Purchase price',    v: d.price != null ? fmt(d.price) : '—' },
     { l: 'Monthly rent',      v: d.rent != null ? fmt(d.rent) : '—' },
     { l: 'Down payment',      v: d.down != null ? d.down + '%' : '—' },
@@ -385,6 +386,7 @@ function buildLtrDetail(d, deal) {
 
 function buildBrrrDetail(d) {
   return detailSection('BRRRR (Bridge → DSCR Refi)', [
+    (d.city || d.state) ? { l: 'Location', v: escapeHtml([d.city, d.state].filter(Boolean).join(', ')) } : null,   // A1
     { l: 'Purchase price',            v: d.price != null ? fmt(d.price) : '—' },
     { l: 'Rehab (incl. contingency)', v: d.rehabTotal != null ? fmt(d.rehabTotal) : '—' },
     { l: 'ARV',                       v: d.arv != null ? fmt(d.arv) : '—' },
@@ -893,6 +895,7 @@ export async function saveDealEdits(id) {
 
 function buildFlipDetail(d, deal) {
   const rows = [
+    ...((d.city || d.state) ? [{ l: 'Location', v: escapeHtml([d.city, d.state].filter(Boolean).join(', ')) }] : []),   // A1
     ...(d.ptype ? [{ l: 'Property type', v: escapeHtml(String(d.ptype)) }] : []),   // A4: only when the user supplied it
     ...(d.units > 0 ? [{ l: 'Units', v: String(Math.round(d.units)) }] : []),
     { l: 'Asking price',           v: d.ask  != null ? fmt(d.ask)  : '—' },
@@ -935,6 +938,7 @@ function buildFlipDetail(d, deal) {
 function buildRentalDetail(d) {
   const pend = unresolvedInsPresentation('rental', d) != null; // F-6: blank taxes+insurance pends
   const rows = [
+    ...((d.city || d.state) ? [{ l: 'Location', v: escapeHtml([d.city, d.state].filter(Boolean).join(', ')) }] : []),   // A1
     ...(d.ptype ? [{ l: 'Property type', v: escapeHtml(String(d.ptype)) }] : []),   // A4: only when the user supplied it
     ...(d.units > 0 ? [{ l: 'Units', v: String(Math.round(d.units)) }] : []),
     { l: 'Purchase price',         v: d.price   != null ? fmt(d.price)  : '—' },

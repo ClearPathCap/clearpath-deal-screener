@@ -55,7 +55,8 @@ const STUBS = {
   'brrr.js': `export const getLastBrrrResult = () => globalThis.__lastResults.brrr;
     export const analyzeBrrr=()=>{},setBrrrPreset=()=>{},resetBrrr=()=>{},clearLastBrrrResult=()=>{};`,
   'clearpath.js': `export const getPipelineFundingButtonHTML = () => '';
-    export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{};`,
+    export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{};
+    export const parseCityState=()=>({}),addressHandoff=()=>({});   // Wave A · A1 import surface (real parser proven in handoffutil / addrfields)`,
   'tiers.js': `export const getActiveTier = () => globalThis.__tier;
     const SLOTS = ${JSON.stringify(SLOTS)}; const LABELS = ${JSON.stringify(LABELS)};
     export const isDevMode=()=>false,setDevTier=()=>{},setCachedTier=()=>{},devModeVisible=()=>false,

@@ -7,7 +7,7 @@
 import { fmt, pct, cClass, buildMetrics, buildRows, parseNumOpt, renderInputIssues, inputIsIncomplete } from './format.js';
 import { computeLtr, ltrVerdict, mosLabel, validateInputs, plausibilityWarnings, propertyBand, BAND_RULES } from './finance.js';
 import { LTR_MARKETS, ALL_MARKETS } from './markets.js';
-import { maybeShowFundingButton } from './clearpath.js';
+import { maybeShowFundingButton, addressHandoff } from './clearpath.js';
 import { buildCpcUrl } from './funding.js';
 import { insuranceStatus, taxStatus, incomePresentation, INS_MISSING, INS_EXPLICIT_ZERO } from './insuranceReadiness.js';
 
@@ -69,7 +69,8 @@ export function analyzeLtr() {
 
   // 9+ units = commercial: a referral, not a calculator. Skip analysis entirely.
   if (band === '9plus') {
-    showLtrManualReview(units, { price, addr: elv('l-addr')?.value.trim() || '', ptype: elv('l-ptype')?.value || 'Multifamily' });
+    showLtrManualReview(units, { price, addr: elv('l-addr')?.value.trim() || '', ptype: elv('l-ptype')?.value || 'Multifamily',
+      city: (elv('l-city')?.value || '').trim() || null, state: (elv('l-state')?.value || '').trim() || null });   // A1
     return;
   }
 
@@ -181,6 +182,8 @@ export function analyzeLtr() {
 
   lastLtrResult = {
     type: 'ltr', addr: input.addr, price: m.price,
+    city: (elv('l-city')?.value || '').trim() || null,     // A1: structured, user-editable
+    state: (elv('l-state')?.value || '').trim() || null,
     units: units || null, band,
     down: input.down == null ? BAND_RULES[band].down : input.down,
     rent, vac: vacPct, tax: input.tax || 0, taxStatus: tStat, ins: input.ins || 0, insStatus, hoa: input.hoa || 0, util: input.util || 0,
@@ -232,6 +235,7 @@ function showLtrManualReview(units, info) {
     const deal = {
       pp: info.price ? Math.round(info.price) : undefined,
       addr: info.addr || undefined,
+      ...addressHandoff(info),   // A1: the 9+ referral carries the same structured City / State as every other handoff
       units: units || undefined, band: '9plus',
       ptype: 'Multifamily', purpose: 'dscr', exit: 'hold', // always MF for 9+ handoff
     };

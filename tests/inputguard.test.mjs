@@ -33,7 +33,7 @@ const STUBS = {
     export const initAuthAndEntitlement = async () => {}; export const sendOtpCode = async () => ({ ok: true, msg: '' });
     export const verifyOtpCode = async () => ({ ok: true, msg: '' }); export const signOutAccount = async () => {};
     export const redeemServerCode = async () => ({ ok: false, msg: '' }); export const syncEntitlement = async () => 'starter';`,
-  'clearpath.js': `export const getPipelineFundingButtonHTML = () => ''; export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{},getFundingLabel=()=>'';`,
+  'clearpath.js': `export const getPipelineFundingButtonHTML = () => ''; export const maybeShowFundingButton=()=>{},handlePipelineFundingClick=()=>{},getFundingLabel=()=>''; export const parseCityState=()=>({}),addressHandoff=()=>({});`,
   'tiers.js': `export const getActiveTier = () => globalThis.__tier;
     const SLOTS = ${JSON.stringify(SLOTS)}; const LABELS = ${JSON.stringify(LABELS)};
     export const isDevMode=()=>false,setDevTier=()=>{},setCachedTier=()=>{},devModeVisible=()=>false,

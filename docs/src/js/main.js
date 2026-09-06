@@ -21,7 +21,7 @@ import { initCurrencyInputs, parseComma, parseNumOpt, isMalformedCurrency, fmt, 
 import { propertyBand, BAND_RULES,
          computeNegotiationScenario, flipProfitClass, mosLabel,
          ltrGuidance }                                                from './finance.js';
-import { handlePipelineFundingClick }                               from './clearpath.js';
+import { handlePipelineFundingClick, parseCityState }               from './clearpath.js';
 import { hydrateMarketsOnAuth, pushMarketChange }                   from './marketSync.js';
 import {
   getActiveTier,
@@ -245,16 +245,17 @@ const REVIEW_FIELDS = {
   flip: [['f-addr','addr','t'], ['f-ask','ask','$'], ['f-arv','arv','$'], ['f-rep','rep','$'], ['f-hold','hold','n'],
          ['f-cc1','cc1','n'], ['f-cc2','cc2','n'], ['f-carry','carry','$'], ['f-target','target','$'], ['sqft','sqft','n0'],
          ['f-loan','loan','$0'], ['f-rate','rate','x100'], ['f-points','points','x100'],
-         ['f-ptype','ptype','sel'], ['f-units','units','n0']],   // A4: optional facts — a record without them resets to blank
-  ltr:  [['l-addr','addr','t'], ['l-price','price','$'], ['l-rent','rent','$'], ['l-units','units','n'], ['l-down','down','n'],
+         ['f-ptype','ptype','sel'], ['f-units','units','n0'],   // A4: optional facts — a record without them resets to blank
+         ['f-city','city','t'], ['f-state','state','t']],        // A1: structured City / State (blank when the record lacks them)
+  ltr:  [['l-addr','addr','t'], ['l-city','city','t'], ['l-state','state','t'], ['l-price','price','$'], ['l-rent','rent','$'], ['l-units','units','n'], ['l-down','down','n'],
          ['l-vac','vac','n'], ['l-tax','tax','$','taxStatus'], ['l-ins','ins','$','insStatus'], ['l-hoa','hoa','$'], ['l-util','util','$'], ['l-maint','maint','n'],
          ['l-pm','pm','pm'], ['l-capex','capex','n'], ['l-rate','rate','n'], ['l-amort','amort','n'], ['l-points','points','n'],
          ['l-cc','cc','n'], ['l-target','target','n'], ['l-ptype','ptype','sel']],
-  rental: [['v-addr','addr','t'], ['v-price','price','$'], ['v-rent','rent','$'], ['v-down','down','n'], ['v-occ','occ','n'],
+  rental: [['v-addr','addr','t'], ['v-city','city','t'], ['v-state','state','t'], ['v-price','price','$'], ['v-rent','rent','$'], ['v-down','down','n'], ['v-occ','occ','n'],
            ['v-mgmt','mgmt','n'], ['v-pm','pm','pm'], ['v-tax','tax','$','taxStatus'], ['v-maint','maint','$'], ['v-util','util','$'], ['v-hoa','hoa','$'], ['v-furnish','furnish','$'],
            ['v-target','tgtCoc','n'], ['v-interest-rate','interestRate','x100'],
            ['v-ptype','ptype','sel'], ['v-units','units','n0']],   // A4: optional facts — a record without them resets to blank
-  brrr: [['b-addr','addr','t'], ['b-price','price','$'], ['b-rehab','rehab','$'], ['b-arv','arv','$'], ['b-rent','rent','$'],
+  brrr: [['b-addr','addr','t'], ['b-city','city','t'], ['b-state','state','t'], ['b-price','price','$'], ['b-rehab','rehab','$'], ['b-arv','arv','$'], ['b-rent','rent','$'],
          ['b-units','units','n'], ['b-contingency','contingency','n'], ['b-cc','cc','n'], ['b-hold','hold','n'], ['b-carry','carry','$'],
          ['b-acqloan','acqLoan','$0'], ['b-acqrate','acqRate','n'], ['b-acqpoints','acqPoints','n'], ['b-refiltv','refiLtv','n'],
          ['b-refirate','refiRate','n'], ['b-refiamort','refiAmort','n'], ['b-reficost','reficost','n'], ['b-season','season','n'],
@@ -468,6 +469,41 @@ for (const [type, containerId] of Object.entries({ flip: 'page-flip', rental: 'r
 const fgAdopt = document.getElementById('fg-adopt');
 if (fgAdopt) fgAdopt.addEventListener('click', () => syncStaleWatch('flip', getLastFlipResult()));
 
+// ─── Wave A · A1: structured City / State, auto-filled from the address ──────
+// Owner/GPT ruling 2026-09-06. The address stays free text; the City and State
+// inputs beside it are what the CPC handoff sends. They are filled from the
+// hardened parser ONLY while the user has not touched them (a trusted keystroke
+// — including clearing the field — marks them userEdited and they are never
+// written again until Clear & New Deal or a review prefill), and only with a
+// confident parse (prefer blank over wrong). An auto-filled value is re-derived
+// on every address edit, and withdrawn when the address stops parsing.
+const ADDRESS_PREFIXES = ['f', 'v', 'l', 'b'];
+function autofillAddressComponents(prefix) {
+  const addr = document.getElementById(prefix + '-addr'), city = document.getElementById(prefix + '-city'), state = document.getElementById(prefix + '-state');
+  if (!addr || !city || !state) return;
+  const parsed = parseCityState(addr.value || '');
+  const fill = (el, v) => {
+    if (el.dataset.userEdited) return;                       // the user's own value (or clearing) always wins
+    if (v) { el.value = v; el.dataset.autoFilled = '1'; }
+    else if (el.dataset.autoFilled) { el.value = ''; delete el.dataset.autoFilled; }   // withdraw a stale auto-fill only
+  };
+  fill(city, parsed.city || '');
+  fill(state, parsed.state || '');
+}
+function wireAddressComponents(prefix) {
+  const addr = document.getElementById(prefix + '-addr'), city = document.getElementById(prefix + '-city'), state = document.getElementById(prefix + '-state');
+  if (!addr || !city || !state) return;
+  const markUser = (el) => (e) => { if (!e || e.isTrusted) { el.dataset.userEdited = '1'; delete el.dataset.autoFilled; } };
+  city.addEventListener('input', markUser(city));
+  state.addEventListener('input', markUser(state));
+  addr.addEventListener('input',  () => autofillAddressComponents(prefix));
+  addr.addEventListener('change', () => autofillAddressComponents(prefix));
+  // A value already present before this module ran (form restore, fast typing) is the user's.
+  for (const el of [city, state]) if (el.value !== '') el.dataset.userEdited = '1';
+  if (addr.value) autofillAddressComponents(prefix);
+}
+ADDRESS_PREFIXES.forEach(wireAddressComponents);
+
 // ─── Clear & New Deal law (owner decision 2026-09-05) ────────────────────────
 // "Clear & New Deal" starts a GENUINELY fresh analyzer state: the previous
 // deal's user-protection must not survive the clear. Every field of the
@@ -503,7 +539,7 @@ function clearNewDeal(type) {
   resetAnalyzerProtection(type);
   { const rid = getReviewingDealId(); const rd = rid != null ? getDeals().find(d => d.id === rid) : null; if (rid != null && (!rd || rd.type === type)) cancelDealReview(type); }
   if (type === 'flip') {
-    ['f-addr','f-ask','f-arv','f-rep','sqft'].forEach(id => {
+    ['f-addr','f-city','f-state','f-ask','f-arv','f-rep','sqft'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.value = ''; delete el.dataset.userEdited; delete el.dataset.autoFilled; }
     });
@@ -526,9 +562,9 @@ function clearNewDeal(type) {
     calcRepair();
     updateCarryTotal();
   } else if (type === 'ltr') {
-    ['l-addr','l-price','l-rent','l-tax','l-ins'].forEach(id => {
+    ['l-addr','l-city','l-state','l-price','l-rent','l-tax','l-ins'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) { el.value = ''; delete el.dataset.userEdited; }
+      if (el) { el.value = ''; delete el.dataset.userEdited; delete el.dataset.autoFilled; }
     });
     const lt = document.getElementById('l-self-manage-toggle'); if (lt) lt.checked = false;
     resetLtr();
@@ -537,9 +573,9 @@ function clearNewDeal(type) {
     if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
     const dn = document.getElementById('ltr-deal-name'); if (dn) dn.value = '';
   } else if (type === 'brrr') {
-    ['b-addr','b-price','b-rehab','b-arv','b-rent','b-acqloan','b-tax','b-ins'].forEach(id => {
+    ['b-addr','b-city','b-state','b-price','b-rehab','b-arv','b-rent','b-acqloan','b-tax','b-ins'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) { el.value = ''; delete el.dataset.userEdited; }
+      if (el) { el.value = ''; delete el.dataset.userEdited; delete el.dataset.autoFilled; }
     });
     const bt = document.getElementById('b-self-manage-toggle'); if (bt) bt.checked = false;
     resetBrrr();
@@ -548,9 +584,9 @@ function clearNewDeal(type) {
     if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
     const dn = document.getElementById('brrr-deal-name'); if (dn) dn.value = '';
   } else {
-    ['v-addr','v-price','v-rent'].forEach(id => {
+    ['v-addr','v-city','v-state','v-price','v-rent'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) { el.value = ''; delete el.dataset.userEdited; }
+      if (el) { el.value = ''; delete el.dataset.userEdited; delete el.dataset.autoFilled; }
     });
     { const o = document.getElementById('v-occ'); if (o) delete o.dataset.userEdited; }
     document.getElementById('v-down').value          = 20;

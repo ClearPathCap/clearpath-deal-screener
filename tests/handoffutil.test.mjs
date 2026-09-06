@@ -301,5 +301,60 @@ console.log('— §12 Wave A · A4: optional property facts on STR / F&F — unk
   eq(pL.ptype, 'SFR', '§12 [A4] LTR still sends its selected type'); eq(pL.units, '1', '§12 [A4] LTR still sends its unit count'); eq(pL.band, '1-4', '§12 [A4] LTR still sends band');
 }
 
+console.log('— §13 Wave A · A1: City / State — hardened parser (prefer blank over wrong) + structured fields —');
+{
+  const P = CP.parseCityState;
+  const cases = [
+    ['6001 South Kings Hwy, Myrtle Beach SC',                 { city: 'Myrtle Beach', state: 'SC' }, 'City ST'],
+    ['6001 S Kings Hwy, Myrtle Beach, SC 29575',              { city: 'Myrtle Beach', state: 'SC' }, 'City, ST ZIP'],
+    ['6001 S Kings Hwy, Myrtle Beach, SC 29575, USA',         { city: 'Myrtle Beach', state: 'SC' }, 'Android / Chrome autofill: trailing ", USA" (the live defect)'],
+    ['6001 S Kings Hwy, Myrtle Beach, SC, USA',               { city: 'Myrtle Beach', state: 'SC' }, 'trailing ", USA" without ZIP'],
+    ['6001 S Kings Hwy, Myrtle Beach, SC 29575, United States', { city: 'Myrtle Beach', state: 'SC' }, 'trailing ", United States"'],
+    ['6001 S Kings Hwy, Myrtle Beach, South Carolina 29575',  { city: 'Myrtle Beach', state: 'SC' }, 'full state name'],
+    ['6001 S Kings Hwy, Myrtle Beach South Carolina',         { city: 'Myrtle Beach', state: 'SC' }, 'full state name, no comma'],
+    ['100 Broadway, New York New York',                       { city: 'New York', state: 'NY' }, 'two-word city + two-word state'],
+    ['6001 S Kings Hwy, Myrtle Beach, sc',                    { city: 'Myrtle Beach', state: 'SC' }, 'lower-case code'],
+    ['12 Orange St, Bridgeport CT 06604',                     { city: 'Bridgeport', state: 'CT' }, 'Orange Street regression shape'],
+    ['Unit 4B, 100 Ocean Blvd, North Myrtle Beach, SC 29582', { city: 'North Myrtle Beach', state: 'SC' }, 'unit prefix'],
+    ['6001 S Kings Hwy Myrtle Beach SC 29575-1234',           { state: 'SC' }, 'no commas + ZIP: state only, city left BLANK (never "S Kings Hwy Myrtle Beach")'],
+    ['6001 S Kings Hwy Myrtle Beach SC 29575 USA',            { state: 'SC' }, 'no commas + ZIP + country: state only'],
+    ['6001 S Kings Hwy, Myrtle Beach',                        {}, 'no state → nothing'],
+    ['12 Oak Ct',                                             {}, 'street suffix "Ct" is NOT Connecticut (prefer blank over wrong)'],
+    ['5 Palm La',                                             {}, '"La" is not Louisiana'],
+    ['400 Cherry Pa',                                         {}, '"Pa" is not Pennsylvania'],
+    ['412 Oak St',                                            {}, 'street only'],
+    ['318 Greenwood Ave, Washington',                         {}, 'a lone state name after a street stays blank (Washington the city, or the state? — no ZIP to vouch)'],
+    ['123 Main St, SC 29575',                                 { state: 'SC' }, 'a ZIP vouches for a lone state token: state only, the street is never a city'],
+    ['318 Greenwood Ave, Seattle Washington',                 { city: 'Seattle', state: 'WA' }, 'city + state name'],
+    ['',                                                      {}, 'empty'],
+    [null,                                                    {}, 'null'],
+  ];
+  for (const [addr, want, label] of cases) eq(JSON.stringify(P(addr)), JSON.stringify(want), `§13 parse "${addr}" — ${label}`);
+  eq(CP.normalizeStateToken('South Carolina'), 'SC', '§13 normalizeStateToken accepts a full name'); eq(CP.normalizeStateToken('sc'), 'SC', '§13 …and a lower-case code'); eq(CP.normalizeStateToken('ZZ'), null, '§13 …and rejects a non-state');
+  // Structured fields are the authority; the parser is only the fallback for pre-A1 records.
+  const base = ltrResult({ ...ORANGE_IN, down: 25, util: 0 });
+  const typed = { ...base, addr: 'somewhere unparseable', city: 'North Myrtle Beach', state: 'south carolina' };
+  const pT = paramsOf(viaPipeline(typed, 60));
+  eq(pT.city, 'North Myrtle Beach', '§13 the typed City travels verbatim even when the address does not parse'); eq(pT.state, 'SC', '§13 the typed State is normalized to its code');
+  const cleared = { ...base, city: null, state: null };
+  const pC = paramsOf(viaPipeline(cleared, 61));
+  ok(!('city' in pC) && !('state' in pC), '§13 a deliberately cleared City / State (null on the record) is OMITTED — the parser never overrides the user');
+  const badState = { ...base, city: 'Bridgeport', state: 'ZZ' };
+  const pB = paramsOf(viaPipeline(badState, 62));
+  eq(pB.city, 'Bridgeport', '§13 city travels'); ok(!('state' in pB), '§13 a non-state value is omitted, never sent to CPC\'s dropdown');
+  const legacy = { ...base }; delete legacy.city; delete legacy.state;
+  const pL = paramsOf(viaPipeline(legacy, 63));
+  eq(pL.city, 'Bridgeport', '§13 a pre-A1 record (no keys) falls back to the parser'); eq(pL.state, 'CT', '§13 …state too');
+  const legacyUsa = { ...legacy, addr: '12 Orange St, Bridgeport, CT 06604, USA' };
+  eq(paramsOf(viaPipeline(legacyUsa, 64)).state, 'CT', '§13 a pre-A1 record with an Android-style address now parses (the live defect is closed for old cards too)');
+  eq(JSON.stringify(CP.addressHandoff({ addr: '1 Main St, Raleigh, NC 27601, USA', city: null, state: null })), '{}', '§13 addressHandoff honours explicit nulls over the parser');
+  eq(JSON.stringify(CP.addressHandoff({ addr: '1 Main St, Raleigh, NC 27601, USA' })), '{"city":"Raleigh","state":"NC"}', '§13 addressHandoff parses when the keys are absent');
+  const cpSrc = readFileSync(join(ROOT, 'docs', 'src', 'js', 'clearpath.js'), 'utf8');
+  eq((cpSrc.match(/= addressHandoff\(r\)/g) || []).length, 2, '§13 buildDealParams and buildBrrrSummary both read the structured components (one helper)');
+  eq((cpSrc.replace(/\/\/[^\n]*/g, '').match(/parseCityState\(r\.addr\)/g) || []).length, 1, '§13 the address is parsed directly in exactly one place — the helper\'s pre-A1 fallback');
+  const ltrSrc = readFileSync(join(ROOT, 'docs', 'src', 'js', 'ltr.js'), 'utf8'), brrrSrc = readFileSync(join(ROOT, 'docs', 'src', 'js', 'brrr.js'), 'utf8');
+  ok(/\.\.\.addressHandoff\(info\)/.test(ltrSrc) && /\.\.\.addressHandoff\(info\)/.test(brrrSrc), '§13 the 9+ referral handoffs carry the structured City / State (they used to send addr only)');
+}
+
 console.log(`\nhandoffutil: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

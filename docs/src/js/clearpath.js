@@ -7,18 +7,100 @@ import { resultInsuranceStatus, insuranceReady, insuranceSummaryWarning, insuran
 
 const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: 'ltr-funding-btn', brrr: 'brrr-funding-btn' };
 
-// ─── Parse "City ST" off the end of a freeform address (item 11a) ────────────
+// ─── Parse "City ST" off the end of a freeform address (item 11a; hardened Wave A · A1) ──
 // e.g. "412 Oak St, Charlotte NC 28202" → { city: 'Charlotte', state: 'NC' }
-// Tolerates a trailing ZIP and only accepts a real US state code (so street
-// suffixes like "St"/"Dr"/"Rd" don't get mistaken for a state).
+//
+// Wave A · A1 (owner/GPT ruling 2026-09-06) — the live Android defect: Chrome
+// address autofill and map copies end in ", USA", the old `$`-anchored regex
+// then matched nothing and CPC's City / State arrived blank. The parser now:
+//   • strips a trailing country token (USA / U.S. / United States [of America]);
+//   • accepts a two-letter code OR a full state name, with or without a ZIP;
+//   • PREFERS BLANK OVER WRONG — a two-letter token is trusted only when the
+//     address delimits it (a comma-separated city segment, or a trailing ZIP).
+//     "12 Oak Ct" therefore yields nothing, never { state: 'CT' }; and a
+//     comma-free "… Hwy Myrtle Beach SC 29575" yields the state alone, never a
+//     wrong city.
+// Structured City / State inputs on every analyzer are auto-filled from this
+// parse (never over a user's edit) and are what the handoff sends — see
+// addressHandoff below. Exported for the Node suites.
 const US_STATES = new Set(['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC']);
-function parseCityState(addr) {
+const STATE_NAMES = {
+  'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA','colorado':'CO','connecticut':'CT','delaware':'DE',
+  'florida':'FL','georgia':'GA','hawaii':'HI','idaho':'ID','illinois':'IL','indiana':'IN','iowa':'IA','kansas':'KS','kentucky':'KY',
+  'louisiana':'LA','maine':'ME','maryland':'MD','massachusetts':'MA','michigan':'MI','minnesota':'MN','mississippi':'MS','missouri':'MO',
+  'montana':'MT','nebraska':'NE','nevada':'NV','new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY',
+  'north carolina':'NC','north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR','pennsylvania':'PA','rhode island':'RI',
+  'south carolina':'SC','south dakota':'SD','tennessee':'TN','texas':'TX','utah':'UT','vermont':'VT','virginia':'VA',
+  'washington':'WA','west virginia':'WV','wisconsin':'WI','wyoming':'WY','district of columbia':'DC',
+};
+// A state token → its two-letter code, or null. Accepts "SC", "sc", "South Carolina".
+export function normalizeStateToken(t) {
+  const x = String(t == null ? '' : t).trim().replace(/\.$/, '');
+  if (!x) return null;
+  if (/^[A-Za-z]{2}$/.test(x)) return US_STATES.has(x.toUpperCase()) ? x.toUpperCase() : null;
+  return STATE_NAMES[x.toLowerCase().replace(/\s+/g, ' ')] || null;
+}
+const CITY_OK = /^[A-Za-z][A-Za-z .'-]*$/;
+export function parseCityState(addr) {
   if (!addr) return {};
-  const m = addr.trim().match(/([A-Za-z .'-]+?)[ ,]+([A-Za-z]{2})(?:[ ,]+\d{5}(?:-\d{4})?)?$/);
-  if (!m) return {};
-  const state = m[2].toUpperCase();
-  if (!US_STATES.has(state)) return {};   // reject "St"/"Dr"/"Rd"… — only real states
-  return { city: m[1].trim(), state };
+  let s = String(addr).trim();
+  s = s.replace(/[,\s]+(?:usa|u\.s\.a\.?|us|u\.s\.?|united states(?: of america)?)\.?\s*$/i, '');   // trailing country token
+  const zip = /[ ,]+(\d{5})(?:-\d{4})?\s*$/.exec(s);
+  const hasZip = !!zip;
+  if (zip) s = s.slice(0, zip.index);
+  s = s.trim().replace(/[\s,]+$/, '');
+  const parts = s.split(',').map(p => p.trim()).filter(Boolean);
+  let city = null, state = null;
+  if (parts.length >= 2) {
+    // "…, City, ST" · "…, City, South Carolina" · "…, City ST" · "…, City South Carolina"
+    const last = parts[parts.length - 1], prev = parts[parts.length - 2];
+    const whole = normalizeStateToken(last);
+    if (whole) {
+      // "…, City, ST": the previous segment must read as a city. "318 Greenwood
+      // Ave, Washington" is ambiguous (Washington the city or the state?) — with
+      // no ZIP to vouch for the token, prefer blank; with a ZIP keep the state alone.
+      if (CITY_OK.test(prev)) { state = whole; city = prev; }
+      else if (hasZip) state = whole;
+    }
+    else {
+      const words = last.split(/\s+/);
+      for (const k of [1, 2, 3]) {
+        if (words.length <= k) break;                          // the city must keep at least one word
+        const st = normalizeStateToken(words.slice(-k).join(' '));
+        if (st) { state = st; city = words.slice(0, -k).join(' '); break; }
+      }
+    }
+  } else if (parts.length === 1 && hasZip) {
+    // No commas: a ZIP delimits the state token, but the city boundary is
+    // unknowable — trust the state, leave the city blank (prefer blank over wrong).
+    const m = /\s([A-Za-z]{2})$/.exec(parts[0]);
+    const st = m ? normalizeStateToken(m[1]) : null;
+    if (st) state = st;
+  }
+  const out = {};
+  if (city && CITY_OK.test(city)) out.city = city.trim();
+  if (state) out.state = state;
+  return out;
+}
+
+// ─── Wave A · A1: the City / State the handoff sends ─────────────────────────
+// A record that carries the structured keys (any analysis after A1) is the
+// authority: the user's edits — including a deliberate clearing (null) — travel
+// verbatim, the state normalized to its code and sent only when it is a real
+// state. A record without the keys (pre-A1 saved deal) falls back to the parser
+// so old pipeline cards keep handing off exactly as they did.
+export function addressHandoff(r) {
+  if (!r) return {};
+  const has = (k) => Object.prototype.hasOwnProperty.call(r, k);
+  if (has('city') || has('state')) {
+    const out = {};
+    const c = r.city == null ? '' : String(r.city).trim();
+    if (c) out.city = c;
+    const st = normalizeStateToken(r.state);
+    if (st) out.state = st;
+    return out;
+  }
+  return parseCityState(r.addr);
 }
 
 // ─── Owner-paid utilities (annual) — itemized handoff field ──────────────────
@@ -106,7 +188,7 @@ function econHandoff(r) {
 // ─── Normalize an analyzer result into the CPC deal-param object ──────────────
 // Numbers raw integers (no commas/$). Address passed whole — URLSearchParams encodes.
 function buildDealParams(r) {
-  const { city, state } = parseCityState(r.addr);
+  const { city, state } = addressHandoff(r);   // A1: structured fields first, parser fallback for pre-A1 records
   if (r.type === 'flip') {
     const cost = (r.ask || 0) + (r.rep || 0);
     // F-10 (A-Aron ruled — subtraction, not addition): the handoff carries the
@@ -332,7 +414,7 @@ function buildLtrSummary(r, tag) {
 }
 
 function buildBrrrSummary(r, tag) {
-  const { city, state } = parseCityState(r.addr);
+  const { city, state } = addressHandoff(r);
   const cs = [city, state].filter(Boolean).join(', ');
   const insStatus = resultInsuranceStatus(r);
   const tStat = resultTaxStatus(r);

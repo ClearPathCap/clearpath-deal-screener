@@ -7,7 +7,7 @@
 import { fmt, pct, cClass, buildMetrics, buildRows, parseNumOpt, renderInputIssues, inputIsIncomplete } from './format.js';
 import { computeBrrr, brrrVerdict, mosLabel, validateInputs, plausibilityWarnings, propertyBand, BAND_RULES } from './finance.js';
 import { FLIP_MARKETS, LTR_MARKETS, BRRR_ASSUMPTIONS, ALL_MARKETS } from './markets.js';
-import { maybeShowFundingButton } from './clearpath.js';
+import { maybeShowFundingButton, addressHandoff } from './clearpath.js';
 import { buildCpcUrl } from './funding.js';
 import { insuranceStatus, taxStatus, incomePresentation } from './insuranceReadiness.js';
 
@@ -62,7 +62,8 @@ export function analyzeBrrr() {
 
   // 9+ units = commercial: a referral, not a calculator. Skip analysis entirely.
   if (band === '9plus') {
-    showBrrrManualReview(units, { price, addr: elv('b-addr')?.value.trim() || '', ptype: elv('b-ptype')?.value || 'Multifamily' });
+    showBrrrManualReview(units, { price, addr: elv('b-addr')?.value.trim() || '', ptype: elv('b-ptype')?.value || 'Multifamily',
+      city: (elv('b-city')?.value || '').trim() || null, state: (elv('b-state')?.value || '').trim() || null });   // A1
     return;
   }
 
@@ -180,6 +181,8 @@ export function analyzeBrrr() {
 
   lastBrrrResult = {
     type: 'brrr', addr: input.addr,
+    city: (elv('b-city')?.value || '').trim() || null,     // A1: structured, user-editable
+    state: (elv('b-state')?.value || '').trim() || null,
     units: units || null, band,
     price: m.price, rehab, arv: m.arv,
     contingency: cont, cc: input.cc == null ? 2 : input.cc, hold: input.hold == null ? 6 : input.hold,
@@ -236,6 +239,7 @@ function showBrrrManualReview(units, info) {
     const deal = {
       pp: info.price ? Math.round(info.price) : undefined,
       addr: info.addr || undefined,
+      ...addressHandoff(info),   // A1: the 9+ referral carries the same structured City / State as every other handoff
       units: units || undefined, band: '9plus',
       ptype: 'Multifamily', purpose: 'brrr', exit: 'brrr', // always MF for 9+ handoff
     };

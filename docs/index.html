@@ -97,6 +97,17 @@
     <label>Address <span>(optional)</span></label>
     <input type="text" id="f-addr" placeholder="123 Oak Street, Charlotte NC">
   </div>
+  <!-- Wave A · A1 (2026-09-06): structured City / State — auto-filled from the address when the parse is confident, never over the user's own edit; these are what the CPC handoff sends. -->
+  <div class="field-row">
+    <div class="field">
+      <label>City <span>(auto from address)</span></label>
+      <input type="text" id="f-city" placeholder="Charlotte" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>State <span>(2-letter)</span></label>
+      <input type="text" id="f-state" placeholder="NC" maxlength="20" autocapitalize="characters" autocomplete="off">
+    </div>
+  </div>
   <!-- Wave A · A4 (2026-09-06): optional property facts for the CPC handoff. Blank = unknown — nothing is defaulted, stored or serialized until the user supplies it; no flip computation depends on either. -->
   <div class="field-row">
     <div class="field">
@@ -330,6 +341,17 @@
     <label>Address <span>(optional)</span></label>
     <input type="text" id="v-addr" placeholder="6001 South Kings Hwy, Myrtle Beach SC">
   </div>
+  <!-- Wave A · A1 (2026-09-06): structured City / State — auto-filled from the address when the parse is confident, never over the user's own edit; these are what the CPC handoff sends. -->
+  <div class="field-row">
+    <div class="field">
+      <label>City <span>(auto from address)</span></label>
+      <input type="text" id="v-city" placeholder="Myrtle Beach" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>State <span>(2-letter)</span></label>
+      <input type="text" id="v-state" placeholder="SC" maxlength="20" autocapitalize="characters" autocomplete="off">
+    </div>
+  </div>
   <!-- Wave A · A4 (2026-09-06): optional property facts for the CPC handoff. Blank = unknown — nothing is defaulted, stored or serialized until the user supplies it; no STR computation depends on either. -->
   <div class="field-row">
     <div class="field">
@@ -488,6 +510,17 @@
     <div class="field full">
       <label>Address <span>(optional)</span></label>
       <input type="text" id="l-addr" placeholder="318 Greenwood Ave, Memphis TN">
+    </div>
+    <!-- Wave A · A1 (2026-09-06): structured City / State — auto-filled from the address when the parse is confident, never over the user's own edit; these are what the CPC handoff sends. -->
+    <div class="field-row">
+      <div class="field">
+        <label>City <span>(auto from address)</span></label>
+        <input type="text" id="l-city" placeholder="Memphis" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>State <span>(2-letter)</span></label>
+        <input type="text" id="l-state" placeholder="TN" maxlength="20" autocapitalize="characters" autocomplete="off">
+      </div>
     </div>
     <div class="field-row">
       <div class="field">
@@ -649,6 +682,17 @@
     <div class="field full">
       <label>Address <span>(optional)</span></label>
       <input type="text" id="b-addr" placeholder="77 Birch St, Indianapolis IN">
+    </div>
+    <!-- Wave A · A1 (2026-09-06): structured City / State — auto-filled from the address when the parse is confident, never over the user's own edit; these are what the CPC handoff sends. -->
+    <div class="field-row">
+      <div class="field">
+        <label>City <span>(auto from address)</span></label>
+        <input type="text" id="b-city" placeholder="Indianapolis" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>State <span>(2-letter)</span></label>
+        <input type="text" id="b-state" placeholder="IN" maxlength="20" autocapitalize="characters" autocomplete="off">
+      </div>
     </div>
     <div class="field-row">
       <div class="field">

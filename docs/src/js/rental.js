@@ -147,6 +147,8 @@ export function analyzeRental() {
   lastRentalResult = {
     type: 'rental', addr, price,
     ptype, units,                 // A4: null when the user left them unknown (never SFR / 1)
+    city: (document.getElementById('v-city')?.value || '').trim() || null,     // A1: structured, user-editable
+    state: (document.getElementById('v-state')?.value || '').trim() || null,
     down:         +document.getElementById('v-down').value,
     rent,
     occ:          +document.getElementById('v-occ').value,

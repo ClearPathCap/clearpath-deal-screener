@@ -207,6 +207,8 @@ export function analyzeFlip() {
   lastFlipResult = {
     type: 'flip', addr, ask, arv, rep, hold,
     ptype, units,                 // A4: null when the user left them unknown (never SFR / 1)
+    city: (document.getElementById('f-city')?.value || '').trim() || null,     // A1: structured, user-editable
+    state: (document.getElementById('f-state')?.value || '').trim() || null,
     cc1: +document.getElementById('f-cc1').value,
     cc2: +document.getElementById('f-cc2').value,
     carry, target, sqft, self,

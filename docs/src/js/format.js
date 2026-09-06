@@ -158,10 +158,12 @@ function ensureLiveRegion(prefix) {
   }
   return r || null;
 }
-export function revealBlockingField(fieldId, message, prefix) {
+// `msgId` names the visible message element: `<field>-error` for the required /
+// malformed path (main.js), `<field>-issue` for the range / incomplete rows below —
+// two namespaces, so one field can never end up with two elements of one id.
+export function revealBlockingField(fieldId, message, prefix, msgId = fieldId + '-error') {
   const el = document.getElementById(fieldId);
   if (!el) return false;
-  const msgId = fieldId + '-error';
   if (typeof el.setAttribute === 'function') {
     el.setAttribute('aria-invalid', 'true');
     if (document.getElementById(msgId)) el.setAttribute('aria-describedby', msgId);
@@ -203,14 +205,14 @@ export function renderInputIssues(prefix, errors, warnings) {
     const anchor = document.getElementById(prefix + '-results');
     anchor?.parentNode?.insertBefore(box, anchor);
   }
-  const e = (errors || []).map(x => `<div class="input-error" id="${x.field}-error">⚠ ${x.label}: ${x.message}</div>`).join('');
+  clearBlockingMarks(prefix);   // A6: marks describe THIS run only (the rows below are rebuilt, so old describedby targets are gone)
+  const e = (errors || []).map(x => `<div class="input-error" id="${x.field}-issue">⚠ ${x.label}: ${x.message}</div>`).join('');
   const w = (warnings || []).map(x => `<div class="input-warn">• ${x.label}: ${x.message}</div>`).join('');
   box.innerHTML = e + w;
   box.style.display = (e || w) ? 'block' : 'none';
   if (errors && errors.length > 0) {
-    revealBlockingField(errors[0].field, `${errors[0].label}: ${errors[0].message}`, prefix);   // A6: one reveal, the first error
+    revealBlockingField(errors[0].field, `${errors[0].label}: ${errors[0].message}`, prefix, errors[0].field + '-issue');   // A6: one reveal, the first error
     return true;   // blocked
   }
-  clearBlockingMarks(prefix);   // A6: a run that reaches here without errors is valid
   return false;
 }

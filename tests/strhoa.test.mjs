@@ -120,7 +120,7 @@ console.log('— §D source pins: every surface the ruling names ─');
   ok(/\(\+x\.hoa > 0\) && 'HOA ' \+ money\(x\.hoa\) \+ '\/mo'/.test(plSrc), 'D5 pipeline "Saved inputs" line carries a positive HOA');
   ok(/if \(data\.hoa > 0\) lines\.push\('HOA: ' \+ money\(data\.hoa\) \+ '\/mo'\)/.test(shSrc), 'D6 share text carries a positive HOA');
   ok(/r\.hoa > 0 \? 'HOA \(monthly\): \$'/.test(cpSrc), 'D7 clipboard summary carries a positive HOA');
-  ok(/monthlyHoa: r\.hoa == null \? undefined : Math\.round\(r\.hoa\),\s*\n\s*hoaStatus: hoaBasisHandoff\(r\.hoa\)/.test(cpSrc), 'D8 the STR handoff branch emits monthlyHoa + hoaStatus through the shared hoaBasisHandoff');
+  ok(/monthlyHoa: monthlyHoaHandoff\(r\.hoa\),\s*\n\s*hoaStatus: hoaBasisHandoff\(monthlyHoaHandoff\(r\.hoa\)\)/.test(cpSrc), 'D8 the STR handoff branch emits monthlyHoa + hoaStatus from the one shared monthly figure (same helpers as LTR / BRRRR)');
   ok(/const hoa\s+= parseComma\(document\.getElementById\('v-hoa'\)\?\.value \|\| '0'\) \|\| 0;/.test(rSrc), 'D9 rental.js reads v-hoa with the same explicit-zero read as v-util');
   ok(/computeStr\(\{ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate, util, hoa \}\)/.test(rSrc), 'D10 the analyzer passes hoa to the engine');
   ok(/tax, taxStatus: tStat, maint, furnish, util, hoa, tgtCoc, interestRate,/.test(rSrc), 'D11 the saved STR record carries hoa (monthly)');

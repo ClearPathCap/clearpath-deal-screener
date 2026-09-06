@@ -286,6 +286,10 @@ typed('v-occ', '70');
 globalThis.analyzeRental();
 const rr = rental.getLastRentalResult();
 ok(rr && rr.price === 400000 && rr.rent === 60000 && rr.occ === 70, `E5 current STR engine ran on the reviewed inputs (occ ${rr && rr.occ})`);
+// Verification corrective 2026-09-06 (pre-existing since f41337c): entering a review
+// used to set display:none on the funding container and nothing ever restored it,
+// so the CTA never rendered again after a review until reload.
+ok(el('rental-funding-btn').style.display !== 'none', 'E5b after a review + Analyze the funding container is not left display:none (it is emptied on review, never hidden)');
 ok(snapshot() === before, 'E6 analyzing did not persist');
 const updS = await globalThis.saveDeal('rental');
 const s2 = storage.getDeals().find(d => d.id === STR.id);

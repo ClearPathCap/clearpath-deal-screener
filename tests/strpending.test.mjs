@@ -77,8 +77,11 @@ console.log('— §B a complete analysis still wears its real class —');
   ok(rp && rp.cls === 'pass' && el('rental-verdict').className === 'verdict pass' && el('rental-verdict').attrs['data-pending'] === '0', 'B1 walk-away renders as pass with data-pending 0');
   const rh = run('5,500', '90,000', '250,000');
   ok(rh && rh.cls === 'hot' && el('rental-verdict').className === 'verdict hot' && el('rental-verdict').attrs['data-pending'] === '0', 'B2 a strong deal renders as hot');
-  const rw = run('5,500', '62,000', '320,000');
-  ok(rw && (rw.cls === 'warm' || rw.cls === 'hot') && el('rental-verdict').className === 'verdict ' + rw.cls, `B3 a real ${rw && rw.cls} deal still wears ${rw && rw.cls} (warm is reserved for real verdicts)`);
+  // Verification corrective 2026-09-06: the first cut's "warm" fixture computed hot; this one is warm
+  // (coc ≈ 4.8 % ≥ 0.75 × 6, cap ≈ 7.5 % ≥ 4.5, below the hot bar) and is asserted strictly.
+  const rw = run('5,500', '47,000', '250,000');
+  ok(rw && rw.cls === 'warm', `B3a fixture: a genuinely WARM deal (got ${rw && rw.cls})`);
+  ok(el('rental-verdict').className === 'verdict warm' && el('rental-verdict').attrs['data-pending'] === '0', 'B3 a real warm deal still wears warm (warm is reserved for real verdicts)');
 }
 
 console.log('— §C thresholds untouched; pending state derived from the same F-6 rule —');

@@ -57,7 +57,7 @@ ok('[LAW] the server does the same (set_user_market: cooldown from current_tier(
 ok('[A7] both warnings carry the upgrade re-check sentence', (block.match(/Upgrading re-checks this lock under your new plan\./g) || []).length === 2);
 
 // ── what the copy must NOT say ───────────────────────────────────────────────
-ok('[A7] no vague "additional changes" quota wording', !/additional (market )?changes/i.test(block));
+ok('[A7] no vague "additional changes" quota wording (warning or toast)', !/additional (market )?changes/i.test(block) && !/additional (market )?changes/i.test(toastFn));
 ok('[A7] the old copy is gone', !/Changing a Market Region locks that slot for/.test(mainSrc) && !/Upgrade to \$\{tierLabel\} for faster access/.test(mainSrc));
 ok('[COMPLIANCE] the copy sells app features only — no funding / loan / rate / approval words', !/funding|loan|rate|approv|lender|priority/i.test(block) && !/funding|loan|rate|approv|lender|priority/i.test(toastFn.replace(/\/\/[^\n]*/g, '')));
 ok('[A7] index.html default text states a wait, not a stale hard-coded 30 days', /<p id="market-confirm-text">Changing this Market Region starts a wait before this slot can change again\. Continue\?<\/p>/.test(html));

@@ -245,7 +245,8 @@ console.log('— §10 HOA basis token (contract 2026-09-06): confirmed zero vs a
   const cpSrc = readFileSync(join(ROOT, 'docs', 'src', 'js', 'clearpath.js'), 'utf8');
   // Wave A · A2 (2026-09-06, same-commit re-pin): the token is now wired in econHandoff
   // (LTR/BRRRR) AND the STR branch — two sites, one helper. F&F still carries none.
-  eq((cpSrc.match(/hoaStatus: hoaBasisHandoff\(r\.hoa\)/g) || []).length, 2, '§10 the token is wired through hoaBasisHandoff in econHandoff (LTR/BRRRR) and the STR branch — nowhere else');
+  eq((cpSrc.match(/hoaStatus: hoaBasisHandoff\(monthlyHoaHandoff\(r\.hoa\)\)/g) || []).length, 2, '§10 the token is derived from the SHIPPED monthly amount in econHandoff (LTR/BRRRR) and the STR branch — nowhere else');
+  eq((cpSrc.match(/monthlyHoa: monthlyHoaHandoff\(r\.hoa\)/g) || []).length, 2, '§10 the monthly amount goes through the one helper at both sites');
   const flipBranch2 = cpSrc.slice(cpSrc.indexOf("if (r.type === 'flip') {"), cpSrc.indexOf("if (r.type === 'ltr') {"));
   ok(!flipBranch2.includes('hoaStatus') && !flipBranch2.includes('monthlyHoa'), '§10 the flip branch carries no HOA keys');
   const rStr = { type: 'rental', addr: '5 Shore Rd, Wilmington NC 28401', price: 400000, down: 20, rent: 90000, util: 0, cls: 'warm', verdict: 'x', coc: 5, capRate: 6, dscr: 1.2, cashflow: 1000 };
@@ -265,6 +266,13 @@ console.log('— §11 Wave A · A2: STR states its HOA basis (2026-09-06) —');
   eq(p150.hoaStatus, 'applies', '§11 [A2] a positive STR HOA states applies'); eq(p150.monthlyHoa, '150', '§11 [A2] the monthly amount travels (CPC converts ×12 once)');
   eq(viaPipeline(strRec(150), 40), viaAnalyzer(strRec(150)), '§11 [A2] analyzer and pipeline paths build the identical STR URL');
   eq(paramsOf(viaPipeline(strRec(-9), 41)).hoaStatus, undefined, '§11 [A2] a malformed STR HOA sends no token (never repaired)');
+  // Verification corrective 2026-09-06: the amount and the token derive from one figure.
+  ok(!('monthlyHoa' in paramsOf(viaPipeline(strRec(-9), 41))), '§11 [A2] a negative STR HOA sends no monthlyHoa either (no "-9" beside an omitted token)');
+  ok(!('monthlyHoa' in paramsOf(viaPipeline(strRec('abc'), 43))) && !('hoaStatus' in paramsOf(viaPipeline(strRec('abc'), 43))), '§11 [A2] a non-numeric saved HOA ships neither key (never "NaN")');
+  const pFrac = paramsOf(viaPipeline(strRec(0.4), 44)); eq(pFrac.monthlyHoa, '0', '§11 [A2] a sub-dollar HOA rounds to "0"'); eq(pFrac.hoaStatus, 'none', '§11 [A2] …and the token agrees with the shipped amount (none, not applies)');
+  const pR = paramsOf(viaPipeline(strRec(149.6), 45)); eq(pR.monthlyHoa, '150', '§11 [A2] a fractional HOA rounds to "150"'); eq(pR.hoaStatus, 'applies', '§11 [A2] …with applies');
+  const lNeg = ltrResult({ ...ORANGE_IN, down: 25, util: 0 }); lNeg.hoa = -5;
+  ok(!('monthlyHoa' in paramsOf(viaPipeline(lNeg, 46))), '§11 [A2] the same law now holds for LTR / BRRRR: a negative saved HOA ships no amount');
   const pLegacy = paramsOf(viaPipeline(strRec(undefined), 42));
   eq(pLegacy.hoaStatus, undefined, '§11 [A2] legacy STR record: no token'); eq(keysOf(viaPipeline(strRec(undefined), 42)), 'addr,annualUtilities,city,exit,loan,pp,purpose,src,state,tier', '§11 [A2] legacy STR key set is byte-identical to the pre-A2 contract');
   const s150 = STR.computeStr({ price: 400000, rent: 90000, down: 0.2, occ: 0.65, mgmt: 0.03, pm: 0.08, tax: 4000, maint: 2000, furnish: 15000, tgtCoc: 6, interestRate: 0.0675, util: 0, hoa: 150 });
@@ -310,14 +318,22 @@ console.log('— §13 Wave A · A1: City / State — hardened parser (prefer bla
     ['6001 S Kings Hwy, Myrtle Beach, SC 29575, USA',         { city: 'Myrtle Beach', state: 'SC' }, 'Android / Chrome autofill: trailing ", USA" (the live defect)'],
     ['6001 S Kings Hwy, Myrtle Beach, SC, USA',               { city: 'Myrtle Beach', state: 'SC' }, 'trailing ", USA" without ZIP'],
     ['6001 S Kings Hwy, Myrtle Beach, SC 29575, United States', { city: 'Myrtle Beach', state: 'SC' }, 'trailing ", United States"'],
-    ['6001 S Kings Hwy, Myrtle Beach, South Carolina 29575',  { city: 'Myrtle Beach', state: 'SC' }, 'full state name'],
-    ['6001 S Kings Hwy, Myrtle Beach South Carolina',         { city: 'Myrtle Beach', state: 'SC' }, 'full state name, no comma'],
-    ['100 Broadway, New York New York',                       { city: 'New York', state: 'NY' }, 'two-word city + two-word state'],
-    ['6001 S Kings Hwy, Myrtle Beach, sc',                    { city: 'Myrtle Beach', state: 'SC' }, 'lower-case code'],
+    ['6001 S Kings Hwy, Myrtle Beach, South Carolina 29575',  { city: 'Myrtle Beach', state: 'SC' }, 'full state name as its own segment'],
+    ['6001 S Kings Hwy, Myrtle Beach South Carolina 29575',   { city: 'Myrtle Beach', state: 'SC' }, 'full state name inside the segment, vouched by a ZIP'],
+    ['6001 S Kings Hwy, Myrtle Beach South Carolina',         {}, 'full state name inside the segment with NO ZIP stays blank (verification corrective: "Port Washington" is a city)'],
+    ['100 Broadway, New York New York 10001',                 { city: 'New York', state: 'NY' }, 'two-word city + two-word state, ZIP-vouched'],
+    ['100 Broadway, New York New York',                       {}, '…and blank without the ZIP'],
+    ['123 Main St, Port Washington',                          {}, 'a multi-word city ending in a state name is NOT a state (Port Washington NY/WI)'],
+    ['5 Elm Rd, Mount Washington 21209',                      { city: 'Mount', state: 'WA' }, 'KNOWN LIMIT, documented: with a ZIP the name is trusted ("Mount Washington" + ZIP reads as Mount / WA) — the editable State field is the correction'],
+    ['6001 S Kings Hwy, Myrtle Beach, sc',                    { city: 'Myrtle Beach', state: 'SC' }, 'lower-case code as its own segment'],
+    ['6001 S Kings Hwy, Myrtle Beach sc',                     {}, 'lower-case two-letter token INSIDE a segment is not trusted without a ZIP ("Oak Ct" law)'],
     ['12 Orange St, Bridgeport CT 06604',                     { city: 'Bridgeport', state: 'CT' }, 'Orange Street regression shape'],
     ['Unit 4B, 100 Ocean Blvd, North Myrtle Beach, SC 29582', { city: 'North Myrtle Beach', state: 'SC' }, 'unit prefix'],
-    ['6001 S Kings Hwy Myrtle Beach SC 29575-1234',           { state: 'SC' }, 'no commas + ZIP: state only, city left BLANK (never "S Kings Hwy Myrtle Beach")'],
-    ['6001 S Kings Hwy Myrtle Beach SC 29575 USA',            { state: 'SC' }, 'no commas + ZIP + country: state only'],
+    ['12 Elm Rd, Oak Ct',                                     {}, '"Oak Ct" as the last segment stays blank (Ct is a street suffix)'],
+    ['6001 S Kings Hwy Myrtle Beach SC 29575-1234',           {}, 'comma-free address never auto-fills (verification corrective: "418 Oak Ct 29577" must not become CT)'],
+    ['418 Oak Ct 29577',                                      {}, 'comma-free + ZIP + street suffix: blank, never CT'],
+    ['1234 Peachtree St NE 30309',                            {}, 'comma-free + ZIP + directional: blank, never Nebraska'],
+    ['6001 S Kings Hwy Myrtle Beach SC 29575 USA',            {}, 'comma-free + ZIP + country: blank'],
     ['6001 S Kings Hwy, Myrtle Beach',                        {}, 'no state → nothing'],
     ['12 Oak Ct',                                             {}, 'street suffix "Ct" is NOT Connecticut (prefer blank over wrong)'],
     ['5 Palm La',                                             {}, '"La" is not Louisiana'],
@@ -325,7 +341,8 @@ console.log('— §13 Wave A · A1: City / State — hardened parser (prefer bla
     ['412 Oak St',                                            {}, 'street only'],
     ['318 Greenwood Ave, Washington',                         {}, 'a lone state name after a street stays blank (Washington the city, or the state? — no ZIP to vouch)'],
     ['123 Main St, SC 29575',                                 { state: 'SC' }, 'a ZIP vouches for a lone state token: state only, the street is never a city'],
-    ['318 Greenwood Ave, Seattle Washington',                 { city: 'Seattle', state: 'WA' }, 'city + state name'],
+    ['318 Greenwood Ave, Seattle Washington 98101',           { city: 'Seattle', state: 'WA' }, 'city + state name, ZIP-vouched'],
+    ['318 Greenwood Ave, Seattle Washington',                 {}, 'city + state name without a ZIP stays blank'],
     ['',                                                      {}, 'empty'],
     [null,                                                    {}, 'null'],
   ];

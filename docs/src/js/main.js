@@ -269,6 +269,11 @@ const REVIEW_FIELDS = {
 function reviewSetField(id, value, kind, status) {
   const el = document.getElementById(id);
   if (!el) return false;
+  // A1: a record that EXPLICITLY carries null for City / State (the user cleared
+  // it before saving) hydrates blank AND stays protected, so the address
+  // auto-fill can never resurrect a value the user removed. A record without
+  // the key at all (pre-A1) resets unprotected below, as every other field.
+  if (value === null && /-(city|state)$/.test(id)) { el.value = ''; el.dataset.explicitBlank = '1'; delete el.dataset.userEdited; delete el.dataset.autoFilled; return true; }
   if (status === 'missing') {          // pending taxes / insurance: blank, and protected from presets
     el.value = ''; el.dataset.userEdited = '1'; delete el.dataset.autoFilled; return true;
   }
@@ -344,7 +349,12 @@ function reviewDeal(id) {
   CLEAR_RESULT[type]();
   clearStaleWatch(type);
   const hide = (elId, wipe) => { const e = document.getElementById(elId); if (!e) return; e.style.display = 'none'; if (wipe) { e.innerHTML = ''; } };
-  hide(RESULTS_ID[type]); hide(FUNDING_ID[type], true); hide(type + '-input-errors', true);
+  hide(RESULTS_ID[type]); hide(type + '-input-errors', true);
+  // Verification corrective 2026-09-06 (pre-existing since f41337c): the funding
+  // container used to get display:none here and NOTHING ever restored it, so
+  // after a review the CTA never rendered again until reload. The results panel
+  // (restored by the analyzer) hides it; an emptied container is invisible anyway.
+  { const fb = document.getElementById(FUNDING_ID[type]); if (fb) fb.innerHTML = ''; }
   if (type === 'flip') hide('flip-guide');
   if (type === 'ltr' || type === 'brrr') { const n = document.getElementById(type === 'ltr' ? 'l-band-notice' : 'b-band-notice'); if (n) { n.style.display = 'none'; n.innerHTML = ''; n.className = 'band-notice'; } }
   // 3. Prefill EVERY persisted raw input and protect it; anything the record
@@ -483,7 +493,7 @@ function autofillAddressComponents(prefix) {
   if (!addr || !city || !state) return;
   const parsed = parseCityState(addr.value || '');
   const fill = (el, v) => {
-    if (el.dataset.userEdited) return;                       // the user's own value (or clearing) always wins
+    if (el.dataset.userEdited || el.dataset.explicitBlank) return;   // the user's own value (or clearing, this session or in the saved record) always wins
     if (v) { el.value = v; el.dataset.autoFilled = '1'; }
     else if (el.dataset.autoFilled) { el.value = ''; delete el.dataset.autoFilled; }   // withdraw a stale auto-fill only
   };
@@ -493,7 +503,7 @@ function autofillAddressComponents(prefix) {
 function wireAddressComponents(prefix) {
   const addr = document.getElementById(prefix + '-addr'), city = document.getElementById(prefix + '-city'), state = document.getElementById(prefix + '-state');
   if (!addr || !city || !state) return;
-  const markUser = (el) => (e) => { if (!e || e.isTrusted) { el.dataset.userEdited = '1'; delete el.dataset.autoFilled; } };
+  const markUser = (el) => (e) => { if (!e || e.isTrusted) { el.dataset.userEdited = '1'; delete el.dataset.autoFilled; delete el.dataset.explicitBlank; } };
   city.addEventListener('input', markUser(city));
   state.addEventListener('input', markUser(state));
   addr.addEventListener('input',  () => autofillAddressComponents(prefix));
@@ -520,6 +530,7 @@ function resetAnalyzerProtection(type) {
     if (!el) continue;
     delete el.dataset.userEdited;
     delete el.dataset.autoFilled;
+    delete el.dataset.explicitBlank;   // A1: a cleared City / State from a reviewed record is released with the rest
     if (el.type === 'checkbox' || el.tagName === 'SELECT' || el.options) continue;   // per-type clear owns these
     if (/addr$/.test(id)) continue;                                                  // per-type clear blanks the address
     el.value = el.defaultValue != null ? String(el.defaultValue) : '';
@@ -1068,9 +1079,14 @@ function validateRequiredFields(type) {
   // aria, announcement) — see revealBlockingField. `earlier` keeps document order
   // when the DOM can tell us; the required loop already runs in form order.
   const prefix = type === 'rental' ? 'rental' : type;
+  clearBlockingMarks(prefix);   // A6: aria marks describe THIS run only — a field that passed loses last run's marks
   let first = null;
+  // `a` is earlier than `b` when b FOLLOWS a: node.compareDocumentPosition(other)
+  // describes OTHER relative to NODE, so a.compareDocumentPosition(b) & FOLLOWING
+  // is set exactly when b comes after a. (Verification corrective 2026-09-06: the
+  // first cut had the operands swapped and revealed the LAST field.)
   const earlier = (a, b) => (a && a.el && typeof a.el.compareDocumentPosition === 'function' && typeof Node !== 'undefined'
-    ? !!(b.el.compareDocumentPosition(a.el) & Node.DOCUMENT_POSITION_FOLLOWING) : false);
+    ? !!(a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) : false);
   const noteBlocking = (el, message) => { const c = { el, id: el.id, message }; if (!first || earlier(c, first)) first = c; };
   fields.forEach(f => {
     const el  = document.getElementById(f.id);

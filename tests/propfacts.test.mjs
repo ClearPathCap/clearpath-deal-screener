@@ -117,7 +117,34 @@ console.log('— §D source pins: flip side, review reset, Clear & New Deal, pip
   ok(/getElementById\('f-ptype'\); if \(s\) s\.value = ''; const u = document\.getElementById\('f-units'\); if \(u\) u\.value = '';/.test(mainSrc) && /getElementById\('v-ptype'\); if \(s\) s\.value = ''; const u = document\.getElementById\('v-units'\); if \(u\) u\.value = '';/.test(mainSrc), 'D6 Clear & New Deal returns both analyzers to unknown');
   ok((plSrc.match(/\.\.\.\(d\.ptype \? \[\{ l: 'Property type', v: escapeHtml\(String\(d\.ptype\)\) \}\] : \[\]\)/g) || []).length === 2, 'D7 pipeline detail shows the type only when supplied (STR + flip)');
   ok((cpSrc.match(/r\.ptype \? 'Property Type: ' \+ r\.ptype : null/g) || []).length === 2, 'D8 clipboard summaries carry the type only when supplied (STR + flip)');
+  ok((cpSrc.match(/r\.units >= 1 \? 'Units: ' \+ r\.units : null/g) || []).length === 2, 'D8b clipboard summaries carry a supplied unit count of 1 too (verification corrective: the URL and the card already did)');
   ok(/function optionalUnitsHandoff/.test(cpSrc) && /function optionalPtypeHandoff/.test(cpSrc) && !/band:\s*(r\.units|propertyBand)[^\n]*A4/.test(cpSrc), 'D9 the handoff helpers exist and no band is emitted for STR / F&F');
+}
+
+console.log('— §E the REAL flip analyzer stores null for unknown facts (verification corrective: proven by execution, not by regex) ─');
+{
+  let flip = null, loadErr = null;
+  try { flip = await import(JS + 'flip.js'); } catch (e) { loadErr = String(e); }
+  ok(!!flip, `E0 flip.js loads under the fake DOM (${loadErr || 'ok'})`);
+  if (flip) {
+    const runFlip = (ptype, units) => {
+      set('f-addr', '412 Oak St, Charlotte NC'); set('f-ask', '225,000'); set('f-arv', '425,000'); set('f-rep', '75,000'); set('f-hold', '6'); set('f-cc1', '2'); set('f-cc2', '5'); set('f-carry', '900'); set('f-target', '40,000'); set('sqft', ''); set('f-loan', ''); set('f-rate', '10'); set('f-points', '3');
+      el('self-reno').checked = false; set('f-ptype', ptype); set('f-units', units); el('f-units').validity.badInput = false;
+      el('flip-results').style.display = 'none';
+      try { flip.analyzeFlip(); } catch (e) { return { err: String(e) }; }
+      return flip.getLastFlipResult();
+    };
+    const f0 = runFlip('', '');
+    ok(f0 && !f0.err && f0.ptype === null && f0.units === null, `E1 blank type / units analyze as null on the flip result (got ${f0 && (f0.err || JSON.stringify([f0.ptype, f0.units]))})`);
+    const f1 = runFlip('Condo', '1');
+    ok(f1 && !f1.err && f1.ptype === 'Condo' && f1.units === 1, `E2 supplied facts are stored verbatim on the flip result (got ${f1 && (f1.err || JSON.stringify([f1.ptype, f1.units]))})`);
+    ok(f0 && f1 && !f0.err && !f1.err && f0.profit === f1.profit && f0.maxOffer === f1.maxOffer && f0.verdict === f1.verdict, 'E3 the flip math is identical with and without the facts');
+    const settled = flip.getLastFlipResult();
+    el('f-units').validity.badInput = true; el('flip-results').style.display = 'none';
+    try { flip.analyzeFlip(); } catch (e) {}
+    ok(flip.getLastFlipResult() === settled && el('flip-results').style.display === 'none', 'E4 an incomplete numeric entry blocks the flip run before any default could stand in');
+    el('f-units').validity.badInput = false;
+  }
 }
 
 console.log(`\npropfacts: ${pass} passed, ${fail} failed`);

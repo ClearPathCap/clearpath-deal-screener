@@ -15,11 +15,14 @@ const BTN_IDS = { flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: '
 // then matched nothing and CPC's City / State arrived blank. The parser now:
 //   • strips a trailing country token (USA / U.S. / United States [of America]);
 //   • accepts a two-letter code OR a full state name, with or without a ZIP;
-//   • PREFERS BLANK OVER WRONG — a two-letter token is trusted only when the
-//     address delimits it (a comma-separated city segment, or a trailing ZIP).
-//     "12 Oak Ct" therefore yields nothing, never { state: 'CT' }; and a
-//     comma-free "… Hwy Myrtle Beach SC 29575" yields the state alone, never a
-//     wrong city.
+//   • PREFERS BLANK OVER WRONG — a state is trusted only when the address
+//     delimits it: the last comma segment IS the state ("…, Myrtle Beach, SC" /
+//     "…, South Carolina 29575"), or the last segment ends in an UPPER-CASE
+//     two-letter code ("…, Myrtle Beach SC"), or a ZIP vouches for the token.
+//     A full state name inside a segment counts only with a ZIP ("Port
+//     Washington", "Mount Washington" are cities). A comma-free address never
+//     auto-fills ("12 Oak Ct", "418 Oak Ct 29577", "1234 Peachtree St NE 30309"
+//     all yield nothing — never CT / NE). Verification corrective 2026-09-06.
 // Structured City / State inputs on every analyzer are auto-filled from this
 // parse (never over a user's edit) and are what the handoff sends — see
 // addressHandoff below. Exported for the Node suites.
@@ -66,17 +69,21 @@ export function parseCityState(addr) {
       const words = last.split(/\s+/);
       for (const k of [1, 2, 3]) {
         if (words.length <= k) break;                          // the city must keep at least one word
-        const st = normalizeStateToken(words.slice(-k).join(' '));
-        if (st) { state = st; city = words.slice(0, -k).join(' '); break; }
+        const tok = words.slice(-k).join(' ');
+        const st = normalizeStateToken(tok);
+        if (!st) continue;
+        // Inside a segment, a two-letter token is trusted only when typed as a
+        // code (upper case: "Myrtle Beach SC") or vouched for by a ZIP — "Oak Ct"
+        // / "Palm La" stay blank. A full state name is trusted only with a ZIP —
+        // "Port Washington" / "Mount Washington" are cities.
+        const isCode = k === 1 && /^[A-Za-z]{2}$/.test(tok);
+        if (isCode ? (tok === tok.toUpperCase() || hasZip) : hasZip) { state = st; city = words.slice(0, -k).join(' '); }
+        break;
       }
     }
-  } else if (parts.length === 1 && hasZip) {
-    // No commas: a ZIP delimits the state token, but the city boundary is
-    // unknowable — trust the state, leave the city blank (prefer blank over wrong).
-    const m = /\s([A-Za-z]{2})$/.exec(parts[0]);
-    const st = m ? normalizeStateToken(m[1]) : null;
-    if (st) state = st;
   }
+  // A comma-free address (parts.length === 1) never auto-fills: without a city
+  // delimiter every trailing token — "Ct", "NE", "SC" — is ambiguous. Prefer blank.
   const out = {};
   if (city && CITY_OK.test(city)) out.city = city.trim();
   if (state) out.state = state;
@@ -131,6 +138,17 @@ function hoaBasisHandoff(v) {
   if (!Number.isFinite(n) || n < 0) return undefined;
   return n > 0 ? 'applies' : 'none';
 }
+// The monthly amount on the wire: the rounded figure, or nothing. Verification
+// corrective 2026-09-06: a malformed / negative value on a saved record used to
+// ship `monthlyHoa=NaN` / `-9` beside an omitted token; now BOTH keys derive from
+// this one figure, so the amount and the token can never disagree (0.4 → "0" +
+// none; 149.6 → "150" + applies; "abc" / -9 → both omitted, never repaired).
+function monthlyHoaHandoff(v) {
+  if (v == null) return undefined;
+  const n = +v;
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.round(n);
+}
 
 // ─── Wave A · A4 (2026-09-06): optional property facts on STR / F&F ──────────
 // `units` and `ptype` travel ONLY when the user supplied them — a blank stays
@@ -169,8 +187,8 @@ function econHandoff(r) {
     monthlyRent: n(r.rent, true),
     annualTaxes: incomeFields.annualTaxes,
     annualInsurance: incomeFields.annualInsurance,
-    monthlyHoa: n(r.hoa, true),
-    hoaStatus: hoaBasisHandoff(r.hoa),           // 'none' | 'applies' | omitted (pre-HOA legacy record)
+    monthlyHoa: monthlyHoaHandoff(r.hoa),
+    hoaStatus: hoaBasisHandoff(monthlyHoaHandoff(r.hoa)),   // 'none' | 'applies' | omitted (pre-HOA legacy record) — derived from the shipped amount
     annualUtilities: utilitiesHandoff(r.util),   // raw input; NOT insurance/tax-gated (like rent/HOA)
     vacancyPct: n(r.vac),
     pmPct: n(r.pm),
@@ -275,8 +293,8 @@ function buildDealParams(r) {
     // Wave A · A2 (2026-09-06): STR states its HOA basis on the same wire as
     // LTR / BRRRR — monthly amount + token. A pre-A2 STR record has no `hoa`
     // key, sends neither, and CPC keeps its legacy "Not sure" rule.
-    monthlyHoa: r.hoa == null ? undefined : Math.round(r.hoa),
-    hoaStatus: hoaBasisHandoff(r.hoa),
+    monthlyHoa: monthlyHoaHandoff(r.hoa),
+    hoaStatus: hoaBasisHandoff(monthlyHoaHandoff(r.hoa)),
     ptype:   optionalPtypeHandoff(r.ptype),      // A4: only when supplied
     units:   optionalUnitsHandoff(r.units),      // A4: only when supplied
     addr:    r.addr || undefined,
@@ -324,7 +342,7 @@ function buildFlipSummary(r, tag) {
     'DEAL SCREENER SUMMARY — Fix & Flip',
     r.addr ? 'Address: ' + r.addr : null,
     r.ptype ? 'Property Type: ' + r.ptype : null,          // A4: only when supplied
-    (r.units > 1 ? 'Units: ' + r.units : null),
+    (r.units >= 1 ? 'Units: ' + r.units : null),          // A4: shown whenever the user supplied it (1 included), like the URL and the card
     'Verdict: ' + r.verdict,
     tag,
     '---',
@@ -357,7 +375,7 @@ function buildRentalSummary(r, tag) {
     'DEAL SCREENER SUMMARY — STR / Rental',
     r.addr ? 'Address: ' + r.addr : null,
     r.ptype ? 'Property Type: ' + r.ptype : null,          // A4: only when supplied
-    (r.units > 1 ? 'Units: ' + r.units : null),
+    (r.units >= 1 ? 'Units: ' + r.units : null),          // A4: shown whenever the user supplied it (1 included), like the URL and the card
     'Verdict: ' + (expOk ? r.verdict : strP.label),
     tag,
     strExpenseSummaryWarning(tStat),

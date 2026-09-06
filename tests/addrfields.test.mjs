@@ -146,12 +146,25 @@ const pR = opened[0] ? paramsOf(opened[0]) : {};
 ok(opened.length === 1 && pR.band === '9plus' && pR.city === 'Raleigh' && pR.state === 'NC', `E1 the 9+ referral URL carries city / state (got ${JSON.stringify({ band: pR.band, city: pR.city, state: pR.state })})`);
 ok(ltr.getLastLtrResult() === null, 'E2 the referral is still a referral — no analysis ran');
 
+console.log('— §E2 an explicit blank carried by a reviewed record stays blank (verification corrective) —');
+// reviewSetField hydrates `city: null` as blank + explicitBlank (proven by source pin F5); the
+// auto-fill must honour that marker exactly like userEdited, and Clear & New Deal must release it.
+el('b-city').dataset.explicitBlank = '1'; el('b-city').value = ''; delete el('b-city').dataset.userEdited;
+typed('b-addr', '77 Birch St, Indianapolis, IN 46201');
+ok(el('b-city').value === '' && el('b-state').value === 'IN', 'E2a an explicitly blank City is not resurrected by an address edit (State, untouched, still fills)');
+typed('b-city', 'Carmel');
+ok(el('b-city').value === 'Carmel' && el('b-city').dataset.userEdited === '1' && !el('b-city').dataset.explicitBlank, 'E2b a real keystroke replaces the explicit-blank marker with user-edited');
+el('b-state').dataset.explicitBlank = '1'; globalThis.clearNewDeal('brrr');
+ok(!el('b-state').dataset.explicitBlank && !el('b-city').dataset.userEdited, 'E2c Clear & New Deal releases the marker with the rest of the protection');
+
 console.log('— §F source pins —');
 {
   const mainSrc = src('docs/src/js/main.js'), plSrc = src('docs/src/js/pipeline.js');
   ok(/\['f-city','city','t'\], \['f-state','state','t'\]/.test(mainSrc) && /\['l-city','city','t'\], \['l-state','state','t'\]/.test(mainSrc) && /\['v-city','city','t'\], \['v-state','state','t'\]/.test(mainSrc) && /\['b-city','city','t'\], \['b-state','state','t'\]/.test(mainSrc), 'F1 REVIEW_FIELDS hydrate City / State for all four analyzers (a record without them resets to blank)');
   ok((plSrc.match(/l: 'Location', v: escapeHtml\(\[d\.city, d\.state\]\.filter\(Boolean\)\.join\(', '\)\)/g) || []).length === 4, 'F2 every pipeline detail shows a Location row when present');
-  ok(/ADDRESS_PREFIXES\.forEach\(wireAddressComponents\)/.test(mainSrc) && /if \(el\.dataset\.userEdited\) return;/.test(mainSrc), 'F3 the auto-fill is wired for f / v / l / b and yields to a user edit');
+  ok(/ADDRESS_PREFIXES\.forEach\(wireAddressComponents\)/.test(mainSrc) && /if \(el\.dataset\.userEdited \|\| el\.dataset\.explicitBlank\) return;/.test(mainSrc), 'F3 the auto-fill is wired for f / v / l / b and yields to a user edit or an explicit blank');
+  ok(/if \(value === null && \/-\(city\|state\)\$\/\.test\(id\)\) \{ el\.value = ''; el\.dataset\.explicitBlank = '1';/.test(mainSrc), 'F5 review hydration keeps a record\'s explicit null City / State blank AND protected (never resurrected by the parser)');
+  ok(/delete el\.dataset\.explicitBlank;\s+\/\/ A1/.test(mainSrc), 'F6 resetAnalyzerProtection releases the marker');
   for (const p of ['f', 'v', 'l', 'b']) ok(new RegExp(`id="${p}-city"[^>]*autocomplete="off"`).test(html) && new RegExp(`id="${p}-state"[^>]*autocapitalize="characters"`).test(html), `F4 ${p}-city / ${p}-state inputs exist with the expected attributes`);
 }
 

@@ -58,6 +58,9 @@ function makeEl(id) {
     addEventListener(t, f) { (L[t] || (L[t] = [])).push(f); }, removeEventListener() {},
     dispatchEvent(ev) { try { if (!ev.target) ev.target = this; } catch {} (L[ev.type] || []).forEach(f => f.call(this, ev)); return true; },
     focus(opts) { this.focusCalls.push(opts || null); globalThis.document.activeElement = this; }, blur() {}, select() {}, scrollIntoView(opts) { this.scrollCalls.push(opts || null); },
+    // Spec-accurate document order (verification corrective 2026-09-06): node.compareDocumentPosition(other)
+    // describes OTHER relative to NODE — FOLLOWING (4) when other comes after node, PRECEDING (2) before.
+    compareDocumentPosition(other) { return other._order > this._order ? 4 : other._order < this._order ? 2 : 0; },
     closest(sel) { return sel === '.field' ? wrap : null; }, appendChild(c) { this.children.push(c); return c; },
     insertAdjacentElement() {}, insertAdjacentHTML() {}, before() {}, after() {}, prepend() {}, append() {}, remove() {},
     querySelector() { return null; },
@@ -83,6 +86,7 @@ globalThis.document = { getElementById: (id) => elements.has(id) ? elements.get(
   createElement: t => { const e = makeEl('_' + t + '_' + Math.random()); const proxy = new Proxy(e, { set(o, k, v) { o[k] = v; if (k === 'id' && v) createdById.set(v, proxy); return true; } }); return proxy; },
   body: makeEl('body'), documentElement: makeEl('html'), addEventListener() {}, removeEventListener() {}, activeElement: null };
 globalThis.window = globalThis; globalThis.addEventListener = () => {}; globalThis.removeEventListener = () => {}; globalThis.scrollTo = () => {};
+globalThis.Node = { DOCUMENT_POSITION_PRECEDING: 2, DOCUMENT_POSITION_FOLLOWING: 4 };   // so main.js's document-order branch is LIVE in this suite
 let reducedMotion = false;
 globalThis.matchMedia = (q) => ({ matches: /reduced-motion/.test(q) ? reducedMotion : false, addEventListener() {}, removeEventListener() {}, addListener() {} });
 for (const [k, val] of Object.entries({ navigator: { userAgent: 'node', standalone: false, clipboard: { writeText: async () => {} } }, location: { hash: '', search: '', href: 'http://localhost/', pathname: '/', origin: 'http://localhost' }, history: { replaceState() {}, pushState() {} } })) { try { Object.defineProperty(globalThis, k, { value: val, configurable: true, writable: true }); } catch {} }
@@ -125,6 +129,16 @@ el('v-price').value = ''; el('v-rent').value = ''; resetSpies();
 globalThis.analyzeRental();
 ok(el('v-price').scrollCalls.length === 1 && el('v-rent').scrollCalls.length === 0 && el('v-price').focusCalls.length === 1 && el('v-rent').focusCalls.length === 0, 'B1 only the first field (Purchase Price) is revealed; Revenue is marked but not jumped to');
 ok(el('v-rent').classList.contains('field-error'), 'B2 the second field still shows its own message');
+ok(el('v-price')._order < el('v-rent')._order && typeof el('v-price').compareDocumentPosition === 'function' && typeof Node !== 'undefined', 'B3 (harness) the document-order branch is live: nodes are ordered and Node exists');
+ok(el('v-price').attrs['aria-invalid'] === 'true' && !el('v-rent').attrs['aria-invalid'], 'B4 only the revealed field carries aria-invalid (the second is visually marked only)');
+// Fix & Flip: three required fields blank → the FIRST (Asking Price), never Repair Costs.
+el('f-ask').value = ''; el('f-arv').value = ''; el('f-rep').value = ''; resetSpies();
+globalThis.analyzeFlip();
+ok(el('f-ask').focusCalls.length === 1 && el('f-arv').focusCalls.length === 0 && el('f-rep').focusCalls.length === 0, `B5 flip with all three required blank reveals f-ask (first in document order), not f-rep (got ask ${el('f-ask').focusCalls.length} / arv ${el('f-arv').focusCalls.length} / rep ${el('f-rep').focusCalls.length})`);
+// BRRRR: four required fields blank → b-price.
+el('b-price').value = ''; el('b-rehab').value = ''; el('b-arv').value = ''; el('b-rent').value = ''; resetSpies();
+globalThis.analyzeBrrr();
+ok(el('b-price').focusCalls.length === 1 && el('b-rent').focusCalls.length === 0 && el('b-arv').focusCalls.length === 0, 'B6 BRRRR with all four required blank reveals b-price, not b-rent');
 
 console.log('— §C range path (format.js): the offending field is revealed and the previous marks are cleared —');
 typed('v-price', '250,000'); typed('v-rent', '90,000'); typed('v-down', '150'); resetSpies();
@@ -132,11 +146,17 @@ globalThis.analyzeRental();
 {
   const d = el('v-down'), p = el('v-price');
   ok(d.attrs['aria-invalid'] === 'true' && d.focusCalls.length === 1 && d.scrollCalls.length === 1, 'C1 the out-of-range field is revealed (focus + scroll + aria)');
-  ok(d.attrs['aria-describedby'] === 'v-down-error', `C2 aria-describedby targets the error row (got ${d.attrs['aria-describedby']})`);
-  ok(/id="v-down-error"/.test(el('rental-input-errors').innerHTML || (createdById.get('rental-input-errors') || {}).innerHTML || ''), 'C3 the error row carries the id');
+  ok(d.attrs['aria-describedby'] === 'v-down-issue', `C2 aria-describedby targets the error row in its own id namespace (got ${d.attrs['aria-describedby']})`);
+  ok(/id="v-down-issue"/.test(el('rental-input-errors').innerHTML || (createdById.get('rental-input-errors') || {}).innerHTML || ''), 'C3 the error row carries the id');
   ok(!p.attrs['aria-invalid'] && !p.attrs['aria-describedby'], 'C4 the previously-blocking Purchase Price lost its stale aria marks once it passed');
   ok(/Down payment: must be between/.test(live()), `C5 the range error is announced (got "${live()}")`);
   ok(el('v-price').value === '250,000' && el('v-rent').value === '90,000', 'C6 other values preserved');
+  // Consecutive BLOCKED runs: the marks describe the current run only.
+  typed('v-down', '20'); el('v-rent').value = ''; resetSpies();
+  globalThis.analyzeRental();
+  ok(!el('v-down').attrs['aria-invalid'] && !el('v-down').attrs['aria-describedby'], 'C7 a field that passed on the next blocked run loses its aria marks (no stale aria-invalid)');
+  ok(el('v-rent').attrs['aria-invalid'] === 'true' && el('v-rent').focusCalls.length === 1, 'C8 …and the new blocking field is the only one marked and revealed');
+  typed('v-rent', '90,000');
 }
 
 console.log('— §D a valid run clears everything and analyzes —');
@@ -174,6 +194,9 @@ console.log('— §H pure helper + source pins —');
   ok(/\.sr-only\{position:absolute;width:1px;height:1px/.test(css), 'H4 the live region is visually hidden but present to assistive tech');
   ok(/aria-live', 'polite'/.test(fmtSrc) && /role', 'status'/.test(fmtSrc), 'H5 the live region is polite (no interruption)');
   ok(/revealBlockingField\(errors\[0\]\.field/.test(fmtSrc) && /revealBlockingField\(first\.id, first\.message, prefix\)/.test(mainSrc), 'H6 both error paths reveal through the one shared helper');
+  ok(/a\.el\.compareDocumentPosition\(b\.el\) & Node\.DOCUMENT_POSITION_FOLLOWING/.test(mainSrc), 'H8 the document-order comparator reads "b follows a" (operands in spec order)');
+  ok(/clearBlockingMarks\(prefix\);\s+\/\/ A6: aria marks describe THIS run only/.test(mainSrc) && /clearBlockingMarks\(prefix\);\s+\/\/ A6: marks describe THIS run only/.test(fmtSrc), 'H9 both paths clear last run\'s marks at the start of a run');
+  ok(/id="\$\{x\.field\}-issue"/.test(fmtSrc) && /msg\.id = f\.id \+ '-error'/.test(mainSrc), 'H10 the two message kinds live in distinct id namespaces (-error / -issue) — no duplicate ids');
   ok(/preventScroll: true/.test(fmtSrc) && /block: 'center'/.test(fmtSrc), 'H7 focus never triggers a second scroll; the scroll centres the field');
 }
 

@@ -43,8 +43,12 @@ ok('[A7] investor change warning is the ruled copy', block.includes(investorWarn
 ok('[A7] investor copy names the 14-day wait and Pro\'s 6 slots', investorWarn.includes(`${days.investor}-day wait`) && investorWarn.includes(`${slots.pro} region slots`));
 
 // ── locked toasts ────────────────────────────────────────────────────────────
-ok('[A7] starter locked toast names the shorter Investor wait and Pro\'s removal', block.includes('`This slot is locked until ${lockedUntil}. Investor shortens the wait to 14 days; Pro removes it.`'));
-ok('[A7] investor locked toast names Pro\'s removal', block.includes('`This slot is locked until ${lockedUntil}. Pro removes the wait.`'));
+// A9 moved both toasts into one shared helper (slotLockedToast) so the local
+// check and the server-refusal path read the same lock date; pin the helper.
+const toastFn = mainSrc.slice(mainSrc.indexOf('function slotLockedToast(slotIndex) {'), mainSrc.indexOf('function confirmMarketChange() {'));
+ok('[A7] starter locked toast names the shorter Investor wait and Pro\'s removal', toastFn.includes('`This slot is locked until ${lockedUntil}. Investor shortens the wait to 14 days; Pro removes it.`'));
+ok('[A7] investor locked toast names Pro\'s removal', toastFn.includes('`This slot is locked until ${lockedUntil}. Pro removes the wait.`'));
+ok('[A7/A9] the locked branch and the server-refusal path both use the shared toast', /if \(isSlotLocked\(slotIndex\)\) \{\s*\n\s*slotLockedToast\(slotIndex\);/.test(mainSrc) && (mainSrc.match(/slotLockedToast\(slot(Index)?\)/g) || []).length >= 2);
 
 // ── the upgrade sentence is true under the law (cooldown read at evaluation time) ──
 const tiersSrc = src('docs/src/js/tiers.js');
@@ -55,7 +59,7 @@ ok('[A7] both warnings carry the upgrade re-check sentence', (block.match(/Upgra
 // ── what the copy must NOT say ───────────────────────────────────────────────
 ok('[A7] no vague "additional changes" quota wording', !/additional (market )?changes/i.test(block));
 ok('[A7] the old copy is gone', !/Changing a Market Region locks that slot for/.test(mainSrc) && !/Upgrade to \$\{tierLabel\} for faster access/.test(mainSrc));
-ok('[COMPLIANCE] the copy sells app features only — no funding / loan / rate / approval words', !/funding|loan|rate|approv|lender|priority/i.test(block));
+ok('[COMPLIANCE] the copy sells app features only — no funding / loan / rate / approval words', !/funding|loan|rate|approv|lender|priority/i.test(block) && !/funding|loan|rate|approv|lender|priority/i.test(toastFn.replace(/\/\/[^\n]*/g, '')));
 ok('[A7] index.html default text states a wait, not a stale hard-coded 30 days', /<p id="market-confirm-text">Changing this Market Region starts a wait before this slot can change again\. Continue\?<\/p>/.test(html));
 ok('[PRESERVATION] the Pro replacement confirmation is untouched', /Replace \$\{label\}\? Choosing another region will replace this market slot\./.test(mainSrc));
 

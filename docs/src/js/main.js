@@ -28,7 +28,7 @@ import {
   hasSelectedMarkets, getMarketSlots,
   getMarketForSlot, setMarketSlot,
   getPrimaryMarket, getMarket2,
-  completePrimarySelection, recordSlotChange,
+  completePrimarySelection, recordSlotChange, applyServerLock,
   isSlotLocked, slotLockedUntilDate, slotWillLockUntilDate,
   getUnlockedSlotCount, isMarketUnlocked, getMarketLabel,
   getActiveMarketId,
@@ -768,10 +768,7 @@ function handleSlotClick(slotIndex, currentMarketId) {
   // set_user_market and client isSlotLocked both read the cooldown from the
   // CURRENT tier at evaluation time). App features only — never funding treatment.
   if (isSlotLocked(slotIndex)) {
-    const lockedUntil = slotLockedUntilDate(slotIndex);
-    showToast(tier === 'investor'
-      ? `This slot is locked until ${lockedUntil}. Pro removes the wait.`
-      : `This slot is locked until ${lockedUntil}. Investor shortens the wait to 14 days; Pro removes it.`);
+    slotLockedToast(slotIndex);
     return;
   }
 
@@ -790,6 +787,16 @@ function handleSlotClick(slotIndex, currentMarketId) {
 }
 
 let _pendingSlotChange = -1;
+
+// A7 locked-slot copy, shared by the local check above and the server refusal
+// path in pickerSelectMarket (A9) so both read the same lock date.
+function slotLockedToast(slotIndex) {
+  const tier = getActiveTier();
+  const lockedUntil = slotLockedUntilDate(slotIndex);
+  showToast(tier === 'investor'
+    ? `This slot is locked until ${lockedUntil}. Pro removes the wait.`
+    : `This slot is locked until ${lockedUntil}. Investor shortens the wait to 14 days; Pro removes it.`);
+}
 
 function confirmMarketChange() {
   closeModal('modal-market-confirm');
@@ -974,6 +981,10 @@ async function pickerSelectMarket(marketId) {
   const slot = _pickerIsFirst ? 0 : _pickerSlot;
   const res = await pushMarketChange(slot, marketId);
   if (!res.ok) {
+    // Wave A · A9: a server cooldown refusal carries lockedUntil — mirror it into
+    // the local clock (another device's lock becomes visible here) and say so
+    // with the same copy the local check uses.
+    if (res.lockedUntil) { applyServerLock(slot, res.lockedUntil); if (isSlotLocked(slot)) { slotLockedToast(slot); return; } }
     showToast(res.msg || 'That market change isn\'t available right now.');
     return;
   }
@@ -989,7 +1000,14 @@ async function pickerSelectMarket(marketId) {
 
   // Adding or changing any slot
   if (_pickerIsChange) {
-    recordSlotChange(_pickerSlot); // start cooldown clock
+    // Wave A · A9: a same-market re-pick is a server no-op ("No change.") and
+    // must not start a local cooldown either; a real change mirrors the server's
+    // lockedUntil when it sent one (signed in), else starts the local clock.
+    const previous = getMarketForSlot(_pickerSlot);
+    if (previous && previous !== marketId) {
+      if (res.lockedUntil) applyServerLock(_pickerSlot, res.lockedUntil);
+      else recordSlotChange(_pickerSlot); // start cooldown clock
+    }
   }
   setMarketSlot(_pickerSlot, marketId);
   // Make the newly set slot active

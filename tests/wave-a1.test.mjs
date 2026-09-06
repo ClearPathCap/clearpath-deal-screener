@@ -56,7 +56,7 @@ const STUBS = {
     export const isDevMode=()=>false,setDevTier=()=>{},setCachedTier=()=>{},devModeVisible=()=>false,
     migrateMarketStorage=()=>{},redeemCode=()=>({ok:false}),hasSelectedMarkets=()=>true,
     getMarketSlots=()=>[],getMarketForSlot=()=>'',setMarketSlot=()=>{},getPrimaryMarket=()=>'',
-    getMarket2=()=>'',completePrimarySelection=()=>{},recordSlotChange=()=>{},isSlotLocked=()=>false,
+    getMarket2=()=>'',completePrimarySelection=()=>{},recordSlotChange=()=>{},applyServerLock=()=>{},isSlotLocked=()=>false,
     slotLockedUntilDate=()=>null,slotWillLockUntilDate=()=>'',getUnlockedSlotCount=()=>2,
     isMarketUnlocked=()=>true,getMarketLabel=(x)=>x,getActiveMarketId=()=>globalThis.__activeMarket||'';`,
   'marketIntel.js': `export const fetchMarketIntel = async () => new Map();`,

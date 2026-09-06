@@ -136,6 +136,55 @@ ok("[PRESERVATION] sign-out does not clear local market slots",
 ok("[PRESERVATION] active slot stays device-local (no server active-slot invented)",
    !/active/i.test(src("docs/src/js/marketSync.js").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '')));
 
+// ── §G · Wave A · A9: the server's lock clock is mirrored on hydration ───────
+// Owner/GPT ruling 2026-09-06: another device must not falsely look unlocked;
+// a same-market re-pick must not start a cooldown; server remains authority.
+store.clear(); store.delete('tier');                      // starter: 30-day cooldown
+const fresh = new Date(Date.now() - 2 * 86400000).toISOString();   // changed 2 days ago on the laptop
+const stale = new Date(Date.now() - 40 * 86400000).toISOString();  // a 40-day-old change — expired
+store.set('slotChangeDates', JSON.stringify({ 2: new Date().toISOString() }));   // a device-local clock the server does NOT hold
+await signIn({
+  current_tier: { data: 'starter', error: null },
+  get_user_markets: { data: [
+    { slot_index: 0, market_id: 'lake-murray-sc', changed_at: fresh },
+    { slot_index: 1, market_id: 'greenville-sc',  changed_at: stale },
+    { slot_index: 2, market_id: 'columbia-sc',    changed_at: null },
+  ], error: null },
+});
+r = await sync.hydrateMarketsOnAuth();
+ok("[A9] hydration still syncs the markets", r.status === 'synced' && tiers.getPrimaryMarket() === 'lake-murray-sc');
+ok("[A9-DEFECT-CLOSING] a lock incurred on another device is visible here (slot 0 locked, changed 2 days ago)", tiers.isSlotLocked(0) === true);
+ok("[A9] an expired server clock is not a lock (slot 1, 40 days ago > 30)", tiers.isSlotLocked(1) === false);
+ok("[A9] a clock the server does not hold clears a stale device-local one (slot 2)", tiers.isSlotLocked(2) === false && !JSON.parse(store.get('slotChangeDates'))[2]);
+ok("[A9] the mirrored clock IS the server's changed_at (no second clock)", JSON.parse(store.get('slotChangeDates'))[0] === new Date(fresh).toISOString());
+ok("[LAW] an upgrade re-evaluates the mirrored lock under the new tier (pro → unlocked)", (store.set('tier', 'pro'), tiers.isSlotLocked(0) === false));
+store.delete('tier');
+ok("[LAW] …and back on starter it is locked again (the clock itself never moved)", tiers.isSlotLocked(0) === true);
+
+// ── §H · Wave A · A9: a server refusal's lockedUntil is consumed ─────────────
+store.clear(); store.delete('tier');
+const until = new Date(Date.now() + 10 * 86400000).toISOString();   // server: locked 10 more days
+tiers.applyServerLock(3, until);
+ok("[A9-DEFECT-CLOSING] applyServerLock makes the slot locked locally", tiers.isSlotLocked(3) === true);
+ok("[A9] the local lock date equals the server's lockedUntil (same instant, derived under the current tier)",
+   tiers.slotLockedUntilDate(3) === new Date(until).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }));
+tiers.applyServerLock(4, 'not-a-date');
+ok("[A9] a malformed lockedUntil is ignored (never a fabricated lock)", tiers.isSlotLocked(4) === false);
+store.set('tier', 'pro'); tiers.applyServerLock(5, until); store.delete('tier');
+ok("[A9] under Pro (no cooldown) a lockedUntil is a no-op", tiers.isSlotLocked(5) === false);
+
+// ── §I · Wave A · A9: wiring pins (main.js picker commit) ────────────────────
+ok("[A9-DEFECT-CLOSING] a same-market re-pick never starts a local cooldown",
+   /const previous = getMarketForSlot\(_pickerSlot\);\s*\n\s*if \(previous && previous !== marketId\) \{/.test(mainSrc));
+ok("[A9] a real change mirrors the server's lockedUntil when present, else starts the local clock",
+   /if \(res\.lockedUntil\) applyServerLock\(_pickerSlot, res\.lockedUntil\);\s*\n\s*else recordSlotChange\(_pickerSlot\);/.test(mainSrc));
+ok("[A9] a server cooldown refusal is mirrored and announced with the A7 lock copy",
+   /if \(res\.lockedUntil\) \{ applyServerLock\(slot, res\.lockedUntil\); if \(isSlotLocked\(slot\)\) \{ slotLockedToast\(slot\); return; \} \}/.test(mainSrc));
+ok("[PRESERVATION] the server stays the authority — the client still commits only on ok:true",
+   /const res = await pushMarketChange\(slot, marketId\);\s*\n\s*if \(!res\.ok\) \{/.test(mainSrc));
+ok("[PRESERVATION] hydration reads changed_at from the SAME get_user_markets rows (no new RPC)",
+   /rows\.map\(r => \[r\.slot_index, r\]\)/.test(src("docs/src/js/marketSync.js")) && !/rpc\('get_slot_locks'|rpc\('get_user_locks'/.test(src("docs/src/js/marketSync.js")));
+
 console.log(`\nmarketsync: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Account-backed market sync law holds ✓");

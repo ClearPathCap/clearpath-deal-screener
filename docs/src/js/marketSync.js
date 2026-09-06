@@ -28,7 +28,7 @@
 
 import { supabase } from './supabaseClient.js';
 import { isSignedIn } from './auth.js';
-import { getMarketForSlot, setMarketSlot } from './tiers.js';
+import { getMarketForSlot, setMarketSlot, recordSlotChangeAt, clearSlotChange } from './tiers.js';
 
 // Hydrate on sign-in / session restore. Returns a summary for tests/telemetry;
 // callers re-render on 'synced'.
@@ -43,14 +43,19 @@ export async function hydrateMarketsOnAuth() {
     return { status: 'error', pulled: 0, pushed: 0 };
   }
 
-  const serverBySlot = new Map(rows.map(r => [r.slot_index, r.market_id]));
+  const serverBySlot = new Map(rows.map(r => [r.slot_index, r]));
   let pulled = 0, pushed = 0;
 
   for (let slot = 0; slot < 6; slot++) {
-    const serverId = serverBySlot.get(slot) || '';
+    const row      = serverBySlot.get(slot);
+    const serverId = (row && row.market_id) || '';
     const localId  = getMarketForSlot(slot);
     if (serverId) {
       if (serverId !== localId) { setMarketSlot(slot, serverId); pulled++; }
+      // Wave A · A9: the server's cooldown clock wins for a server-held slot — a
+      // lock from another device shows here; a clock the server does not hold
+      // (changed_at null) clears a stale device-local one.
+      if (row.changed_at) recordSlotChangeAt(slot, row.changed_at); else clearSlotChange(slot);
     } else if (localId) {
       // Local-only slot — push up. A refusal (slot cap on this tier, cooldown)
       // leaves the local value exactly where it was.

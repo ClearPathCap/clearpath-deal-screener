@@ -145,6 +145,31 @@ export function recordSlotChange(index) {
   localStorage.setItem('slotChangeDates', JSON.stringify(dates));
 }
 
+// ─── Wave A · A9 (owner/GPT ruling 2026-09-06): server-authoritative lock state ──
+// The server's `changed_at` (get_user_markets) and `lockedUntil` (set_user_market,
+// on success and on refusal) are mirrored into the SAME local clock the client
+// already evaluates, so (a) a lock incurred on another device is visible here,
+// (b) a same-market re-pick — a server no-op — never starts a local cooldown,
+// and (c) an upgrade still re-evaluates the lock under the new tier exactly as
+// the server does (the cooldown is read from the current tier at check time).
+export function recordSlotChangeAt(index, iso) {
+  const dates = getSlotChangeDates();
+  const t = iso ? new Date(iso) : null;
+  if (t && !Number.isNaN(t.getTime())) dates[index] = t.toISOString();
+  else delete dates[index];
+  localStorage.setItem('slotChangeDates', JSON.stringify(dates));
+}
+export function clearSlotChange(index) { recordSlotChangeAt(index, null); }
+// A server `lockedUntil` → the equivalent `changed_at` under the CURRENT tier's
+// cooldown, so the local clock and the server agree on the same instant.
+export function applyServerLock(index, lockedUntilIso) {
+  const days = getSlotCooldownDays();
+  if (!lockedUntilIso || days === 0) return;
+  const until = new Date(lockedUntilIso);
+  if (Number.isNaN(until.getTime())) return;
+  recordSlotChangeAt(index, new Date(until.getTime() - days * 24 * 60 * 60 * 1000).toISOString());
+}
+
 // True if the slot is still within its cooldown window
 export function isSlotLocked(index) {
   const days = getSlotCooldownDays();

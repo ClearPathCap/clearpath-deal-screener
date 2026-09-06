@@ -761,19 +761,27 @@ function handleSlotClick(slotIndex, currentMarketId) {
   }
 
   // Check if currently locked from a recent change
+  // Wave A · A7 (owner/GPT ruling 2026-09-06): the copy states the actual
+  // entitlement law — a wait between changes to a USED slot (starter 30 d /
+  // investor 14 d / pro none), the slot counts (2 / 4 / 6), and the fact that an
+  // upgrade re-evaluates the current lock under the new tier (server
+  // set_user_market and client isSlotLocked both read the cooldown from the
+  // CURRENT tier at evaluation time). App features only — never funding treatment.
   if (isSlotLocked(slotIndex)) {
     const lockedUntil = slotLockedUntilDate(slotIndex);
-    const tierLabel   = tier === 'investor' ? 'Pro' : 'Investor';
-    showToast(`Slot locked until ${lockedUntil}. Upgrade to ${tierLabel} for faster access.`);
+    showToast(tier === 'investor'
+      ? `This slot is locked until ${lockedUntil}. Pro removes the wait.`
+      : `This slot is locked until ${lockedUntil}. Investor shortens the wait to 14 days; Pro removes it.`);
     return;
   }
 
   // Show cooldown confirmation before replacing this slot's market
-  const cooldownDays  = tier === 'investor' ? 14 : 30;
   const willLockUntil = slotWillLockUntilDate();
   const msgEl = document.getElementById('market-confirm-text');
   if (msgEl) {
-    msgEl.textContent = `Changing a Market Region locks that slot for ${cooldownDays} days. Your next change will be available on ${willLockUntil}. Continue?`;
+    msgEl.textContent = tier === 'investor'
+      ? `Changing this Market Region starts a 14-day wait before this slot can change again — your next change opens ${willLockUntil}. Pro removes the wait and gives you 6 region slots. Upgrading re-checks this lock under your new plan. Continue?`
+      : `Changing this Market Region starts a 30-day wait before this slot can change again — your next change opens ${willLockUntil}. Investor shortens the wait to 14 days and gives you 4 region slots; Pro removes the wait and gives you 6. Upgrading re-checks this lock under your new plan. Continue?`;
   }
   const confirmBtn2 = document.querySelector('#modal-market-confirm .btn-confirm');
   if (confirmBtn2) confirmBtn2.textContent = 'Continue';

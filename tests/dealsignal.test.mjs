@@ -125,7 +125,7 @@ ok("D: the modal exists with a Close-only action row (no mutating buttons)",
 
 // ── §E · Pro occupied-slot replacement confirmation (source pins) ────────────
 const proBranch = mainJs.slice(mainJs.indexOf("if (tier === 'pro')", mainJs.indexOf('function handleSlotClick')),
-                               mainJs.indexOf('const cooldownDays'));
+                               mainJs.indexOf('const willLockUntil'));   // Wave A · A7 re-anchor: `const cooldownDays` left with the old copy
 ok("E: Pro replacement warns with the ruled copy — replace phrasing",
    /Replace \$\{label\}\? Choosing another region will replace this market slot\./.test(proBranch));
 ok("E: Pro replacement copy reassures about underwritten deals",
@@ -134,8 +134,13 @@ ok("E: Pro path routes through the SAME confirm modal (no new modal, no stacking
    /openModal\('modal-market-confirm'\)/.test(proBranch) && /_pendingSlotChange = slotIndex/.test(proBranch));
 ok("E: Pro confirm button reads 'Choose another region'",
    /textContent = 'Choose another region'/.test(proBranch));
+// Wave A · A7 re-pin (same-commit law): the lower-tier copy now states the
+// entitlement law (30-day / 14-day wait, slot counts, upgrade re-check) instead
+// of the "{cooldownDays} days" sentence; tests/marketcopy.test.mjs pins the
+// exact wording against tiers.js. The 'Continue' label restore is unchanged.
 ok("E: lower tiers keep their cooldown copy AND restore the 'Continue' label",
-   /locks that slot for \$\{cooldownDays\} days/.test(mainJs) &&
+   /starts a 30-day wait before this slot can change again/.test(mainJs) &&
+   /starts a 14-day wait before this slot can change again/.test(mainJs) &&
    /textContent = 'Continue'/.test(mainJs));
 // Ordering pin: the NOT-active populated branch (instant switch, toast, no
 // popup) must come BEFORE the Pro confirm — switching between configured

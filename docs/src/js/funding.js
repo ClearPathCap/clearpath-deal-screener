@@ -24,6 +24,11 @@ export function buildCpcUrl(deal) {
                 // instead of re-deriving a conflicting one. HOA is MONTHLY (CPC ×12).
                 monthlyRent:'monthlyRent', annualTaxes:'annualTaxes',
                 annualInsurance:'annualInsurance', monthlyHoa:'monthlyHoa',
+                // HOA basis token (contract 2026-09-06): 'none' = confirmed no
+                // HOA / $0 (the figure the analysis used), 'applies' = positive
+                // monthlyHoa. Legacy links carry no token; CPC then keeps its
+                // zero/omitted → "Not sure" rule (never inferred as No HOA).
+                hoaStatus:'hoaStatus',
                 // Owner-paid utilities are ANNUAL and itemized (contract wave
                 // 2026-09-05). screenerNoi below is ALREADY utilities-adjusted —
                 // CPC itemizes this value; it never subtracts it from screenerNoi.

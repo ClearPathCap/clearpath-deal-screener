@@ -36,6 +36,20 @@ function utilitiesHandoff(v) {
   return Number.isFinite(n) && n >= 0 ? Math.round(n) : undefined;
 }
 
+// ─── HOA basis token — confirmed zero vs applies (contract 2026-09-06) ───────
+// DealFit models HOA as a displayed figure with an explicit $0 default (`l-hoa` /
+// `b-hoa` ship value="0"), so every rental analysis carries a confirmed HOA basis;
+// only the wire collapsed $0 into CPC's "Not sure". `none` says the analysis ran
+// at $0 HOA (confirmed no HOA); `applies` accompanies a positive monthlyHoa. A
+// record with no hoa value at all (pre-HOA legacy) sends no token, and CPC keeps
+// its legacy rule (zero/omitted → Not sure, never inferred as No HOA).
+function hoaBasisHandoff(v) {
+  if (v == null) return undefined;
+  const n = +v;
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return n > 0 ? 'applies' : 'none';
+}
+
 // ─── Carry the screener's economics into the CPC handoff (LTR/BRRR income deals) ──
 // so CPC DISPLAYS the operator-view math rather than re-deriving a conflicting one.
 // r already holds everything (lastLtrResult/lastBrrrResult) — pass through, no recompute.
@@ -57,6 +71,7 @@ function econHandoff(r) {
     annualTaxes: incomeFields.annualTaxes,
     annualInsurance: incomeFields.annualInsurance,
     monthlyHoa: n(r.hoa, true),
+    hoaStatus: hoaBasisHandoff(r.hoa),           // 'none' | 'applies' | omitted (pre-HOA legacy record)
     annualUtilities: utilitiesHandoff(r.util),   // raw input; NOT insurance/tax-gated (like rent/HOA)
     vacancyPct: n(r.vac),
     pmPct: n(r.pm),

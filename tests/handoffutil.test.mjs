@@ -96,7 +96,8 @@ console.log('— §1 LTR (Orange Street, utilities $1,200) —');
   eq(p.pp, '649900', 'pp unchanged'); eq(p.loan, '519920', 'loan unchanged'); eq(p.monthlyRent, '6000', 'rent unchanged');
   eq(p.annualTaxes, '8000', 'taxes unchanged'); eq(p.annualInsurance, '2358', 'insurance unchanged'); eq(p.vacancyPct, '7', 'vacancy unchanged');
   eq(p.purpose, 'dscr', 'purpose unchanged'); eq(p.exit, 'hold', 'exit unchanged'); eq(p.city, 'Bridgeport', 'city parsed'); eq(p.state, 'CT', 'state parsed');
-  eq(Object.keys(p).length, 33, 'LTR key count is the banked 32 + annualUtilities');
+  eq(p.hoaStatus, 'none', 'LTR handoff states the HOA basis: $0 analyzed → none (contract 2026-09-06)');
+  eq(Object.keys(p).length, 34, 'LTR key count is the banked 32 + annualUtilities + hoaStatus');
   ok(u.endsWith('#submit'), 'hash #submit retained');
   ok(u.startsWith('https://clearpathcapfunding.com/?src=dealscreener&tier=starter&'), 'origin/src/tier prefix unchanged');
   // Pipeline path produces the identical URL for the same saved data.
@@ -180,7 +181,7 @@ console.log('— §5/§6/§7 zero · malformed · legacy —');
   ok(!('util' in legacy), 'legacy fixture has no util key');
   const pl = paramsOf(viaPipeline(legacy, 7));
   eq(pl.annualUtilities, undefined, '7: legacy record omits annualUtilities (CPC normalizes → $0)');
-  eq(Object.keys(pl).length, 32, '7: legacy record keeps the banked 32-key LTR shape');
+  eq(Object.keys(pl).length, 33, '7: legacy record (no util key) keeps the banked 32-key LTR shape + hoaStatus (its hoa 0 is a confirmed figure)');
   eq(pl.screenerNoi, '47645', '7: legacy record NOI = $0-utilities engine NOI');
 }
 
@@ -225,6 +226,26 @@ console.log('— §9 accepted 25%-down Orange Street fixture: the raw assumption
   ok(Math.abs(mirrorNoi - r.NOI) < 1e-6, '§9 CPC operator-basis NOI formula reproduces the engine NOI exactly');
   ok(Math.abs(piMo * 12 - r.debtYr) < 1e-6, '§9 CPC amortization mirror reproduces the engine debt service exactly');
   ok(Math.abs(r.capexRes - 3600) < 1e-6 && Math.abs((r.NOI - r.debtYr - r.capexRes) - r.cashFlowYr) < 1e-6, '§9 CapEx 3,600 sits BELOW NOI (cash flow only) — the classification CPC preserves');
+}
+
+console.log('— §10 HOA basis token (contract 2026-09-06): confirmed zero vs applies vs pre-HOA legacy —');
+{
+  const base = ltrResult({ ...ORANGE_IN, down: 25, util: 0 });
+  const p0 = paramsOf(viaPipeline(base, 30));
+  eq(p0.monthlyHoa, '0', '§10 monthlyHoa still travels as "0" (legacy receivers unchanged)');
+  eq(p0.hoaStatus, 'none', '§10 [1][2] a $0 HOA analysis states none — confirmed zero, not unknown');
+  const r150 = ltrResult({ ...ORANGE_IN, down: 25, util: 0 }); r150.hoa = 150;
+  const p150 = paramsOf(viaPipeline(r150, 31));
+  eq(p150.monthlyHoa, '150', '§10 [3] positive HOA travels as the monthly amount'); eq(p150.hoaStatus, 'applies', '§10 [3] positive HOA states applies');
+  const rNo = ltrResult({ ...ORANGE_IN, down: 25, util: 0 }); delete rNo.hoa;
+  const pNo = paramsOf(viaPipeline(rNo, 32));
+  eq(pNo.hoaStatus, undefined, '§10 [4][5] a pre-HOA legacy record sends no token (CPC keeps Not sure)'); eq(pNo.monthlyHoa, undefined, '§10 legacy record sends no monthlyHoa either');
+  const rNeg = ltrResult({ ...ORANGE_IN, down: 25, util: 0 }); rNeg.hoa = -5;
+  eq(paramsOf(viaPipeline(rNeg, 33)).hoaStatus, undefined, '§10 a malformed HOA sends no token (never repaired)');
+  const cpSrc = readFileSync(join(ROOT, 'docs', 'src', 'js', 'clearpath.js'), 'utf8');
+  eq((cpSrc.match(/hoaStatus: hoaBasisHandoff\(r\.hoa\)/g) || []).length, 1, '§10 the token is wired once, in econHandoff (LTR/BRRRR); STR/F&F carry none');
+  const rStr = { type: 'rental', addr: '5 Shore Rd, Wilmington NC 28401', price: 400000, down: 20, rent: 90000, util: 0, cls: 'warm', verdict: 'x', coc: 5, capRate: 6, dscr: 1.2, cashflow: 1000 };
+  eq(paramsOf(viaPipeline(rStr, 34)).hoaStatus, undefined, '§10 STR carries no HOA token');
 }
 
 console.log(`\nhandoffutil: ${pass} passed, ${fail} failed`);

@@ -67,5 +67,22 @@ Contract law:
 - Legacy links without the key keep working: CPC treats a missing value as `$0` in the reconstruction
   (unlike the HOA basis, which stays "Not sure"); a malformed CPC entry is refused (422), never defaulted.
 
+## Amendment 2026-09-06 — `hoaStatus` (HOA basis token) and recomputed assumptions
+
+| Param | Screener source field | CPC intake field | Example |
+|---|---|---|---|
+| `hoaStatus` | HOA (monthly) — LTR / BRRRR; `none` when the analysis ran at $0 HOA, `applies` when positive | HOA Status control (`No HOA` / `HOA applies`) | `none` |
+
+Contract law:
+- DealFit models HOA as a displayed figure with an explicit `$0` default, so every rental analysis carries a
+  confirmed HOA basis. `hoaStatus=none` = confirmed no HOA / $0 (CPC selects **No HOA**, annual HOA $0,
+  calculable, no confirmation request). `hoaStatus=applies` + positive `monthlyHoa` = CPC selects **HOA
+  applies** and converts ×12 exactly once. A record with no HOA value at all sends no token.
+- Legacy links (no token): unchanged — zero/omitted `monthlyHoa` maps to **Not sure**; a confirmed zero is
+  never inferred from an absent parameter.
+- The six assumption keys (`vacancyPct`, `pmPct`, `maintPct`, `capexPct`, `loanRate`, `amortYears`) are
+  recomputed by CPC server-side into its labeled **operator-basis estimate** (B1 spec v1.8 §6.5A); they
+  remain non-governing at CPC.
+
 ## Measurement (success metrics from PROJECT_BRIEF)
 - Every screener-sourced submission is identifiable via the email source tag → count monthly: submissions, packaged, closed. Quarter-1 target: 5+ submissions, 1+ closed loan.

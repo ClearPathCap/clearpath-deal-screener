@@ -8,11 +8,16 @@
 //
 // All rate/% args arrive as FRACTIONS (already /100, matching how rental.js read
 // them before the extraction). `rent` is ANNUAL revenue at 100% occupancy.
-export function computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate, util = 0 }) {
+// Wave A · A2 (2026-09-06): `hoa` is the MONTHLY HOA figure (the same unit LTR /
+// BRRRR store and hand off); it is annualized exactly once here and sits above
+// NOI like every other operating expense. Default 0 keeps the W4-F4 / W4-F4b
+// goldens byte-identical for every caller that does not pass it.
+export function computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate, util = 0, hoa = 0 }) {
   const effRent     = rent * occ;
   const platformFee = effRent * mgmt;
   const pmFee       = effRent * pm;
-  const totalExp    = platformFee + pmFee + tax + maint + (+util || 0);   // owner-paid utilities (annual $) — opEx above NOI
+  const hoaYr       = (+hoa || 0) * 12;                                   // HOA (monthly $) → annual, once
+  const totalExp    = platformFee + pmFee + tax + maint + (+util || 0) + hoaYr;   // owner-paid utilities (annual $) + HOA — opEx above NOI
   const noi         = effRent - totalExp;
   const capRate     = (noi / price) * 100;
   const downAmt     = price * down + furnish;
@@ -46,5 +51,5 @@ export function computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furni
     vsub += ' Lender-fundable: DSCR ' + dscr.toFixed(2) + ' clears typical 1.20–1.25 underwriting even though cash-on-cash trails your target — a finance-and-hold candidate.';
   }
 
-  return { effRent, platformFee, pmFee, totalExp, util: +util || 0, noi, capRate, downAmt, loan, mo, debt, cashflow, dscr, coc, grm, verdict, vsub, cls };
+  return { effRent, platformFee, pmFee, totalExp, util: +util || 0, hoa: +hoa || 0, hoaYr, noi, capRate, downAmt, loan, mo, debt, cashflow, dscr, coc, grm, verdict, vsub, cls };
 }

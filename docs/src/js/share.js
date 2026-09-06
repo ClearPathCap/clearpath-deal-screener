@@ -180,6 +180,7 @@ export function buildDealSummaryText(d) {
     lines.push('Cash flow: ' + pend(money, data.cashflow) + '/yr');
     lines.push('Cash-on-cash: ' + pend(perc, data.coc) + '  |  Cap rate: ' + pend(perc, data.capRate));
     if (data.util > 0) lines.push('Owner-paid utilities: ' + money(data.util) + '/yr');
+    if (data.hoa > 0) lines.push('HOA: ' + money(data.hoa) + '/mo');   // Wave A · A2
   }
   if (d.notes) { lines.push(''); lines.push('Notes: ' + d.notes); }
   return lines.join('\n');

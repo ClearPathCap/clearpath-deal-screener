@@ -373,10 +373,18 @@
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-maint" class="has-pfx" value="3,000" placeholder="3,000" data-currency></div>
     </div>
   </div>
-  <div class="field full">
-    <label>Owner-Paid Utilities <span>(annual)</span></label>
-    <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-util" class="has-pfx" value="0" placeholder="0" data-currency></div>
-    <div class="field-hint">Water/sewer, common-area utilities, trash, or other utilities paid by the owner.</div>
+  <div class="field-row">
+    <div class="field">
+      <label>Owner-Paid Utilities <span>(annual)</span></label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-util" class="has-pfx" value="0" placeholder="0" data-currency></div>
+      <div class="field-hint">Water/sewer, common-area utilities, trash, or other utilities paid by the owner.</div>
+    </div>
+    <div class="field">
+      <!-- Wave A · A2 (2026-09-06): STR HOA — the same monthly input and explicit $0 default as LTR / BRRRR (l-hoa / b-hoa), so the CPC handoff can state the HOA basis (hoaStatus none | applies). -->
+      <label>HOA <span>(monthly)</span></label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-hoa" class="has-pfx" value="0" placeholder="0" data-currency></div>
+      <div class="field-hint">Monthly HOA dues if the property has an association — $0 means no HOA.</div>
+    </div>
   </div>
   <div class="field-row">
     <div class="field">

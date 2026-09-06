@@ -109,6 +109,7 @@ export function validateInputs(type, raw) {
     if (raw.tax     !== undefined && Number.isFinite(+raw.tax)     && +raw.tax     < 0) err('v-tax','Taxes + insurance','can\'t be negative.');
     if (raw.maint   !== undefined && Number.isFinite(+raw.maint)   && +raw.maint   < 0) err('v-maint','Maintenance','can\'t be negative.');
     if (raw.furnish !== undefined && Number.isFinite(+raw.furnish) && +raw.furnish < 0) err('v-furnish','Furnishing','can\'t be negative.');
+    if (raw.hoa     !== undefined && Number.isFinite(+raw.hoa)     && +raw.hoa     < 0) err('v-hoa','HOA','can\'t be negative.');   // Wave A · A2
   } else { // flip
     if (oob(raw.cc1, RANGE.pct)) err('f-cc1','Buying costs','must be between 0% and 100%.');
     if (oob(raw.cc2, RANGE.pct)) err('f-cc2','Selling costs','must be between 0% and 100%.');

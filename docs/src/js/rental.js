@@ -66,6 +66,7 @@ export function analyzeRental() {
   const maint   = parseComma(document.getElementById('v-maint').value);
   const furnish = parseComma(document.getElementById('v-furnish').value);
   const util    = parseComma(document.getElementById('v-util')?.value || '0') || 0;   // owner-paid utilities (annual $)
+  const hoa     = parseComma(document.getElementById('v-hoa')?.value || '0') || 0;    // HOA (monthly $) — Wave A · A2; $0 default = confirmed no HOA
   const tgtCoc  = +document.getElementById('v-target').value || 6;
   // Item 14: editable interest rate field — default 6.75%
   const interestRate = (+document.getElementById('v-interest-rate')?.value || 6.75) / 100;
@@ -84,7 +85,7 @@ export function analyzeRental() {
     pm:    selfManage ? 0 : numRaw('v-pm'),
     rate:  numRaw('v-interest-rate'),
     tgtCoc: numRaw('v-target'),
-    tax: taxRaw, maint, furnish,
+    tax: taxRaw, maint, furnish, hoa,
   };
   const { errors: strErrors } = validateInputs('str', strRaw);
   if (renderInputIssues('rental', strErrors, [])) {
@@ -102,7 +103,7 @@ export function analyzeRental() {
   const strP = strExpensePresentation(tStat); // non-null → Pending overlay
 
   const { effRent, platformFee, pmFee, noi, capRate, downAmt, loan, debt, cashflow, dscr, coc, grm, verdict, vsub, cls } =
-    computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate, util });
+    computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate, util, hoa });
   const rateDisplay = (interestRate * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
 
   document.getElementById('rental-verdict').className = 'verdict ' + (strP ? 'warm' : cls);
@@ -125,6 +126,7 @@ export function analyzeRental() {
     { l: 'Taxes + insurance' + (strP ? ' (not entered)' : ''),             v: strP ? '— pending' : '–' + fmt(tax) },
     { l: 'Maintenance',                                                    v: '–' + fmt(maint) },
     ...(util > 0 ? [{ l: 'Owner-paid utilities', v: '–' + fmt(util) }] : []),
+    ...(hoa > 0 ? [{ l: 'HOA (' + fmt(hoa) + '/mo)', v: '–' + fmt(hoa * 12) }] : []),   // Wave A · A2: annualized once, shown when positive (LTR law)
     { l: 'Net operating income',                                           v: strP ? strP.pendingText : fmt(noi) },
     { l: 'Annual debt service (' + rateDisplay + ')',                      v: '–' + fmt(debt) },
     { l: 'Net cash flow (annual)', v: strP ? strP.pendingText : fmt(cashflow), tot: true, color: strP ? '' : (cashflow >= 0 ? 'var(--accent)' : 'var(--danger)') },
@@ -142,7 +144,7 @@ export function analyzeRental() {
     occ:          +document.getElementById('v-occ').value,
     mgmt:         +document.getElementById('v-mgmt').value,
     pm:           selfManage ? 0 : +document.getElementById('v-pm').value,
-    tax, taxStatus: tStat, maint, furnish, util, tgtCoc, interestRate,
+    tax, taxStatus: tStat, maint, furnish, util, hoa, tgtCoc, interestRate,
     cashflow, coc, capRate, noi, debt, downAmt, grm, dscr,
     verdict, cls,
     hot: cls === 'hot',

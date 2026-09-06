@@ -243,9 +243,33 @@ console.log('— §10 HOA basis token (contract 2026-09-06): confirmed zero vs a
   const rNeg = ltrResult({ ...ORANGE_IN, down: 25, util: 0 }); rNeg.hoa = -5;
   eq(paramsOf(viaPipeline(rNeg, 33)).hoaStatus, undefined, '§10 a malformed HOA sends no token (never repaired)');
   const cpSrc = readFileSync(join(ROOT, 'docs', 'src', 'js', 'clearpath.js'), 'utf8');
-  eq((cpSrc.match(/hoaStatus: hoaBasisHandoff\(r\.hoa\)/g) || []).length, 1, '§10 the token is wired once, in econHandoff (LTR/BRRRR); STR/F&F carry none');
+  // Wave A · A2 (2026-09-06, same-commit re-pin): the token is now wired in econHandoff
+  // (LTR/BRRRR) AND the STR branch — two sites, one helper. F&F still carries none.
+  eq((cpSrc.match(/hoaStatus: hoaBasisHandoff\(r\.hoa\)/g) || []).length, 2, '§10 the token is wired through hoaBasisHandoff in econHandoff (LTR/BRRRR) and the STR branch — nowhere else');
+  const flipBranch2 = cpSrc.slice(cpSrc.indexOf("if (r.type === 'flip') {"), cpSrc.indexOf("if (r.type === 'ltr') {"));
+  ok(!flipBranch2.includes('hoaStatus') && !flipBranch2.includes('monthlyHoa'), '§10 the flip branch carries no HOA keys');
   const rStr = { type: 'rental', addr: '5 Shore Rd, Wilmington NC 28401', price: 400000, down: 20, rent: 90000, util: 0, cls: 'warm', verdict: 'x', coc: 5, capRate: 6, dscr: 1.2, cashflow: 1000 };
-  eq(paramsOf(viaPipeline(rStr, 34)).hoaStatus, undefined, '§10 STR carries no HOA token');
+  eq(paramsOf(viaPipeline(rStr, 34)).hoaStatus, undefined, '§10 a pre-A2 STR record (no hoa key) carries no HOA token — CPC keeps Not sure');
+  eq(paramsOf(viaPipeline(rStr, 34)).monthlyHoa, undefined, '§10 a pre-A2 STR record sends no monthlyHoa either');
+}
+
+console.log('— §11 Wave A · A2: STR states its HOA basis (2026-09-06) —');
+{
+  const strRec = (hoa) => ({ type: 'rental', addr: '5 Shore Rd, Wilmington NC 28401', price: 400000, down: 20, rent: 90000, occ: 65, mgmt: 3, pm: 8, tax: 4000, taxStatus: 'valid', maint: 2000, furnish: 15000, util: 0,
+    ...(hoa === undefined ? {} : { hoa }), tgtCoc: 6, interestRate: 0.0675, cls: 'warm', verdict: 'x', coc: 5, capRate: 6, dscr: 1.2, cashflow: 1000 });
+  const p0 = paramsOf(viaAnalyzer(strRec(0)));
+  eq(p0.hoaStatus, 'none', '§11 [A2] a $0-HOA STR analysis states none (confirmed zero — the explicit default)');
+  eq(p0.monthlyHoa, '0', '§11 [A2] monthlyHoa travels as "0" (same wire as LTR/BRRRR)');
+  eq(keysOf(viaAnalyzer(strRec(0))), 'addr,annualUtilities,city,exit,hoaStatus,loan,monthlyHoa,pp,purpose,src,state,tier', '§11 [A2] STR key set = banked 10 + monthlyHoa + hoaStatus, nothing else');
+  const p150 = paramsOf(viaPipeline(strRec(150), 40));
+  eq(p150.hoaStatus, 'applies', '§11 [A2] a positive STR HOA states applies'); eq(p150.monthlyHoa, '150', '§11 [A2] the monthly amount travels (CPC converts ×12 once)');
+  eq(viaPipeline(strRec(150), 40), viaAnalyzer(strRec(150)), '§11 [A2] analyzer and pipeline paths build the identical STR URL');
+  eq(paramsOf(viaPipeline(strRec(-9), 41)).hoaStatus, undefined, '§11 [A2] a malformed STR HOA sends no token (never repaired)');
+  const pLegacy = paramsOf(viaPipeline(strRec(undefined), 42));
+  eq(pLegacy.hoaStatus, undefined, '§11 [A2] legacy STR record: no token'); eq(keysOf(viaPipeline(strRec(undefined), 42)), 'addr,annualUtilities,city,exit,loan,pp,purpose,src,state,tier', '§11 [A2] legacy STR key set is byte-identical to the pre-A2 contract');
+  const s150 = STR.computeStr({ price: 400000, rent: 90000, down: 0.2, occ: 0.65, mgmt: 0.03, pm: 0.08, tax: 4000, maint: 2000, furnish: 15000, tgtCoc: 6, interestRate: 0.0675, util: 0, hoa: 150 });
+  const s0 = STR.computeStr({ price: 400000, rent: 90000, down: 0.2, occ: 0.65, mgmt: 0.03, pm: 0.08, tax: 4000, maint: 2000, furnish: 15000, tgtCoc: 6, interestRate: 0.0675, util: 0 });
+  ok(Math.abs((s0.noi - s150.noi) - 1800) < 1e-9, '§11 [A2] the engine charges HOA exactly once, annualized (150 × 12 = 1,800 off NOI)');
 }
 
 console.log(`\nhandoffutil: ${pass} passed, ${fail} failed`);

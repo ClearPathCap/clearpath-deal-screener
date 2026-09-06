@@ -84,5 +84,34 @@ Contract law:
   recomputed by CPC server-side into its labeled **operator-basis estimate** (B1 spec v1.8 §6.5A); they
   remain non-governing at CPC.
 
+## Amendment 2026-09-06 (Wave A) — STR HOA emitter, optional property facts, City / State law
+
+Owner/GPT ruling "INVENTORY r2 ACCEPTED WITH MODIFICATIONS" (2026-09-06). Additive only; every pre-existing
+link keeps today's behaviour at CPC.
+
+| Param | Screener source field | CPC intake field | Example |
+|---|---|---|---|
+| `monthlyHoa` + `hoaStatus` | HOA (monthly) — **now also STR** (`v-hoa`, explicit `$0` default) | HOA Status control + Annual HOA (×12 once) | `0` + `none` · `150` + `applies` |
+| `units`, `ptype`, `band` | STR / F&F **optional** Unit Count and Property Type | Number of Units / Property Type | `4` / `2–4 Unit` / `1-4` |
+| `city`, `state` | structured City / State inputs (all four analyzers), auto-filled from the address, user-editable | City / State dropdown | `Myrtle Beach` / `SC` |
+
+Contract law:
+- **STR HOA (A2):** the STR analyzer carries the same monthly HOA input and explicit `$0` default as LTR / BRRRR,
+  annualized exactly once inside `computeStr`. Its handoff emits `monthlyHoa` + `hoaStatus` through the identical
+  `hoaBasisHandoff` rule (`0` → `none`, positive → `applies`, absent / negative / non-finite → both keys omitted).
+  A pre-A2 STR record has no `hoa` key and therefore sends no token — CPC keeps its legacy `Not sure` rule.
+- **Unknown stays unknown (A4):** STR and Fix & Flip collect Unit Count and Property Type as **optional** facts with a
+  blank initial state. `units` / `ptype` / `band` travel only when the user supplied them; a blank never serializes
+  a default (`SFR`, `1`), so CPC may still ask for them. The only translation is the LTR / BRRRR one: a selected
+  `5–8 Unit` / `9+ Unit` type is sent as `Multifamily` (CPC has no 5–8 option). No analyzer computation depends on
+  either value.
+- **City / State (A1):** each analyzer stores structured `city` and `state` values. They are auto-filled from the
+  address by `parseCityState` only when the parse is confident (a comma- or ZIP-delimited two-letter state, or a
+  full state name; trailing `USA` / `United States` stripped) and are **never** written over a user's explicit edit
+  or clearing. The handoff sends the stored values (state normalized to its two-letter code, sent only when it is a
+  real state); a record without the keys (pre-A1) falls back to the parser. **Prefer blank over wrong:** an
+  address with no city delimiter (`12 Oak Ct`) yields nothing, never a street suffix read as a state. The 9+ unit
+  referral handoffs carry the same `city` / `state`.
+
 ## Measurement (success metrics from PROJECT_BRIEF)
 - Every screener-sourced submission is identifiable via the email source tag → count monthly: submissions, packaged, closed. Quarter-1 target: 5+ submissions, 1+ closed loan.

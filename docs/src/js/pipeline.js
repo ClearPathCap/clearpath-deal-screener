@@ -74,7 +74,7 @@ function savedInputsLine(d) {
              (+x.util > 0) && 'Utilities ' + money(x.util) + '/yr'];
   } else if (d.type === 'rental') {
     parts = [money(x.rent) && 'Rent ' + money(x.rent) + '/yr', pctOf(x.occ) && 'Occupancy ' + pctOf(x.occ), pctOf(x.down) && 'Down ' + pctOf(x.down),
-             (+x.util > 0) && 'Utilities ' + money(x.util) + '/yr'];
+             (+x.util > 0) && 'Utilities ' + money(x.util) + '/yr', (+x.hoa > 0) && 'HOA ' + money(x.hoa) + '/mo'];
   } else {
     parts = [money(x.ask) && 'Ask ' + money(x.ask), money(x.arv) && 'ARV ' + money(x.arv),
              money(x.rep) && 'Repairs ' + money(x.rep), (+x.hold > 0) && (+x.hold) + ' mo hold'];
@@ -942,6 +942,7 @@ function buildRentalDetail(d) {
     { l: 'Taxes + insurance',      v: pend ? 'Pending' : (d.tax != null ? fmt(d.tax) : '—') },
     { l: 'Maintenance',            v: d.maint   != null ? fmt(d.maint)  : '—' },
     { l: 'Owner-paid utilities',   v: fmt(d.util || 0) + '/yr' },
+    { l: 'HOA',                    v: d.hoa != null ? fmt(d.hoa) + '/mo' : '—' },   // Wave A · A2 (legacy records: —)
     { l: 'Furnishing (one-time)',  v: d.furnish != null ? fmt(d.furnish): '—' },
   ];
   const metrics = [

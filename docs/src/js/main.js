@@ -250,7 +250,7 @@ const REVIEW_FIELDS = {
          ['l-pm','pm','pm'], ['l-capex','capex','n'], ['l-rate','rate','n'], ['l-amort','amort','n'], ['l-points','points','n'],
          ['l-cc','cc','n'], ['l-target','target','n'], ['l-ptype','ptype','sel']],
   rental: [['v-addr','addr','t'], ['v-price','price','$'], ['v-rent','rent','$'], ['v-down','down','n'], ['v-occ','occ','n'],
-           ['v-mgmt','mgmt','n'], ['v-pm','pm','pm'], ['v-tax','tax','$','taxStatus'], ['v-maint','maint','$'], ['v-util','util','$'], ['v-furnish','furnish','$'],
+           ['v-mgmt','mgmt','n'], ['v-pm','pm','pm'], ['v-tax','tax','$','taxStatus'], ['v-maint','maint','$'], ['v-util','util','$'], ['v-hoa','hoa','$'], ['v-furnish','furnish','$'],
            ['v-target','tgtCoc','n'], ['v-interest-rate','interestRate','x100']],
   brrr: [['b-addr','addr','t'], ['b-price','price','$'], ['b-rehab','rehab','$'], ['b-arv','arv','$'], ['b-rent','rent','$'],
          ['b-units','units','n'], ['b-contingency','contingency','n'], ['b-cc','cc','n'], ['b-hold','hold','n'], ['b-carry','carry','$'],
@@ -549,6 +549,7 @@ function clearNewDeal(type) {
     document.getElementById('v-tax').value            = '5,500';
     document.getElementById('v-maint').value          = '3,000';
     document.getElementById('v-furnish').value        = '15,000';
+    { const h = document.getElementById('v-hoa'); if (h) h.value = '0'; }   // Wave A · A2: explicit $0 default (confirmed no HOA)
     document.getElementById('v-target').value         = 6;
     document.getElementById('v-interest-rate').value  = 6.75;
     document.getElementById('self-manage-toggle').checked = false; // default: hired PM

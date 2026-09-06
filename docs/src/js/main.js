@@ -562,6 +562,7 @@ function wireAddressComponents(prefix) {
   // carried by the record (no userEdited mark) are untouched — the user's own wins.
   const releasePrefillOwned = (e) => {
     if (e && !e.isTrusted) return;
+    delete addr.dataset.reviewPrefill;   // a retyped address is the user's own, like any other field
     for (const el of [city, state]) {
       if (el.dataset.reviewPrefill && el.dataset.userEdited) { delete el.dataset.userEdited; delete el.dataset.reviewPrefill; if (el.value) el.dataset.autoFilled = '1'; }
     }

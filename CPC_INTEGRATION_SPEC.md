@@ -111,7 +111,9 @@ Contract law:
   parse is discarded (`418 Oak Ct 29577` is South Carolina, never CT; `…, Delaware 43015` is Ohio; `…, Mount
   Washington 21209` is Maryland; `…, West New York 07093` is New Jersey; a token that contradicts the ZIP is
   skipped, so `…, Charleston West Virginia 25301` still finds West Virginia). With no ZIP, the token must be its
-  own comma segment (`…, Myrtle Beach, SC` / `…, South Carolina`) or an in-segment upper-case two-letter code
+  own comma segment (`…, Myrtle Beach, SC` / `…, South Carolina`; a spelled-out **single-word** state name —
+  Nevada, Delaware, Washington, California … — is also a town name and needs an agreeing ZIP: `…, Old Town,
+  Nevada` → blank, `…, Miami, Florida 33139` parses) or an in-segment upper-case two-letter code
   that is not NE / NW / SE / SW, beside a mixed-case city (`…, Myrtle Beach SC`); an agreeing ZIP relaxes those
   in-segment tests (`…, Bridgeport ct 06604` parses), except that a Title-case street word that doubles as a
   code — `Ct`, `La`, `Al`, `Mt` — is never a state (`…, Oak Ct 06604` → blank, never Oak / CT). A ZIP whose prefix
@@ -121,20 +123,25 @@ Contract law:
   `Suite 400`, `Unit 4B`, bare `Rear` / `Basement` / `Penthouse`, `c/o …`, `Attn …`, `PO Box …`, `General
   Delivery`, `Rural Route`), not a county / parish / borough / township (that segment steps back to the city
   before it: `Charlotte, Mecklenburg County, North Carolina, 28202` → Charlotte), not a street line (digits, or
-  ending in an abbreviated suffix or a spelled-out street word — `Elm Ave`, `Elm Avenue`, `Ocean Drive` — with or
-  without a trailing directional, abbreviated or spelled out: `Main St NE`, `Peachtree Street Northeast`; place-name
-  words that double as suffixes — Way, Terrace, Square, Place, Lane, Court, Circle — reject only when abbreviated or
-  followed by a directional, so `Federal Way`, `Temple Terrace`, `Franklin Square`, `Circle, AK` stay cities), and
-  not itself a two-letter state code (`…, Charlotte, NC, NC 28202` → state only).
+  ending in a USPS-abbreviated suffix or a spelled-out street word — `Elm Ave`, `Elm Wy`, `Elm Avenue`, `Ocean
+  Drive` — with or without a trailing directional, abbreviated or spelled out: `Main St NE`, `Peachtree Street
+  Northeast`; place-name words that double as suffixes — Way, Terrace, Square, Place, Lane, Court, Circle — reject
+  only in their USPS-abbreviated form or when followed by a directional, so `Federal Way`, `Temple Terrace`,
+  `Franklin Square`, `Circle, AK` stay cities), and not itself a two-letter state code (`…, Charlotte, NC, NC
+  28202` → state only).
   When an agreeing ZIP makes the state confident but no segment qualifies as the city, the state ships alone;
   with no ZIP, no qualifying city means no auto-fill. Newlines, semicolons and tabs are read as separators, a
   trailing separator is ignored, a 9-digit ZIP may omit its hyphen, and a trailing `USA` / `United States` is
   stripped. **Known limits (blank, never wrong):** a city that is a state name typed without a comma before its
-  state (`…, Nevada 64772` → blank; `…, Nevada, MO 64772` and `…, Washington DC 20001` are fine); Nebraska in the
-  `City NE` shape with no ZIP (`…, Omaha NE` → blank; `…, Omaha, NE` and `…, Omaha NE 68102` are fine); all-caps
-  input without a ZIP; a city with a non-ASCII letter (`Cañon City`); a municipality whose name ends in Township /
-  Borough (`Old Bridge Township` → state only); a city-less paste whose last segment before the state is a
-  place-name word without a directional (`…, Oak Court, CT 06604` → city "Oak Court", the user's own text). Values
+  state (`…, Nevada 64772` → blank; `…, Nevada, MO 64772` and `…, Washington DC 20001` are fine); a spelled-out
+  single-word state name with no ZIP (`…, Miami, Florida` → blank; `…, Miami, FL` and `…, Miami, Florida 33139`
+  are fine); Nebraska in the `City NE` shape with no ZIP (`…, Omaha NE` → blank; `…, Omaha, NE` and `…, Omaha NE
+  68102` are fine); all-caps input with an in-segment code and no ZIP (`412 OAK ST, CHARLOTTE NC` → blank; the
+  comma form `…, CHARLOTTE, NC` parses); a city with a non-ASCII letter (`Cañon City`); a municipality whose name
+  ends in Township / Borough (`Old Bridge Township` → state only); a municipality whose whole name is a street
+  word (`Trail, MN`, `Highway, KY` → state only). **Known echo (the user's own text, state right):** a city-less
+  paste whose last segment before the state is a place-name word or an unlisted street word (`…, Oak Court, CT
+  06604` → city "Oak Court"; `Oak Cove, Horry County, South Carolina, 29577` → city "Oak Cove"). Values
   are **never** written over a user's explicit edit or clearing (in the session, or carried as an explicit blank
   on a reviewed record). **During a review**, a real keystroke in the address hands a City / State the prefill
   owns back to the parser (they were derived from the address being replaced) — the pair re-fills from a

@@ -85,8 +85,8 @@ const BARE_DESIG = /^(rear|frnt|front|bsmt|basement|lbby|lobby|uppr|upper|lowr|l
 const MAIL_LINE = /^(c\/o|care of|attn|attention|p\.?o\.?\s*box|post office box|general delivery|rural route|star route|highway contract|rr\s*\d|hc\s*\d|#)/i;
 const isSecondary = (s) => ID_DESIG.test(s) || BARE_DESIG.test(s) || MAIL_LINE.test(s);
 // A street line without its number ("Main St", "Elm Avenue", "Peachtree Street
-// Northeast") is not a city either. Rejected: any ABBREVIATED suffix (St, Ave,
-// Ct, Ter …), a spelled-out STREET word (Street, Avenue, Road, Drive, Boulevard,
+// Northeast") is not a city either. Rejected: any USPS-abbreviated suffix (St,
+// Ave, Ct, Ter, Wy, Xing …), a spelled-out STREET word (Street, Avenue, Road, Drive, Boulevard,
 // Highway, Parkway, Trail …), either with or without a trailing directional
 // (abbreviated or spelled out). Place-name words that double as suffixes (Way,
 // Terrace, Square, Place, Lane, Court, Circle) reject only when abbreviated or
@@ -94,7 +94,8 @@ const isSecondary = (s) => ID_DESIG.test(s) || BARE_DESIG.test(s) || MAIL_LINE.t
 // College Place, Green Lane, Circle AK stay cities. Word-bounded, so Broadway /
 // Conway / Rockaway / Rockville Centre are untouched (verification corrective, pass 5).
 const DIR = '(n|s|e|w|ne|nw|se|sw|north|south|east|west|northeast|northwest|southeast|southwest)';
-const STREETISH = new RegExp('(\\b(st|ave|rd|blvd|dr|ln|ct|pl|hwy|pkwy|cir|ter|trl|sq|ctr|expy|fwy|aly|street|avenue|boulevard|road|drive|highway|parkway|trail|expressway|freeway|alley|turnpike)\\.?(\\s+' + DIR + '\\.?)?|\\b(way|terrace|square|place|lane|court|circle)\\s+' + DIR + '\\.?)$', 'i');
+// The abbreviations are the USPS Publication 28 forms (a real city never uses one).
+const STREETISH = new RegExp('(\\b(st|ave|rd|blvd|dr|ln|ct|pl|hwy|pkwy|cir|ter|terr|trl|trce|sq|sqr|ctr|expy|fwy|aly|wy|xing|rdg|lndg|cv|bnd|sta|ext|byp|plz|vw|vis|mnr|ests|frk|grn|gln|holw|knl|cmns|crst|ovl|ml|ldg|cyn|mdws|crk|hbr|hts|is|jct|lk|mtn|orch|pt|shr|spg|spgs|vly|vlg|xrd|street|avenue|boulevard|road|drive|highway|parkway|trail|expressway|freeway|alley|turnpike)\\.?(\\s+' + DIR + '\\.?)?|\\b(way|terrace|square|place|lane|court|circle)\\s+' + DIR + '\\.?)$', 'i');
 // Court / Lane / Alley / Mount: a Title-case "Ct" / "La" / "Al" / "Mt" is a street
 // word, never a state — even beside an agreeing ZIP ("…, Oak Ct 06604" is Oak
 // Court, not Oak / CT). A code typed as a code ("CT", "ct") is unaffected.
@@ -142,6 +143,14 @@ export function parseCityState(addr) {
   if (whole) {
     // "…, City, ST" · "…, City, South Carolina" — the state is its own segment.
     if (contradictsZip(whole)) return {};                            // "…, Delaware 43015" is Ohio
+    // A spelled-out SINGLE-WORD state name (Nevada, Delaware, Washington, California …)
+    // is also the name of a town somewhere; as the last segment with no ZIP to
+    // witness it, "…, Old Town, Nevada" is as likely Nevada, Missouri as the state.
+    // Prefer blank: a one-word name needs an agreeing ZIP; a code ("NV") or a
+    // multi-word name ("South Carolina", "New York") stands on its own
+    // (verification corrective, pass 6).
+    const isCodeToken = /^[A-Za-z]{2}$/.test(last.replace(/\./g, ''));
+    if (!isCodeToken && !/\s/.test(last.trim()) && !agreesWithZip(whole)) return {};
     const c = resolveCity(prev, prev2);                              // "…, Charlotte, Mecklenburg County, NC" → Charlotte
     if (c) { state = whole; city = c; }
     else if (agreesWithZip(whole)) state = whole;                    // "123 Main St, SC 29575" → state only

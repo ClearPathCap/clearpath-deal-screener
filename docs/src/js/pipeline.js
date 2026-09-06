@@ -445,7 +445,9 @@ function buildDealCard(d) {
   // expanded) shows the current canonical signal when derivable; the stored
   // verdict/cls remain the fallback and the persisted record is untouched.
   const live       = (d.type === 'flip' && !insP) ? liveFlipVerdict(data) : null;
-  const badgeCls   = live ? live.cls : (insP ? 'warm' : d.cls);
+  // Wave A · D3: a pending STR card wears the neutral PENDING badge (LTR / BRRRR keep
+  // the Phase A warm overlay — not in the ruling).
+  const badgeCls   = live ? live.cls : (insP ? (d.type === 'rental' ? 'pending' : 'warm') : d.cls);
   const badgeText  = live ? live.verdict : (insP ? insP.tag : d.verdict);
   const cardStats  = insP ? pendingDealStats(d) : d.stats;
   // Track C at render time: legacy deals have no baked class — derive it live

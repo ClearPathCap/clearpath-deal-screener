@@ -144,6 +144,10 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 .verdict.hot .vtag{color:var(--verdict-hot)}
 .verdict.warm .vtag{color:var(--warn)}
 .verdict.pass .vtag{color:var(--danger)}
+/* Wave A · D3: pending (incomplete) STR analysis — neutral, explicitly not a verdict */
+.verdict.pending{background:rgba(255,255,255,.04);border-color:var(--border-strong)}
+.verdict.pending::before{background:var(--muted)}
+.verdict.pending .vtag{color:var(--muted)}
 .vlabel{font-size:26px;font-weight:800;line-height:1;margin-bottom:6px}
 .vsub{font-size:12px;color:var(--muted);line-height:1.5}
 
@@ -192,6 +196,7 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 .deal-badge.hot{background:var(--verdict-hot-dim);color:var(--verdict-hot);border:1px solid var(--verdict-hot)}
 .deal-badge.warm{background:var(--warn-dim);color:var(--warn);border:1px solid var(--warn)}
 .deal-badge.pass{background:var(--danger-dim);color:var(--danger);border:1px solid var(--danger)}
+.deal-badge.pending{background:rgba(255,255,255,.04);color:var(--text);border:1px solid var(--border-strong)}   /* Wave A · D3 */
 .deal-stats{display:flex;gap:16px;flex-wrap:wrap}
 .deal-stat .dsl{font-size:10px;color:var(--muted);margin-bottom:2px}
 .deal-stat .dsv{font-family:var(--mono);font-size:14px;font-weight:500}

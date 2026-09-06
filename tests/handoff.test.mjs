@@ -265,7 +265,9 @@ has("pipeline imports readiness", plSrc, "from './insuranceReadiness.js'");
 // gate moved into the badgeCls/badgeText derivation — a pend overlay still
 // forces the warm badge + pend tag because the live derivation is skipped
 // whenever insP is set. Same Phase A law, one indirection.
-has("pipeline badge cls gated", plSrc, "badgeCls   = live ? live.cls : (insP ? 'warm' : d.cls)");
+// Wave A · D3 re-pin (same-commit law): a pending STR card wears the neutral
+// 'pending' badge; LTR / BRRRR keep the Phase A warm overlay exactly as before.
+has("pipeline badge cls gated", plSrc, "badgeCls   = live ? live.cls : (insP ? (d.type === 'rental' ? 'pending' : 'warm') : d.cls)");
 has("pipeline badge text gated", plSrc, "badgeText  = live ? live.verdict : (insP ? insP.tag : d.verdict)");
 has("pipeline badge live-derivation skipped under a pend overlay", plSrc, "(d.type === 'flip' && !insP) ? liveFlipVerdict(data) : null");
 has("pipeline stats gated", plSrc, "const cardStats  = insP ? pendingDealStats(d) : d.stats;");

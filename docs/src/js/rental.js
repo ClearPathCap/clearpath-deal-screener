@@ -113,7 +113,13 @@ export function analyzeRental() {
     computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furnish, tgtCoc, interestRate, util, hoa });
   const rateDisplay = (interestRate * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
 
-  document.getElementById('rental-verdict').className = 'verdict ' + (strP ? 'warm' : cls);
+  // Wave A · D3 (owner/GPT ruling 2026-09-06): a pending analysis (blank taxes +
+  // insurance) is rendered as PENDING — a neutral tile with an explicit marker —
+  // never as a warm-looking verdict. Funding eligibility still follows the
+  // computed class (unchanged law; the thresholds are untouched).
+  const verdictEl = document.getElementById('rental-verdict');
+  verdictEl.className = 'verdict ' + (strP ? 'pending' : cls);
+  if (verdictEl.setAttribute) verdictEl.setAttribute('data-pending', strP ? '1' : '0');
   document.getElementById('rvtag').textContent   = strP ? strP.tag : cls === 'hot' ? 'STRONG SIGNAL' : cls === 'warm' ? 'NEEDS REVIEW' : 'NOT A DEAL';
   document.getElementById('rvlabel').textContent = strP ? strP.label : verdict;
   document.getElementById('rvsub').textContent   = strP ? strP.sub : vsub;

@@ -154,11 +154,13 @@ ok("both legal links sever the opener handle",
 // its attribution that way, and it is out of scope for this batch. So the law is
 // "every target=_blank carries noopener", not "every one carries noreferrer".
 const blankLinks = html.match(/<a [^>]*target="_blank"[^>]*>/g) || [];
-ok("every new-tab link exists and is accounted for", blankLinks.length === 4);
+// POST-IVAN D1-2 (2026-09-27) added ONE: the Ground-Up Construction handoff on the Fix & Flip page. It opens CPC
+// with purpose=ground_up, severs the opener, and — like the other CPC links — keeps its referrer attribution.
+ok("every new-tab link exists and is accounted for", blankLinks.length === 5);
 ok("every new-tab link severs the opener handle",
    blankLinks.every(a => /rel="[^"]*noopener/.test(a)));
 ok("[PRESERVATION] the CPC handoff links keep referrer attribution (out of scope)",
-   blankLinks.filter(a => /clearpathcapfunding\.com/.test(a)).length === 2
+   blankLinks.filter(a => /clearpathcapfunding\.com/.test(a)).length === 3
    && blankLinks.filter(a => /clearpathcapfunding\.com/.test(a)).every(a => !/noreferrer/.test(a)));
 
 // ─── 9. UX wave · phone-width pipeline cards + edit affordance ───────────────
@@ -282,6 +284,14 @@ for (const id of ['flip', 'rental', 'ltr', 'brrr']) {
 }
 ok("A8: the analyzer CTA still renders through clearpath.js maybeShowFundingButton into BTN_IDS (unchanged renderer)",
    /const BTN_IDS = \{ flip: 'flip-funding-btn', rental: 'rental-funding-btn', ltr: 'ltr-funding-btn', brrr: 'brrr-funding-btn' \};/.test(src("docs/src/js/clearpath.js")));
+
+// ─── POST-IVAN D1-2 · Ground-Up Construction is its own purpose, never a Fix & Flip ───
+const guc = (html.match(/<a [^>]*id="guc-entry-link"[^>]*>/) || [""])[0];
+ok("GUC entry hands off as Ground-Up Construction (purpose=ground_up), never as a flip",
+   /href="https:\/\/clearpathcapfunding\.com\/\?src=dealscreener&amp;purpose=ground_up#submit"/.test(guc)
+   && !/purpose=flip/.test(guc));
+ok("GUC entry says DealFit does not size a build and promises no approval",
+   /does not size ground-up construction/.test(html) && !/guc-entry[\s\S]{0,600}(approv|qualif|guarantee)/i.test(html));
 
 console.log(`\nlayout: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }

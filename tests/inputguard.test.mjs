@@ -43,7 +43,7 @@ const STUBS = {
     slotLockedUntilDate=()=>null,slotWillLockUntilDate=()=>'',getUnlockedSlotCount=()=>2,
     isMarketUnlocked=()=>true,getMarketLabel=(x)=>LABELS[x]||x,getActiveMarketId=()=>globalThis.__activeMarket;`,
   'marketIntel.js': `export const fetchMarketIntel = async () => new Map();`,
-  'install.js': `export const openInstall=()=>{},triggerInstall=()=>{},initInstallHint=()=>{};`,
+  'install.js': `export const openInstall=()=>{},triggerInstall=()=>{},initInstallHint=()=>{},consumeInstallLink=()=>false,openInstallFromLink=()=>{};`,
   'share.js': `export const openShareApp=()=>{},shareDeal=()=>{};`,
   'marketSync.js': `export const hydrateMarketsOnAuth=async()=>({status:'signed-out',pulled:0,pushed:0}), pushMarketChange=async()=>({ok:true,local:true});`,
 };

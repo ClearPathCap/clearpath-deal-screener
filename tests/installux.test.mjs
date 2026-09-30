@@ -129,6 +129,76 @@ fire('load');
 await new Promise(r => setTimeout(r, 1900));
 ok("install hint names 'Get the App'", toasts.some(t => /"Get the App"/.test(t)));
 
+// ── 10 · business-card deep link ?install=1 (owner authorization 2026-09-30) ─
+let lastUrl = null;
+globalThis.location = { pathname: '/', search: '', hash: '' };
+globalThis.history  = { replaceState: (_s, _t, u) => { lastUrl = u; } };
+document.readyState = 'complete';
+const closeAll = () => ['modal-install', 'modal-install-confirm'].forEach(id => el(id).classList.remove('active'));
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+// spend the leftover native prompt from §8 so each case controls its own event
+inst.triggerInstall(); freshNative.resolve({ outcome: 'dismissed' }); await tick(); await tick();
+closeAll(); standalone = false;
+
+// 10a · no param → no-op, URL untouched
+location.search = '';
+ok("no ?install param → not a deep-link visit", inst.consumeInstallLink() === false && lastUrl === null);
+
+// 10b · param is stripped, other params survive, hash survives
+location.search = '?install=1&ref=card'; location.hash = '#flip';
+ok("?install=1 marks a deep-link visit", inst.consumeInstallLink() === true);
+ok("?install is stripped; other params and hash survive", lastUrl === '/?ref=card#flip');
+location.hash = '';
+
+// 10c · iOS: no native event → opens the three-tap guide after the wait
+ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Safari/604.1';
+location.search = '?install=1';
+inst.consumeInstallLink();
+inst.openInstallFromLink(40);
+ok("nothing opens before the wait elapses", openModals().length === 0);
+await sleep(70);
+ok("iOS deep link opens the three-tap install guide", openModals().join() === 'modal-install' && /Add to Home Screen/.test(el('install-steps').innerHTML));
+closeAll();
+
+// 10d · Android: native event arrives after load → one-question confirm, no timeout wait
+ua = 'Mozilla/5.0 (Linux; Android 14) Chrome/120 Mobi';
+location.search = '?install=1';
+inst.consumeInstallLink();
+inst.openInstallFromLink(5000);
+const lateNative = mkNative();
+fire('beforeinstallprompt', lateNative);
+await tick(); await tick();
+ok("Android deep link opens the native one-question confirm as soon as the prompt arrives", openModals().join() === 'modal-install-confirm');
+ok("deep link never fires the native prompt by itself (user taps Install)", lateNative.promptCalls === 0);
+closeAll();
+
+// 10e · native prompt already captured → opens immediately
+location.search = '?install=1';
+inst.consumeInstallLink();
+inst.openInstallFromLink(5000);
+ok("prompt already captured → confirm opens immediately", openModals().join() === 'modal-install-confirm');
+closeAll();
+
+// 10f · deep-link visit suppresses the 'tap Get the App' toast
+store.clear(); store.set('primaryMarket', 'x');
+toasts.length = 0;
+fire('load');
+await sleep(1900);
+ok("deep-link visit shows no install-hint toast over the open sheet", !toasts.some(t => /Get the App/.test(t)));
+
+// 10g · installed app: param stripped, never prompts
+standalone = true; lastUrl = null;
+location.search = '?install=1';
+ok("standalone: deep link is not a prompt visit", inst.consumeInstallLink() === false && lastUrl === '/');
+inst.openInstallFromLink(10);
+await sleep(30);
+ok("standalone: deep link opens nothing", openModals().length === 0);
+standalone = false;
+
+// 10h · a different value is stripped but ignored
+location.search = '?install=0';
+ok("?install=0 is stripped and ignored", inst.consumeInstallLink() === false && lastUrl === '/');
+
 // ── source/markup law pins ───────────────────────────────────────────────────
 const html = src("docs/index.html");
 const js   = src("docs/src/js/install.js");
@@ -148,6 +218,15 @@ ok("CTA styles exist (accent chip + focus ring)",
 ok("wave-a1 stub surface unchanged — same three exports",
    /export function openInstall/.test(js) && /export function triggerInstall/.test(js) && /export function initInstallHint/.test(js) &&
    /import \{ openInstall, triggerInstall, initInstallHint \}/.test(src("docs/src/js/main.js")));
+
+const mainJs = src("docs/src/js/main.js");
+const iConsume = mainJs.indexOf('const installLinkVisit = consumeInstallLink();');
+ok("main.js reads the deep link before the install hint and onboarding run",
+   iConsume > 0 && iConsume < mainJs.indexOf('\ninitInstallHint();') && iConsume < mainJs.indexOf('\ninitOnboarding();'));
+ok("deep-link visit defers the first-launch market picker",
+   /function initOnboarding\(\) \{[\s\S]{0,300}if \(installLinkVisit\) return;/.test(mainJs));
+ok("main.js opens the sheet after onboarding init",
+   mainJs.indexOf('\nopenInstallFromLink();') > mainJs.indexOf('\ninitOnboarding();'));
 
 // ── report ───────────────────────────────────────────────────────────────────
 console.log(`installux: ${pass} passed, ${fail} failed`);

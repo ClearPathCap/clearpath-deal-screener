@@ -105,9 +105,55 @@ export function triggerInstall() {
   }).catch(() => { nativePromptInFlight = false; });
 }
 
+// ─── Business-card deep link: ?install=1 (owner authorization 2026-09-30) ─────
+// The DealFit QR on the CPC business card lands on /?install=1. That visit
+// opens "Get the App" on arrival and defers the first-launch market picker to
+// the NEXT visit (one popup per first visit). The param is stripped from the
+// address bar at once, so a refresh or bookmark never re-triggers the sheet.
+// Already running installed: strip only, never prompt.
+let installLinkVisit = false;
+
+export function consumeInstallLink() {
+  installLinkVisit = false;
+  let requested = false;
+  try {
+    const params = new URLSearchParams(location.search);
+    if (!params.has('install')) return false;
+    requested = params.get('install') === '1';
+    params.delete('install');
+    const qs = params.toString();
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + (location.hash || ''));
+  } catch { return false; }
+  installLinkVisit = requested && !isStandalone();
+  return installLinkVisit;
+}
+
+// Open the sheet once the page has loaded. Chromium usually delivers
+// beforeinstallprompt shortly after load; waiting briefly for it means Android
+// gets the one-question native confirm instead of the manual fallback steps.
+// iOS never fires the event, so the timeout opens the three-tap guide there.
+export function openInstallFromLink(maxWaitMs = 1500) {
+  if (!installLinkVisit) return;
+  let opened = false;
+  const open = () => {
+    if (opened) return;
+    opened = true;
+    if (!isStandalone()) openInstall();
+  };
+  const arm = () => {
+    if (deferredInstallPrompt) { open(); return; }
+    window.addEventListener('beforeinstallprompt', () => setTimeout(open, 0), { once: true });
+    setTimeout(open, maxWaitMs);
+  };
+  if (document.readyState === 'complete') arm();
+  else window.addEventListener('load', arm, { once: true });
+}
+
 export function initInstallHint() {
   window.addEventListener('load', () => {
     updateGetAppVisibility();
+    // Card deep-link visit: the sheet itself is opening — no toast pointing at it.
+    if (installLinkVisit) return;
     const seen         = localStorage.getItem('install_hint_seen');
     // Don't fire over the forced first-launch market picker — it would float a
     // toast pointing at the install CTA while that CTA is behind the modal.

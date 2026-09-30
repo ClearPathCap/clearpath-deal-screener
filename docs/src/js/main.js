@@ -16,6 +16,7 @@ import { saveDeal as _saveDeal, renderPipeline,
          beginDealReview, endDealReview, getReviewingDealId, onDealReviewEnded } from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
+import { consumeInstallLink, openInstallFromLink }                   from './install.js';   // business-card ?install=1
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
 import { initCurrencyInputs, fmtCurrencyInput, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct, escapeHtml, revealBlockingField, clearBlockingMarks, markBlockingField } from './format.js';
 import { propertyBand, BAND_RULES,
@@ -2042,6 +2043,9 @@ async function renderGuideMarketIntel() {
 // ─── First-launch onboarding — gate on primaryMarket (Task 3) ────────────────
 
 function initOnboarding() {
+  // Business-card ?install=1 visit: "Get the App" owns this visit; the market
+  // picker waits for the next one (nothing is stored, so it simply reappears).
+  if (installLinkVisit) return;
   if (localStorage.getItem('primaryMarket') || localStorage.getItem('onboardingSkipped')) return;
   openMarketPicker(0, true /* isFirstLaunch */);
 }
@@ -2147,6 +2151,10 @@ Object.assign(window, {
 migrateMarketStorage();   // marketSlots[] → primaryMarket / market_2
 migrateGuideMode();       // "beginner"/"pro" → "on"/"off"
 
+// Read (and strip) the business-card ?install=1 deep link before anything that
+// could open a modal or a toast consults it.
+const installLinkVisit = consumeInstallLink();
+
 initInstallHint();
 initGuideMode();
 initCurrencyInputs();
@@ -2166,6 +2174,7 @@ applyTierToUI();
 renderAllSlots();
 renderGuideMarketIntel();   // item 4: build region intel from selected markets
 initOnboarding();
+openInstallFromLink();      // business-card QR: open "Get the App" after load
 
 // Server-side entitlement: read the user's real tier on load (and again on any
 // sign-in/out), then refresh every tier-gated surface. The synchronous render

@@ -60,7 +60,7 @@ const STUBS = {
     slotLockedUntilDate=()=>null,slotWillLockUntilDate=()=>'',getUnlockedSlotCount=()=>2,
     isMarketUnlocked=()=>true,getMarketLabel=(x)=>x,getActiveMarketId=()=>globalThis.__activeMarket||'';`,
   'marketIntel.js': `export const fetchMarketIntel = async () => new Map();`,
-  'install.js': `export const openInstall=()=>{},triggerInstall=()=>{},initInstallHint=()=>{};`,
+  'install.js': `export const openInstall=()=>{},triggerInstall=()=>{},initInstallHint=()=>{},consumeInstallLink=()=>false,openInstallFromLink=()=>{};`,
   // This stub mirrors main.js's import surface from repair.js and must grow with
   // it — a missing name is a hard ESM instantiation error, not a silent undefined.
   // Added in the D-1 P2 batch: updateRepairRangesForMarket (M-1's no-market reset)

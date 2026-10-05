@@ -141,3 +141,9 @@ Notable decisions and the reasoning, captured so future-Aaron remembers why.
 | 2026-05-20 | Manual update button over service worker | Simpler, more reliable, gives user control |
 | 2026-05-20 | Lake Murray added as market preset | Aaron's actual target market expansion |
 | 2026-05-20 | Removed Charlotte (Self) vs (Hire Out) presets | Redundant with self-renovate toggle |
+| 2026-06-16 | LTR analyzer promoted to next build (spec: SPEC_LTR_ANALYZER.md) | DSCR is the core CPC rental product; the buy-and-hold/DSCR borrower had no home in the tool |
+| 2026-06-16 | LTR default down 20% (not 25%) | Matches investor behavior; bigger loan clears $150K CPC min more often; defaulting high quietly inflates the DSCR funnel metric |
+| 2026-06-16 | LTR is a sub-toggle under Rentals, not a 5th tab | Honors locked Rentals-tab design; keeps mobile nav uncluttered |
+| 2026-06-17 | BRRR analyzer spec'd (SPEC_BRRR_ANALYZER.md), build after LTR | Full Rentals foundation up front avoids double work; BRRR shares LTR's income/DSCR engine (`incomeBlock()` built once) |
+| 2026-06-17 | LTR/BRRR CPC purpose tokens standardized to `dscr` / `brrr` | Live QA showed `rental_ltr`/`dscr` unmapped on CPC; both sides must agree on one token |
+| 2026-06-17 | CPC QA: flip pre-fill PASS, DSCR/BRRR FAIL | CPC snapshot is flip-box-only; needs income/LTV snapshot mode + token mapping before LTR/BRRR funnels work (QA_CPC_INTEGRATION_2026-06-17.md) |

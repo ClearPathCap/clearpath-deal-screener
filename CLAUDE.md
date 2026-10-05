@@ -21,7 +21,7 @@ features only** — never loan access, funding priority, rates or terms.
 | Keep-alive | `.github/workflows/supabase-keepalive.yml` (free-tier pause prevention) |
 | Tests | `tests/*.test.mjs` — Node suites, run each directly: `node tests/<name>.test.mjs` (`npm test` is a stub) |
 | CPC handoff contract | `CPC_INTEGRATION_SPEC.md`; the DSCR ratio is the integration keystone in both directions |
-| Product context | `PROJECT_BRIEF.md`, `ROADMAP.md` (incl. the decision log), `TIER_STRATEGY.md`, `GITHUB_PAGES_RUNBOOK.md` (original setup) |
+| Product context | `PROJECT_BRIEF.md`, `ROADMAP.md` (incl. the decision log), `GITHUB_PAGES_RUNBOOK.md` (original setup) |
 
 ## Rules that bite here
 
@@ -35,6 +35,8 @@ features only** — never loan access, funding priority, rates or terms.
   inline must gain any new exports there.
 - **Compliance:** no lending, approval, qualification or licensure language; every loan or return figure is an estimate;
   business-purpose, non-owner-occupied only.
+- **Never paywall the funnel:** every tier, including free, keeps "Get Funding" on qualifying deals. Paid tiers sell data,
+  capacity and convenience — never access to capital, funding priority or a different service level from CPC.
 - **Migrations** are append-only; a deployed migration is never edited — a fix is a new numbered migration.
 - **Synthetic data:** a signed-in canary/QA deal exists in the production Supabase pipeline from 2026-08-15 launch
   testing; do not create more test data in production without the owner's explicit instruction.

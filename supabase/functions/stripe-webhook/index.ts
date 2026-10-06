@@ -15,6 +15,7 @@ import Stripe from 'npm:stripe@22.5.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { loadConfig } from '../_shared/stripe_config.mjs';
 import { mapSubscriptionToGrant } from '../_shared/stripe_normalize.mjs';
+import { stripeStateAt } from '../_shared/stripe_response.mjs';
 
 const RELEVANT = new Set([
   'checkout.session.completed',
@@ -75,11 +76,11 @@ Deno.serve(async (req) => {
     if (!userId) throw new Error('no dealfit_user_id on subscription');
 
     // K-5: the fetch-freshness stamp is Stripe's OWN response Date — never
-    // Edge wall-clock. A missing header propagates null, which fails closed
-    // under enforcement (unstamped mutations are refused server-side).
-    const dateHdr = (sub as { lastResponse?: { headers?: Record<string, string> } })
-      .lastResponse?.headers?.['date'];
-    const stateAt = dateHdr ? new Date(dateHdr).toISOString() : null;
+    // Edge wall-clock — read by the shared extractor (Headers.get under the
+    // fetch client; the former bracket index always yielded undefined). A
+    // missing header propagates null, which fails closed under enforcement
+    // (unstamped mutations are refused server-side).
+    const stateAt = stripeStateAt(sub);
 
     // 4. Grant + terminal processed state, one transaction. K-5: the applier
     // returns a disposition; 'needs_refetch' = ambiguous ordering (equal/older
@@ -92,11 +93,9 @@ Deno.serve(async (req) => {
       const fresh = await stripe.subscriptions.retrieve(subscriptionId);
       const remapped = mapSubscriptionToGrant(fresh, cfg);
       if (!remapped.ok) throw new Error(`normalize(refetch): ${remapped.anomaly}`);
-      const freshHdr = (fresh as { lastResponse?: { headers?: Record<string, string> } })
-        .lastResponse?.headers?.['date'];
       const { data: disp2, error: reErr } = await service.rpc('apply_stripe_grant', {
         p_event_id: event.id, p_user_id: userId, ...remapped.args,
-        p_state_at: freshHdr ? new Date(freshHdr).toISOString() : null,
+        p_state_at: stripeStateAt(fresh),
         p_after_refetch: true,
       });
       if (reErr) throw new Error(`apply(refetch): ${reErr.message}`);

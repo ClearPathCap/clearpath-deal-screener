@@ -12,6 +12,7 @@ import Stripe from 'npm:stripe@22.5.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { loadConfig } from '../_shared/stripe_config.mjs';
 import { mapSubscriptionToGrant } from '../_shared/stripe_normalize.mjs';
+import { stripeStateAt } from '../_shared/stripe_response.mjs';
 
 const CORS = {
   'Access-Control-Allow-Origin': 'https://dealfit.clearpathcapfunding.com',
@@ -49,11 +50,10 @@ Deno.serve(async (req) => {
       customer: mapped.stripe_customer_id, status: 'all', limit: 20,
     });
     // K-5: one fetch, one instant — the list response's own Date stamps every
-    // subscription it returned. Never Edge wall-clock; missing header → null
+    // subscription it returned, read by the shared extractor (Headers.get
+    // under the fetch client). Never Edge wall-clock; missing header → null
     // (fails closed under enforcement).
-    const listHdr = (subs as { lastResponse?: { headers?: Record<string, string> } })
-      .lastResponse?.headers?.['date'];
-    const listStateAt = listHdr ? new Date(listHdr).toISOString() : null;
+    const listStateAt = stripeStateAt(subs);
     let applied = 0;
     const unconverged: string[] = [];
     for (const sub of subs.data) {
@@ -69,11 +69,9 @@ Deno.serve(async (req) => {
         const fresh = await stripe.subscriptions.retrieve(sub.id);
         const rm = mapSubscriptionToGrant(fresh, cfg);
         if (!rm.ok) { console.warn(`reconcile skip(refetch) ${sub.id}: ${rm.anomaly}`); unconverged.push(sub.id); continue; }
-        const freshHdr = (fresh as { lastResponse?: { headers?: Record<string, string> } })
-          .lastResponse?.headers?.['date'];
         const { data: disp2, error: reErr } = await service.rpc('apply_stripe_grant', {
           p_event_id: null, p_user_id: userId, ...rm.args,
-          p_state_at: freshHdr ? new Date(freshHdr).toISOString() : null,
+          p_state_at: stripeStateAt(fresh),
           p_after_refetch: true,
         });
         if (reErr) throw new Error(`apply(refetch) ${sub.id}: ${reErr.message}`);

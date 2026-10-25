@@ -293,6 +293,13 @@ ok("GUC entry hands off as Ground-Up Construction (purpose=ground_up), never as 
 ok("GUC entry says DealFit does not size a build and promises no approval",
    /does not size ground-up construction/.test(html) && !/guc-entry[\s\S]{0,600}(approv|qualif|guarantee)/i.test(html));
 
+// ─── 2026-10-25 · Field Guide terms note: broker copy, no rate-improvement claim (owner correction) ───
+const termsNote = (html.match(/<div class="gi-label">Typical private money terms<\/div>[\s\S]*?<div class="gi-note">([\s\S]*?)<\/div>/) || [, ""])[1];
+ok("Field Guide terms note carries the owner-ruled broker copy",
+   termsNote.includes("Clear Path Capital helps investors explore financing options through multiple private lending partners. Rates, terms, and availability depend on the lender and the individual transaction."));
+ok("No served copy claims CPC can improve on rates",
+   !/improve on rates/i.test(html) && !/going direct/i.test(html));
+
 console.log(`\nlayout: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log("  ✗ " + f)); process.exit(1); }
 console.log("Nav-lock invariants hold ✓");

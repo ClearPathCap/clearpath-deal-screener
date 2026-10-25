@@ -1937,7 +1937,10 @@ function buildRegionIntel(slug, tier, intel) {
 
   // Long-term rental — free numbers from LTR_MARKETS; analyst note from the server (Pro).
   if (ltr) {
-    rows.push(`<div class="guide-item"><div class="gi-label">Long-term rent (2BR) · cap rate</div><div class="gi-val">$${Math.round(ltr.rent2br).toLocaleString()}/mo · ${(ltr.capRate * 100).toFixed(1)}% cap · ${Math.round(ltr.vacancyRate * 100)}% vac.</div>${note(intel && intel.ltr_note)}</div>`);
+    // DF-2026-10-25-01: most LTR_MARKETS entries carry no capRate — show the cap clause only when the market has one
+    // (never "NaN% cap"); rent and vacancy render as before.
+    const hasCap = Number.isFinite(ltr.capRate);
+    rows.push(`<div class="guide-item"><div class="gi-label">Long-term rent (2BR)${hasCap ? ' · cap rate' : ''}</div><div class="gi-val">$${Math.round(ltr.rent2br).toLocaleString()}/mo${hasCap ? ` · ${(ltr.capRate * 100).toFixed(1)}% cap` : ''} · ${Math.round(ltr.vacancyRate * 100)}% vac.</div>${note(intel && intel.ltr_note)}</div>`);
   }
 
   // Source link — the server returns source_url / ltr_source_url only for Pro.

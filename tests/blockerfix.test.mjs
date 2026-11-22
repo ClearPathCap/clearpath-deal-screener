@@ -332,7 +332,7 @@ function near(label, actual, expected, tol = 2) {
   const f4c = STR.computeStr({ price: 420000, rent: 65000, down: 0.35, occ: 0.65, mgmt: 0.03, pm: 0.08, tax: 5500, maint: 3000, furnish: 15000, tgtCoc: 6, interestRate: 0.0675 });
   eq("F6: bridge case WARM", f4c.cls, "warm");
   truthy("F6: bridge case DSCR >= 1.25", f4c.dscr >= 1.25);
-  truthy("F6: bridge suffix present at DSCR >= 1.25", /Finance-and-hold angle: DSCR \d\.\d\d clears the typical 1\.20–1\.25 DSCR range/.test(f4c.vsub));
+  truthy("F6: bridge suffix present at DSCR >= 1.25", /Finance-and-hold angle: DSCR \d\.\d\d clears DealFit's 1\.25 DSCR bar/.test(f4c.vsub));
 
   // Blank combined field pends; explicit 0 computes; populated computes.
   const pend = IR.strExpensePresentation(IR.taxStatus(undefined));

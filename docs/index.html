@@ -113,7 +113,7 @@
       <!-- UX wave finding 8: "self" means the user performs the renovation
            LABOR — hiring a GC or having a business partner run the job doesn't
            qualify, and lenders check. Copy only; the discount math is untouched. -->
-      <div class="toggle-sub beginner-only" style="margin-top:4px">Only check this if you'll genuinely perform the renovation labor yourself — hiring a GC or working with a partner doesn't count. Lenders verify.</div>
+      <div class="toggle-sub beginner-only" style="margin-top:4px">Only check this if you'll genuinely perform the renovation labor yourself — hiring a GC or working with a partner doesn't count. With it on, DealFit uses the 75% rule instead of 70%.</div>
     </div>
     <label class="toggle">
       <input type="checkbox" id="self-reno" onchange="updateSelfReno()">
@@ -232,7 +232,7 @@
     <div class="field">
       <label>Interest Rate</label>
       <div class="input-wrap"><input type="number" id="f-rate" class="has-sfx" value="10" step="0.25" placeholder="10"><span class="sfx">%</span></div>
-      <div class="field-hint beginner-only">Typical hard-money rate — interest-only. Estimate.</div>
+      <div class="field-hint beginner-only">DealFit starts at 10%, modelled interest-only. Use the rate your lender quotes.</div>
     </div>
     <div class="field">
       <label>Points</label>
@@ -410,7 +410,7 @@
     <div class="field">
       <label>Down Payment</label>
       <div class="input-wrap"><input type="number" id="v-down" class="has-sfx" value="20" placeholder="20"><span class="sfx">%</span></div>
-      <div class="field-hint beginner-only">20% = conventional financing. Private money lenders may require less — Clear Path can walk you through your financing options.</div>
+      <div class="field-hint beginner-only">DealFit starts at 20%; use the down payment your lender quotes. Clear Path can walk you through your financing options.</div>
     </div>
   </div>
   <div class="field-row">
@@ -492,8 +492,8 @@
     <div class="field">
       <label>Interest Rate</label>
       <div class="input-wrap"><input type="number" id="v-interest-rate" class="has-sfx" value="6.75" step="0.125" placeholder="6.75"><span class="sfx">%</span></div>
-      <div class="field-hint pro-only">Your rate significantly impacts cash flow. Conventional loans run 7–8%. Private money lenders can offer more flexible terms.</div>
-      <div class="field-hint beginner-only">Your rate significantly impacts cash flow. Conventional loans run 7–8%. Private money lenders can offer more flexible terms.<br><a href="https://clearpathcapfunding.com/" target="_blank" rel="noopener" class="hint-link" style="display:inline-block;margin-top:5px">→ Check with Clear Path Capital</a></div>
+      <div class="field-hint pro-only">Your rate significantly impacts cash flow. DealFit starts at 6.75%; use the rate your lender quotes.</div>
+      <div class="field-hint beginner-only">Your rate significantly impacts cash flow. DealFit starts at 6.75%; use the rate your lender quotes.<br><a href="https://clearpathcapfunding.com/" target="_blank" rel="noopener" class="hint-link" style="display:inline-block;margin-top:5px">→ Check with Clear Path Capital</a></div>
     </div>
     <div class="field"><!-- spacer --></div>
   </div>
@@ -577,7 +577,7 @@
       <div class="field">
         <label>Down Payment</label>
         <div class="input-wrap"><input type="number" id="l-down" class="has-sfx" value="20" placeholder="20"><span class="sfx">%</span></div>
-        <div class="field-hint beginner-only">DealFit starts at 20%; use the down payment your lender quotes. Putting more down raises DSCR, which can make a thin deal look stronger.</div>
+        <div class="field-hint beginner-only">DealFit starts at 20% (25% for 5–8 units); use the down payment your lender quotes. Putting more down raises DSCR, which can make a thin deal look stronger.</div>
       </div>
       <div class="field">
         <label>Vacancy</label>
@@ -815,7 +815,7 @@
       <div class="field">
         <label>Seasoning</label>
         <div class="input-wrap"><input type="number" id="b-season" class="has-sfx" value="6" placeholder="6"><span class="sfx">mo</span></div>
-        <div class="field-hint beginner-only">Most DSCR cash-out needs ≥6 months title seasoning.</div>
+        <div class="field-hint beginner-only">DealFit flags seasoning under 6 months. Confirm the seasoning your refinance lender requires.</div>
       </div>
       <div class="field"></div>
     </div>
@@ -1025,12 +1025,12 @@
       <div class="guide-item">
         <div class="gi-label">LTV — Loan to Value</div>
         <div class="gi-val">Loan Amount ÷ ARV</div>
-        <div class="gi-note">DealFit's flip funding screen flags a loan above 70% of ARV (or above 90% of total cost); each lender sets its own limits. With no loan entered, the screener shows price-to-ARV instead — an all-cash reference, not a true LTV.</div>
+        <div class="gi-note">DealFit's LTV tile turns amber above 60% and red above 70% loan-to-ARV. These are DealFit's own reference points; each lender sets its own limits. With no loan entered, the screener shows price-to-ARV instead — an all-cash reference, not a true LTV.</div>
       </div>
       <div class="guide-item">
         <div class="gi-label">LTC — Loan to Cost</div>
         <div class="gi-val">Loan Amount ÷ (Purchase + Rehab)</div>
-        <div class="gi-note">How much of your total project cost the loan covers. DealFit's flip funding screen flags anything above 90%; each lender sets its own limit. Shown only when you enter a loan.</div>
+        <div class="gi-note">How much of your total project cost the loan covers. DealFit shows the figure but does not grade it; each lender sets its own limit. Shown only when you enter a loan.</div>
       </div>
       <div class="guide-item">
         <div class="gi-label">ROI — Return on Investment</div>
@@ -1059,9 +1059,9 @@
     <div class="guide-section">
       <h3>Private Money Lending Basics</h3>
       <div class="guide-item">
-        <div class="gi-label">Key metrics lenders care about</div>
+        <div class="gi-label">Metrics to have ready for a private money request</div>
         <div class="gi-val">LTV · ARV · Borrower experience · Exit strategy</div>
-        <div class="gi-note">DealFit calculates loan-to-ARV and checks a flip against its own funding screen (loan up to 70% of ARV and 90% of total cost), so you can see where the deal stands before you present it. Each lender sets its own limits.</div>
+        <div class="gi-note">DealFit calculates loan-to-ARV for you. When it checks whether a flip can go to Clear Path, it sizes the loan at no more than 70% of ARV and 90% of total cost. Each lender sets its own limits.</div>
       </div>
       <div class="guide-item">
         <div class="gi-label">What Clear Path Capital does</div>

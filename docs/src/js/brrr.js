@@ -136,7 +136,7 @@ export function analyzeBrrr() {
   elv('bvlabel').textContent = insP ? insP.label : verdict;
   elv('bvsub').textContent   = insP
     ? insP.sub
-    : vsub + (cls === 'hot' && m.marginOfSafety === 'tight' ? ' Strong signal, thin cushion.' : '') + (seasonWarn ? '  ⚠ Most DSCR cash-out needs 6mo title seasoning.' : '');
+    : vsub + (cls === 'hot' && m.marginOfSafety === 'tight' ? ' Strong signal, thin cushion.' : '') + (seasonWarn ? '  ⚠ Seasoning is under 6 months — confirm what your refinance lender requires.' : '');
 
   const capInvested = m.cashInvested || 1;
   const mos = mosLabel(m.marginOfSafety);

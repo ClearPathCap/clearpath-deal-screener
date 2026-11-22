@@ -722,11 +722,11 @@ export function ltrVerdict(m) {
     if (d >= rules.smallMfFloor) {
       // 1.20 ≤ DSCR < 1.25, or ≥ 1.25 that failed the multifamily stress test.
       verdict = "Clears the Floor — Thin Cushion";
-      vsub = "DSCR " + dscrText + " clears the ~1.20 small-multifamily floor, but with a thin cushion — one vacant unit could break it. Verify rent roll, leases, and stabilized occupancy.";
+      vsub = "DSCR " + dscrText + " clears DealFit's 1.20 small-multifamily floor, but with a thin cushion — one vacant unit could break it. Verify rent roll, leases, and stabilized occupancy.";
     } else {
       // 1.0 ≤ DSCR < 1.20 — covers debt but under the small-multifamily lender floor.
       verdict = "Covers Debt — Below Small-Multifamily Floor";
-      vsub = "DSCR " + dscrText + " covers debt but below the ~1.20 small-multifamily lender floor — needs more cushion to clear it; verify rent roll, leases, stabilized occupancy.";
+      vsub = "DSCR " + dscrText + " covers debt but is below DealFit's 1.20 small-multifamily floor — needs more cushion to clear it; verify rent roll, leases, stabilized occupancy.";
     }
   } else {
     cls = "warm";
@@ -744,7 +744,7 @@ export function ltrVerdict(m) {
       vsub =
         "Cash-on-cash " + cocText + " is light and cash flow " + money(annualCF) +
         "/yr is below the $6,000 strong bar, but DSCR " + dscrText +
-        " clears the typical 1.20–1.25 DSCR range — a finance-and-hold candidate even if it's not a yield play.";
+        " clears DealFit's 1.25 DSCR bar — a finance-and-hold candidate even if it's not a yield play.";
     } else {
       vsub =
         "DSCR " + dscrText + " covers the debt and it cash-flows $" + cfMo +
@@ -1085,7 +1085,7 @@ export function brrrVerdict(m) {
     const why = !survives
       ? "it thins under a stress test (ARV −5%, rent −5%)"
       : m.dscr !== null && m.dscr < hotDscr
-        ? "DSCR is under DealFit's DSCR bar"
+        ? "DSCR is under DealFit's 1.25 bar"
         : "capital is partly trapped";
     vsub =
       "DSCR " + dscrText + " and " + recText + " recovered — the mechanics work but " +

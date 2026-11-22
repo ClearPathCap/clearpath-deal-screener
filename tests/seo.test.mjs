@@ -259,18 +259,43 @@ for (const p of ALL) {
 // DealFit's OWN figures instead, and each one is pinned to the code it describes.
 {
   const guide = app.replace(/<!--[\s\S]*?-->/g, "");
-  const LENDER_NORM = /(most|many|typical) (private )?lenders? (want|look for|require|expect)|lenders? (typically|usually) |typical private money terms|Rate: 8–12%|industry standard|standard DSCR cash-out|lenders don.t count|ratio a rental lender/i;
+  const LENDER_NORM = /(most|many|typical) (private |DSCR |hard-money )?(lenders?|cash-out) (want|look for|require|expect|needs?)|lenders? (typically|usually|verify|care about|may require|can offer)|typical (private money terms|hard-money)|Rate: 8–12%|industry standard|standard DSCR cash-out|lenders don.t count|ratio a rental lender|conventional (loans run|financing)|typical 1\.20–1\.25|~1\.2[05]|lender floor|funding screen flags/i;
   const m = guide.match(LENDER_NORM);
   ok(!m, `X1 the app shell states no generalized lender requirement or typical-terms range${m ? ` (found "${m[0]}")` : ""}`);
+  const stripJs = (rel) => src(rel).replace(/\/\*[\s\S]*?\*\//g, "").split(/\r?\n/).filter((l) => !/^\s*\/\//.test(l)).map((l) => l.replace(/\s\/\/\s.*$/, "")).join("\n");
+  for (const rel of [...readdirSync(join(root, "docs/src/js")).filter((f) => f.endsWith(".js")).map((f) => "docs/src/js/" + f),
+                     ...PAGES.map((p) => `docs/${p.slug}/index.html`)]) {
+    const mm = (rel.endsWith(".js") ? stripJs(rel) : src(rel)).match(LENDER_NORM);
+    ok(!mm, `X1b ${rel} states no generalized lender requirement${mm ? ` (found "${mm[0]}")` : ""}`);
+  }
   const funding = src("docs/src/js/funding.js");
-  ok(/if \(ltc !== undefined && ltc > 0\.90\) return false;/.test(funding) && /if \(arv && loan \/ arv > 0\.70\) return false;/.test(funding)
-     && (guide.match(/70% of ARV/g) || []).length === 2 && (guide.match(/90% of total cost/g) || []).length === 2,
-     "X2 both Field Guide 70%-of-ARV lines describe DealFit's own funding screen (funding.js: loan/ARV ≤ 0.70, LTC ≤ 0.90)");
+  const flipJs = src("docs/src/js/flip.js"), cpJs = src("docs/src/js/clearpath.js"), fmtJs = src("docs/src/js/format.js");
+  ok(/cls: financed \? cClass\(75 - ltvVal, 15, 5\) : 'neutral'/.test(flipJs)
+     && /export function cClass\(v, good, ok\) \{ return v >= good \? 'good' : v >= ok \? 'warn' : 'bad'; \}/.test(fmtJs)
+     && /DealFit's LTV tile turns amber above 60% and red above 70% loan-to-ARV/.test(guide),
+     "X2 the LTV note states the tile's real thresholds (amber > 60%, red > 70%: cClass(75 - ltv, 15, 5))");
+  ok(/const maxBox = Math\.round\(Math\.min\(0\.90 \* cost, r\.arv \? 0\.70 \* r\.arv : Infinity\)\);/.test(cpJs)
+     && /const gateLoan = rawLoan !== undefined \? Math\.min\(rawLoan, maxBox\) : maxBox;/.test(cpJs)
+     && /When it checks whether a flip can go to Clear Path, it sizes the loan at no more than 70% of ARV and 90% of total cost/.test(guide)
+     && !/flags (a loan|anything) above/.test(guide),
+     "X2b the handoff note says DealFit SIZES the gate loan at min(70% ARV, 90% cost) (clearpath.js maxBox/gateLoan) and never claims it flags an over-limit loan");
+  ok(/DealFit shows the figure but does not grade it/.test(guide) && !/ltc/i.test((flipJs.match(/cls: [^\n]*ltc[^\n]*/i) || [""])[0]),
+     "X2c the LTC note says DealFit does not grade LTC (no colour class keyed on it in flip.js)");
   const val = (id) => (app.match(new RegExp(`id="${id}"[^>]*value="([^"]*)"`)) || [])[1];
   ok(val("f-rate") === "10" && val("f-points") === "3" && val("f-hold") === "5"
      && /DealFit's starting financing assumptions<\/div>\s*<div class="gi-val">Rate: 10% · Points: 3 · Hold: 5 mo — edit them for your deal<\/div>/.test(guide),
      "X3 the Field Guide's starting assumptions equal the flip inputs' defaults (rate 10, points 3, hold 5)");
-  ok(val("l-down") === "20" && /DealFit starts at 20%; use the down payment your lender quotes/.test(guide)
+  ok(/DealFit starts at 10%, modelled interest-only/.test(guide) && /const loanInt  = financed \? loan \* \(rate \/ 12\) \* hold : 0;/.test(src("docs/src/js/finance.js")),
+     "X8a the flip rate hint (10%, interest-only) matches the default and the interest-only carry");
+  ok(val("v-down") === "20" && /DealFit starts at 20%; use the down payment your lender quotes\. Clear Path/.test(guide)
+     && val("v-interest-rate") === "6.75" && (guide.match(/DealFit starts at 6\.75%; use the rate your lender quotes/g) || []).length === 2,
+     "X8b the STR down-payment (20) and rate (6.75) hints quote the STR input defaults");
+  ok(val("b-season") === "6" && /seasoningMonthsLow:\s+6,/.test(src("docs/src/js/markets.js"))
+     && /DealFit flags seasoning under 6 months/.test(guide) && /Seasoning is under 6 months — confirm what your refinance lender requires/.test(src("docs/src/js/brrr.js")),
+     "X8c the seasoning hint and BRRRR warning match DealFit's own 6-month threshold");
+  ok(/'5-8':\{maxLtv:0\.75,down:25,/.test(src("docs/src/js/finance.js")) && /DealFit starts at 20% \(25% for 5–8 units\)/.test(guide),
+     "X8d the LTR down-payment hint names the 5–8 band's 25% default (BAND_RULES)");
+  ok(val("l-down") === "20" && /DealFit starts at 20% \(25% for 5–8 units\); use the down payment your lender quotes/.test(guide)
      && val("b-refiltv") === "75" && /DealFit starts at 75%; use the LTV your refinance lender quotes/.test(guide),
      "X4 the LTR down-payment and BRRRR refi-LTV hints quote DealFit's own input defaults (20, 75)");
   const finX = src("docs/src/js/finance.js");

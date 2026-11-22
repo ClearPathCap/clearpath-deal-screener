@@ -48,7 +48,7 @@ export function computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furni
 
   // DSCR bridge: a warm cash-on-cash deal that still clears lender DSCR is fundable.
   if (cls === 'warm' && dscr >= 1.25) {
-    vsub += ' Finance-and-hold angle: DSCR ' + dscr.toFixed(2) + ' clears the typical 1.20–1.25 DSCR range even though cash-on-cash trails your target.';
+    vsub += ' Finance-and-hold angle: DSCR ' + dscr.toFixed(2) + ' clears DealFit\'s 1.25 DSCR bar even though cash-on-cash trails your target.';
   }
 
   return { effRent, platformFee, pmFee, totalExp, util: +util || 0, hoa: +hoa || 0, hoaYr, noi, capRate, downAmt, loan, mo, debt, cashflow, dscr, coc, grm, verdict, vsub, cls };

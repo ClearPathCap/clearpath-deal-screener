@@ -772,7 +772,7 @@ button.deal-badge{font-family:var(--font)}
    existing control lives in a native <details> section (keyboard + screen-
    reader operable with no script) whose summary line shows the CURRENT values,
    so no assumption is hidden when collapsed. Layout and copy only. */
-.slabel-note{font-weight:400;letter-spacing:.02em;text-transform:none;color:var(--muted)}
+.slabel-note{font-weight:400;letter-spacing:.02em;text-transform:none;color:#9a9a9a}
 .more-section{background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:10px}
 .more-section > summary{list-style:none;cursor:pointer;display:flex;flex-direction:column;gap:3px;min-height:44px;justify-content:center;padding:10px 40px 10px 14px;position:relative;border-radius:10px}
 .more-section > summary::-webkit-details-marker{display:none}

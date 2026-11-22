@@ -1,6 +1,6 @@
 // ─── Fix & Flip analyzer ──────────────────────────────────────────────────────
 
-import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, renderInputIssues, inputIsIncomplete } from './format.js';
+import { fmt, pct, cClass, buildMetrics, buildRows, parseComma, renderInputIssues, inputIsIncomplete, isMalformedCurrency } from './format.js';
 import { FLIP_MARKETS, ALL_MARKETS } from './markets.js';
 import { updateRepairRangesForMarket, repairEstimateSnapshot } from './repair.js';
 import { maybeShowFundingButton } from './clearpath.js';
@@ -37,22 +37,26 @@ function flipCarry(m) {
 }
 
 let lastFlipResult = null;
-// DF-P1: true once a market preset has written the flip defaults (hold cost,
-// Min Profit Target) — lets the quick read name a value's source honestly.
-let _flipPresetApplied = false;
-let _adoptedTarget = null;   // the Min Profit Target text written by "Use DealFit midpoint", if any
+// DF-P1 quick read provenance. `_presetText` is the exact text the last market
+// preset produced for the hold cost and Min Profit Target: a field is labelled a
+// market estimate only while it still holds that text (review M2 — a sticky
+// "a preset ran once" flag mislabelled the HTML defaults after the market went
+// away). `_adoptedTarget` is the target text "Use DealFit midpoint" wrote; it
+// is dropped whenever the analyzer resets or a saved deal is reviewed.
+let _presetText = { 'f-carry': null, 'f-target': null };
+let _adoptedTarget = null;
 
 export function getLastFlipResult() { return lastFlipResult; }
 // Saved-deal review: entering a review invalidates the last result so an
 // "Update Saved Deal" without a fresh Analyze is refused (never a stale result).
-export function clearLastFlipResult() { lastFlipResult = null; }
+export function clearLastFlipResult() { lastFlipResult = null; _adoptedTarget = null; }
 
 export function setFlipPreset(slug, el) {
   if (el) el.classList.add('active');
-  _flipPresetApplied = true;
   const m      = getFlipMarket(slug);
   const carry  = flipCarry(m);
   const target = Math.max(10000, Math.round((m.medianArv || 300000) * 0.09 / 1000) * 1000);
+  _presetText = { 'f-carry': carry.toLocaleString(), 'f-target': target.toLocaleString() };
 
   // Saved-deal review / user-edited law (2026-09-05): a hold or carry the user
   // typed — or a reviewed saved deal prefilled — is never overwritten by the
@@ -231,14 +235,17 @@ export function analyzeFlip() {
   // its source. Display only; nothing here feeds the verdict or the record.
   const fieldRaw = (id) => { const x = document.getElementById(id); return x ? String(x.value ?? '') : ''; };
   const fieldDefault = (id) => { const x = document.getElementById(id); return x && x.defaultValue != null ? String(x.defaultValue) : ''; };
-  const edited = (id) => { const x = document.getElementById(id); return !!(x && x.dataset && x.dataset.userEdited); };
+  const flag = (id, k) => { const x = document.getElementById(id); return !!(x && x.dataset && x.dataset[k]); };
   const FL_IDS = ['f-hold', 'f-cc1', 'f-cc2', 'f-carry', 'f-target', 'f-rate', 'f-points'];
   renderFlipFirstLook(flipFirstLookModel({
     used: { hold, cc1: cc1 * 100, cc2: cc2 * 100, carry, target, rate: rate * 100, points: points * 100, loan, rep, self, financed },
     raw: Object.fromEntries(FL_IDS.map(id => [id, fieldRaw(id)])),
     defaults: Object.fromEntries(FL_IDS.map(id => [id, fieldDefault(id)])),
-    userEdited: { 'f-hold': edited('f-hold'), 'f-carry': edited('f-carry'), 'f-target': edited('f-target') },
-    presetApplied: _flipPresetApplied,
+    userEdited: Object.fromEntries(FL_IDS.map(id => [id, flag(id, 'userEdited')])),
+    // A saved-deal review prefill marks fields userEdited (to protect them from
+    // presets) AND reviewPrefill; a real keystroke clears reviewPrefill.
+    prefilled: Object.fromEntries(FL_IDS.map(id => [id, flag(id, 'reviewPrefill')])),
+    presetText: _presetText,
     adoptedTarget: _adoptedTarget,
     repSource: lastFlipResult.repSource,
     cls,
@@ -259,20 +266,23 @@ export function analyzeFlip() {
 // percents); `raw` the field text. A blank or zero field that the analyzer's
 // fallback replaced is reported as the DealFit default it became — never as
 // the user's entry. Changes no number and no verdict.
-const FL_SRC = { entry: 'Your entry', adopted: 'DealFit suggestion you adopted', market: 'Market estimate', default: 'DealFit default', estimate: 'Planning estimate' };
-const FL_CHOSEN = new Set(['entry', 'adopted']);   // the user's own choice — not an assumption
-export function flipFirstLookModel({ used, raw = {}, defaults = {}, userEdited = {}, presetApplied = false, adoptedTarget = null, repSource, cls, addr, state, ptype }) {
+const FL_SRC = { entry: 'Your entry', adopted: 'DealFit suggestion you adopted', saved: 'From your saved deal', market: 'Market estimate', default: 'DealFit default', estimate: 'Planning estimate' };
+// Not counted as assumptions: the user's own entry or adopted choice, and a
+// saved deal's value (its origin is unknown — the lead asks the user to confirm it).
+const FL_NOT_ASSUMED = new Set(['entry', 'adopted', 'saved']);
+export function flipFirstLookModel({ used, raw = {}, defaults = {}, userEdited = {}, prefilled = {}, presetText = {}, adoptedTarget = null, repSource, cls, addr, state, ptype }) {
   const pctTxt = (v) => (Math.round(v * 100) / 100) + '%';
   const sourceOf = (id, { marketDriven = false } = {}) => {
     const r = String(raw[id] ?? '').trim();
     if (r === '' || !(parseComma(r) > 0)) return 'default';       // the analyzer's `||` fallback stood in
-    if (userEdited[id]) return 'entry';
     if (id === 'f-target' && adoptedTarget != null && r === String(adoptedTarget)) return 'adopted';
-    if (marketDriven && presetApplied) return 'market';
+    if (prefilled[id]) return 'saved';                              // review prefill: never claimed as typed
+    if (userEdited[id]) return 'entry';
+    if (marketDriven && presetText[id] != null && r === String(presetText[id])) return 'market';
     return r === String(defaults[id] ?? '') ? 'default' : 'entry';
   };
   const items = [];
-  const add = (key, label, value, src) => items.push({ key, label, value, src, source: FL_SRC[src], assumed: !FL_CHOSEN.has(src) });
+  const add = (key, label, value, src) => items.push({ key, label, value, src, source: FL_SRC[src], assumed: !FL_NOT_ASSUMED.has(src) });
   if (repSource === 'estimator') add('rep', 'Repair budget', fmt(used.rep), 'estimate');
   add('target', 'Min Profit Target', fmt(used.target), sourceOf('f-target', { marketDriven: true }));
   add('hold', 'Hold period', used.hold + ' mo', sourceOf('f-hold'));
@@ -293,13 +303,15 @@ export function flipFirstLookModel({ used, raw = {}, defaults = {}, userEdited =
   parts.push(assumed > 0
     ? 'Preliminary: built from your numbers plus ' + assumed + ' assumed input' + (assumed === 1 ? '' : 's') + ' (marked below). Replace any assumption with your own figure and analyze again.'
     : 'Every input listed below is your own entry. The result is still an estimate — verify ARV with comps and repairs with bids.');
+  const saved = items.filter(i => i.src === 'saved').length;
+  if (saved > 0) parts.push(saved + ' value' + (saved === 1 ? ' comes' : 's come') + ' from your saved deal — confirm ' + (saved === 1 ? 'it still applies' : 'they still apply') + '.');
   if (cls === 'pass') parts.push('Nothing required is missing: this verdict reflects the economics of the numbers shown, not missing information.');
   const missing = [];
   if (!String(addr || '').trim()) missing.push('property address');
   if (!String(state || '').trim()) missing.push('state');
   if (!String(ptype || '').trim()) missing.push('property type');
   const missingText = missing.length
-    ? 'Not yet provided (does not change these numbers): ' + missing.join(', ') + '. Add them under Property details before you save the deal or send it for funding review.'
+    ? 'Not yet provided (does not change these numbers): ' + missing.join(', ') + '. You can add them under Property details; they travel with a saved deal and a funding hand-off.'
     : '';
   return { items, assumed, lead: parts.join(' '), missingText };
 }
@@ -327,15 +339,23 @@ function escapeText(s) {
 export function flipSectionSummaries(v) {
   const num = (s, d) => { const n = parseComma(String(s ?? '')); return n > 0 ? n : d; };
   const sqft = num(v.sqft, 0);
-  const loan = String(v.loan ?? '').trim() === '' ? 0 : (parseComma(v.loan) || 0);
+  // A malformed dollar entry blocks Analyze, so the summary must not present
+  // a parse of it ("12a" → $12) as a valid amount (browser check finding 1).
+  const loanBad = isMalformedCurrency(String(v.loan ?? ''));
+  const carryBad = isMalformedCurrency(String(v.carry ?? ''));
+  const loan = loanBad || String(v.loan ?? '').trim() === '' ? 0 : (parseComma(v.loan) || 0);
   const street = String(v.addr || '').split(',')[0].trim();
+  const st = String(v.state || '').trim().toUpperCase();
   return {
-    repair: (v.self ? 'Self-renovating labor' : 'Hired labor') + (sqft ? ' · ' + sqft.toLocaleString('en-US') + ' sf' : ''),
-    fin: loan > 0
+    repair: (v.self ? 'Self-renovating labor' : 'Hired labor')
+      + (sqft ? ' · ' + sqft.toLocaleString('en-US') + ' sf' + (v.tier ? ' · ' + v.tier + ' estimate' : '') : ''),
+    fin: loanBad ? 'Loan amount needs a valid dollar amount'
+      : loan > 0
       ? fmt(loan) + ' loan · ' + num(v.rate, 10) + '% · ' + num(v.points, 3) + ' pts'
       : 'All-cash view — no loan cost modeled',
-    costs: num(v.hold, 5) + ' mo hold · ' + fmt(num(v.carry, 900)) + '/mo · buy ' + num(v.cc1, 2) + '% · sell ' + num(v.cc2, 5) + '%',
-    prop: street ? street + (String(v.state || '').trim() ? ', ' + String(v.state).trim() : '') : 'Address not entered',
+    costs: num(v.hold, 5) + ' mo hold · ' + (carryBad ? 'monthly cost needs a valid amount' : fmt(num(v.carry, 900)) + '/mo')
+      + ' · buy ' + num(v.cc1, 2) + '% · sell ' + num(v.cc2, 5) + '%',
+    prop: street ? street + (st ? ', ' + st : '') : 'Address not entered',
   };
 }
 
@@ -347,6 +367,7 @@ export function refreshFlipSummaries() {
     loan: val('f-loan'), rate: val('f-rate'), points: val('f-points'),
     hold: val('f-hold'), carry: val('f-carry'), cc1: val('f-cc1'), cc2: val('f-cc2'),
     addr: val('f-addr'), state: val('f-state'),
+    tier: (document.querySelector && document.querySelector('#page-flip .repair-tiers .tier.active .tier-name')?.textContent) || '',
   });
   for (const [k, text] of Object.entries(s)) {
     const x = document.getElementById('flip-sum-' + k);
@@ -371,6 +392,11 @@ export function openFlipDetails() {
 
 export function resetFlip() {
   { const fl = document.getElementById('flip-firstlook'); if (fl) fl.style.display = 'none'; }
+  // DF-P1 (browser check finding 3): the suggested-profit box describes the
+  // last analysis; after a reset it would describe a deal no longer on the
+  // form and push the primary Analyze below the first phone screen.
+  { const g = document.getElementById('flip-guide'); if (g) g.style.display = 'none'; _lastGuide = null; }
+  _adoptedTarget = null;
   document.getElementById('flip-results').style.display = 'none';
   document.getElementById('flip-notes').value = '';
   document.getElementById('flip-funding-btn').innerHTML = '';
@@ -440,6 +466,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
   if (page && page.addEventListener) {
     page.addEventListener('input', refreshFlipSummaries);
     page.addEventListener('change', refreshFlipSummaries);
+    page.addEventListener('click', refreshFlipSummaries);   // repair-tier cards change on click only
   }
   refreshFlipSummaries();
 }

@@ -174,12 +174,7 @@ export function revealBlockingField(fieldId, message, prefix, msgId = fieldId + 
     const live = ensureLiveRegion(prefix);
     if (live) live.textContent = message || 'Please correct the highlighted field.';
   }
-  // DF-P1: a blocking field inside a collapsed <details> section (the Fix & Flip
-  // "Refine the Analysis" sections) cannot be seen or focused — open it first.
-  if (typeof el.closest === 'function') {
-    const section = el.closest('details');
-    if (section && !section.open) section.open = true;
-  }
+  openSectionOf(el);
   const reduced = typeof matchMedia === 'function' && !!matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
   if (typeof el.focus === 'function') { try { el.focus({ preventScroll: true }); } catch { el.focus(); } }
@@ -192,6 +187,15 @@ export function markBlockingField(el, prefix) {
   if (!el || !prefix) return;
   if (!_marked.has(prefix)) _marked.set(prefix, new Set());
   _marked.get(prefix).add(el);
+  openSectionOf(el);   // DF-P1: every blocking field is visible, not only the one revealed
+}
+// DF-P1: a blocking field inside a collapsed <details> section (the Fix & Flip
+// "Refine the Analysis" sections) cannot be seen or focused — open its section.
+// No-op for fields outside a <details> (every other analyzer).
+export function openSectionOf(el) {
+  if (!el || typeof el.closest !== 'function') return;
+  const section = el.closest('details');
+  if (section && !section.open) section.open = true;
 }
 // A valid run clears the marks of the previous blocked run (and the announcement).
 export function clearBlockingMarks(prefix) {
@@ -248,6 +252,7 @@ export function renderInputIssues(prefix, errors, warnings) {
   box.innerHTML = e + w;
   box.style.display = (e || w) ? 'block' : 'none';
   if (errors && errors.length > 0) {
+    errors.forEach(x => openSectionOf(document.getElementById(x.field)));   // DF-P1: every erroring field's section opens
     revealBlockingField(errors[0].field, `${errors[0].label}: ${errors[0].message}`, prefix, errors[0].field + '-issue');   // A6: one reveal, the first error
     return true;   // blocked
   }

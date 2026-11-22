@@ -94,6 +94,10 @@ const pos = (needle) => page.indexOf(needle);
   const analyzeButtons = page.match(/<button class="btn-analyze[^"]*" onclick="analyzeFlip\(\)">/g) || [];
   ok(analyzeButtons.length === 2 && pos('btn-analyze-refine') > pos('id="flip-more-prop"') && pos('btn-analyze-refine') < pos('id="flip-results"'),
      'A11 a second Analyze (same handler) follows the refine sections; no other trigger was added');
+  ok((page.match(/>Analyze This Deal<\/button>/g) || []).length === 2, 'A11b both triggers say "Analyze This Deal" (no "Re-analyze" before any analysis — browser finding 4)');
+  const iErr = pos('id="flip-input-errors"');
+  ok(iErr > pos('<button class="btn-analyze" onclick="analyzeFlip()">') && iErr < pos('<details'), 'A11c range / incomplete messages render under the primary Analyze, above the refine sections (browser finding 2)');
+  ok(!/id="f-target"[^>]*aria-describedby/.test(page), 'A11d f-target carries no aria-describedby a blocking run could overwrite and drop (review L2)');
   const res = page.slice(pos('id="flip-results"'));
   const iM = res.indexOf('id="flip-metrics"'), iQ = res.indexOf('id="flip-firstlook"'), iF = res.indexOf('id="flip-funding-btn"'), iB = res.indexOf('id="flip-breakdown"');
   ok(iM > -1 && iQ > iM && iF > iQ && iB > iF, 'A12 the quick-read panel follows the metric tiles and precedes the funding CTA and breakdown (A8 order kept)');
@@ -107,7 +111,7 @@ console.log('— §B flipFirstLookModel: every assumption is named, with an hone
 const D = { 'f-hold': '5', 'f-cc1': '2', 'f-cc2': '5', 'f-carry': '900', 'f-target': '40,000', 'f-rate': '10', 'f-points': '3' };
 const base = (over = {}) => ({
   used: { hold: 5, cc1: 2, cc2: 5, carry: 2900, target: 38000, rate: 10, points: 3, loan: 0, rep: 60000, self: false, financed: false },
-  raw: { ...D, 'f-carry': '2,900', 'f-target': '38,000' }, defaults: D, userEdited: {}, presetApplied: true, repSource: 'manual',
+  raw: { ...D, 'f-carry': '2,900', 'f-target': '38,000' }, defaults: D, userEdited: {}, presetText: { 'f-carry': '2,900', 'f-target': '38,000' }, repSource: 'manual',
   cls: 'hot', addr: '', state: '', ptype: '', ...over,
 });
 const item = (m, k) => m.items.find(i => i.key === k);
@@ -127,7 +131,7 @@ const item = (m, k) => m.items.find(i => i.key === k);
   ok(item(typed, 'self') && /75% of ARV/.test(item(typed, 'self').value), 'B9 self-renovating is disclosed with its Max Offer effect');
   const zero = flip.flipFirstLookModel(base({ raw: { ...D, 'f-carry': '2,900', 'f-target': '38,000', 'f-cc2': '0' }, userEdited: {} }));
   ok(item(zero, 'cc2').source === 'DealFit default' && item(zero, 'cc2').value === '5%', 'B10 a 0 the analyzer replaced with its fallback is reported as the default it became (never "your entry")');
-  const noMarket = flip.flipFirstLookModel(base({ presetApplied: false, raw: D, used: { ...base().used, carry: 900, target: 40000 } }));
+  const noMarket = flip.flipFirstLookModel(base({ presetText: {}, raw: D, used: { ...base().used, carry: 900, target: 40000 } }));
   ok(item(noMarket, 'target').source === 'DealFit default' && item(noMarket, 'carry').source === 'DealFit default', 'B11 with no market, target and hold cost are DealFit defaults');
   const adopted = flip.flipFirstLookModel(base({ adoptedTarget: '39,000', raw: { ...D, 'f-carry': '2,900', 'f-target': '39,000' } }));
   ok(item(adopted, 'target').source === 'DealFit suggestion you adopted' && !item(adopted, 'target').assumed, 'B12 an adopted DealFit midpoint is the user\'s choice, labelled as such');
@@ -144,6 +148,21 @@ const item = (m, k) => m.items.find(i => i.key === k);
   ok(allMine.assumed === 0 && /Every input listed below is your own entry/.test(allMine.lead) && !/strong signal relies/.test(allMine.lead), 'B17 with no assumptions the lead says so and adds no caveat');
   ok(!/(approv|qualif|guarantee|pre-?approv|lender will)/i.test([m, pass1, warm, est, allMine].map(x => x.lead + x.missingText + x.items.map(i => i.label + i.value).join('')).join(' ')),
      'B18 broker compliance: no approval / qualification / guarantee language in any quick-read copy');
+  // Review M1: a saved deal's prefilled values are protected (userEdited) AND marked
+  // reviewPrefill — they must never be claimed as typed by the user.
+  const PF = { 'f-hold': true, 'f-carry': true, 'f-target': true, 'f-cc1': true, 'f-cc2': true, 'f-rate': true, 'f-points': true };
+  const saved = flip.flipFirstLookModel(base({ userEdited: { ...PF }, prefilled: { ...PF }, raw: { ...D, 'f-carry': '2,900', 'f-target': '31,000' } }));
+  ok(['target', 'hold', 'carry', 'cc1', 'cc2'].every(k => item(saved, k).source === 'From your saved deal'), 'B19 every review-prefilled value reads "From your saved deal" — one provenance, one label (review M1)');
+  ok(!saved.items.some(i => i.source === 'Your entry') && /5 values come from your saved deal — confirm they still apply\./.test(saved.lead), 'B20 none is labelled "Your entry"; the lead asks the user to confirm them');
+  const retyped = flip.flipFirstLookModel(base({ userEdited: { ...PF }, prefilled: { ...PF, 'f-hold': false }, raw: { ...D, 'f-hold': '7', 'f-carry': '2,900', 'f-target': '31,000' } }));
+  ok(item(retyped, 'hold').source === 'Your entry' && item(retyped, 'carry').source === 'From your saved deal', 'B21 a value the user retyped during the review becomes their entry');
+  // Review M2: "Market estimate" only while the field still holds the preset's own text.
+  const gone = flip.flipFirstLookModel(base({ raw: D, used: { ...base().used, carry: 900, target: 40000 } }));
+  ok(item(gone, 'target').source === 'DealFit default' && item(gone, 'carry').source === 'DealFit default', 'B22 after a preset ran, the HTML defaults back on the form read "DealFit default", not "Market estimate" (review M2)');
+  // Review L1: an adopted midpoint wins over a stale userEdited mark; absent adoption, it does not apply.
+  const adoptEd = flip.flipFirstLookModel(base({ adoptedTarget: '39,000', userEdited: { 'f-target': true }, raw: { ...D, 'f-carry': '2,900', 'f-target': '39,000' } }));
+  ok(item(adoptEd, 'target').source === 'DealFit suggestion you adopted', 'B23 adopting after typing still reads as the adopted suggestion');
+  ok(/You can add them under Property details/.test(m.missingText) && !/before you save/.test(m.missingText), 'B24 the missing-facts line does not claim saving requires them (review L4)');
 }
 
 // ── §C summaries ─────────────────────────────────────────────────────────────
@@ -155,6 +174,11 @@ console.log('— §C collapsed-section summaries mirror the analyzer\'s own fall
   ok(t.repair === 'Self-renovating labor · 1,400 sf' && t.fin === '$150,000 loan · 11.5% · 2 pts' && t.costs === '7 mo hold · $1,250/mo · buy 1.5% · sell 6%' && t.prop === '412 Oak St, NC', 'C2 edited summaries');
   const z = flip.flipSectionSummaries({ hold: '', carry: '', cc1: '0', cc2: '', rate: '', points: '', loan: '100,000' });
   ok(z.costs === '5 mo hold · $900/mo · buy 2% · sell 5%' && z.fin === '$100,000 loan · 10% · 3 pts', 'C3 blank / zero fields summarise as the fallback the analyzer would use');
+  const bad = flip.flipSectionSummaries({ loan: '12a', carry: '9OO', hold: '5', cc1: '2', cc2: '5' });
+  ok(bad.fin === 'Loan amount needs a valid dollar amount' && /monthly cost needs a valid amount/.test(bad.costs) && !/\$12|\$9\//.test(bad.fin + bad.costs),
+     'C4 a malformed loan / hold cost is never summarised as a parsed dollar amount (browser finding 1, review L3)');
+  const tierSt = flip.flipSectionSummaries({ self: false, sqft: '1600', tier: 'Full Gut', addr: '12 Test Ln, Rock Hill SC', state: 'sc' });
+  ok(tierSt.repair === 'Hired labor · 1,600 sf · Full Gut estimate' && tierSt.prop === '12 Test Ln, SC', 'C5 the repair summary names the estimator tier; the state displays upper-case');
 }
 
 // ── §D analyzer ↔ canonical engine parity, by execution ──────────────────────
@@ -222,6 +246,41 @@ ok(seenMos.has('fails') && seenMos.has('strong'), 'D* fixtures cover stress fail
   flip.resetFlip();
   ok(el('flip-firstlook').style.display === 'none' && flip.getLastFlipResult() === null, 'D+ resetFlip hides the quick read and drops the result');
 }
+console.log('— §D2 provenance across presets, adoption, reset and review (executed, real flip.js) ─');
+{
+  const rows = () => Object.fromEntries((el('fl-list').innerHTML.match(/<li>[\s\S]*?<\/li>/g) || []).map(li => {
+    const t = li.replace(/<[^>]+>/g, '|').split('|').filter(Boolean); return [t[0], t[1]]; }));
+  const fresh = (id, v) => { const e = el(id); e.value = v; delete e.dataset.userEdited; delete e.dataset.reviewPrefill; };
+  ['f-hold', 'f-carry', 'f-target', 'f-cc1', 'f-cc2'].forEach(id => fresh(id, el(id).defaultValue));
+  flip.setFlipPreset('charlotte-nc', null);
+  const carryTxt = el('f-carry').value, targetTxt = el('f-target').value;
+  set('f-ask', '185,000'); set('f-arv', '340,000'); set('f-rep', '60,000'); set('f-loan', ''); set('f-rate', '10'); set('f-points', '3'); el('self-reno').checked = false;
+  el('flip-results').style.display = 'none'; flip.analyzeFlip();
+  let r = rows();
+  ok(carryTxt !== '900' && r['Monthly hold cost (excl. loan)'] === 'Market estimate' && r['Min Profit Target'] === 'Market estimate', 'D2-1 preset-written hold cost and target read "Market estimate" (' + carryTxt + ', ' + targetTxt + ')');
+  // the market goes away and Clear & New Deal restores the HTML defaults (main.js writes them programmatically)
+  fresh('f-carry', '900'); fresh('f-target', '40,000');
+  el('flip-results').style.display = 'none'; flip.analyzeFlip(); r = rows();
+  ok(r['Monthly hold cost (excl. loan)'] === 'DealFit default' && r['Min Profit Target'] === 'DealFit default', 'D2-2 after the preset values are gone the defaults read "DealFit default" (review M2, executed)');
+  // adoption, then reset: the adopted marker must not survive
+  flip.adoptDealFitTarget();
+  const adoptedTxt = el('f-target').value; r = rows();
+  ok(r['Min Profit Target'] === 'DealFit suggestion you adopted', 'D2-3 "Use DealFit midpoint" labels the target as the adopted suggestion (' + adoptedTxt + ')');
+  ok(el('flip-guide').style.display === '', 'D2-4 the suggested-profit box is shown after an analysis');
+  flip.resetFlip();
+  ok(el('flip-guide').style.display === 'none', 'D2-5 resetFlip hides the suggested-profit box describing the previous deal (browser finding 3)');
+  el('f-target').value = adoptedTxt; el('flip-results').style.display = 'none'; flip.analyzeFlip(); r = rows();
+  ok(r['Min Profit Target'] !== 'DealFit suggestion you adopted', 'D2-6 after a reset the same target text is no longer called "adopted" (review L1, executed)');
+  flip.adoptDealFitTarget(); flip.clearLastFlipResult();
+  el('flip-results').style.display = 'none'; flip.analyzeFlip(); r = rows();
+  ok(r['Min Profit Target'] !== 'DealFit suggestion you adopted', 'D2-7 entering a saved-deal review (clearLastFlipResult) also drops the adopted marker');
+  // a review prefill: main.js reviewSetField marks userEdited + reviewPrefill
+  for (const [id, v] of [['f-hold', '5'], ['f-carry', '2,900'], ['f-target', '31,000'], ['f-cc1', '2'], ['f-cc2', '5']]) { el(id).value = v; el(id).dataset.userEdited = '1'; el(id).dataset.reviewPrefill = '1'; }
+  el('flip-results').style.display = 'none'; flip.analyzeFlip(); r = rows();
+  ok(['Hold period', 'Monthly hold cost (excl. loan)', 'Min Profit Target', 'Buying costs', 'Selling costs'].every(k => r[k] === 'From your saved deal'), 'D2-8 review-prefilled values read "From your saved deal", never "Your entry" (review M1, executed)');
+  ok(/5 values come from your saved deal/.test(el('fl-lead').textContent), 'D2-9 the lead asks the user to confirm the saved values');
+  ['f-hold', 'f-carry', 'f-target', 'f-cc1', 'f-cc2'].forEach(id => fresh(id, el(id).defaultValue));
+}
 
 // ── §E reveal opens a collapsed section ─────────────────────────────────────
 console.log('— §E a blocking field inside a collapsed section is revealed ─');
@@ -234,6 +293,17 @@ console.log('— §E a blocking field inside a collapsed section is revealed ─
   FMT.revealBlockingField('f-ask', 'Required — enter Purchase Price', 'flip');
   ok(focused === 1, 'E2 a field outside any section reveals exactly as before');
   FMT.clearBlockingMarks('flip');
+  // review L3: every blocking field's section opens, not only the revealed one
+  const sCarry = { open: false }, sLoan = { open: false }, sRate = { open: false };
+  el('f-carry').closest = (q) => q === 'details' ? sCarry : null;
+  el('f-loan').closest = (q) => q === 'details' ? sLoan : null;
+  el('f-rate').closest = (q) => q === 'details' ? sRate : null;
+  FMT.markBlockingField(el('f-carry'), 'flip');
+  ok(sCarry.open === true, 'E3 a blocking field that is not the revealed one still gets its section opened (markBlockingField)');
+  FMT.renderInputIssues('flip', [{ field: 'f-rate', label: 'Loan rate', message: 'x' }, { field: 'f-loan', label: 'Loan', message: 'y' }], []);
+  ok(sRate.open === true && sLoan.open === true, 'E4 renderInputIssues opens the section of every erroring field');
+  FMT.clearBlockingMarks('flip');
+  ['f-carry', 'f-loan', 'f-rate'].forEach(id => { el(id).closest = () => null; });
 }
 
 // ── §F scope guards ──────────────────────────────────────────────────────────

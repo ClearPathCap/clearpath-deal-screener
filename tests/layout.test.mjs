@@ -156,7 +156,13 @@ ok("both legal links sever the opener handle",
 const blankLinks = html.match(/<a [^>]*target="_blank"[^>]*>/g) || [];
 // POST-IVAN D1-2 (2026-09-27) added ONE: the Ground-Up Construction handoff on the Fix & Flip page. It opens CPC
 // with purpose=ground_up, severs the opener, and — like the other CPC links — keeps its referrer attribution.
-ok("every new-tab link exists and is accounted for", blankLinks.length === 5);
+// seo/n1122 (2026-11-22) added FIVE: the Field Guide's "How DealFit Evaluates Risk" block links the public
+// /risk-evaluation/ and four calculator pages. Same-origin explainers, opened in a new tab for the same reason as
+// Terms/Privacy — following one must not displace an unsaved deal. Each severs the opener (checked below).
+ok("every new-tab link exists and is accounted for", blankLinks.length === 10);
+ok("[seo/n1122] the five Field Guide tool-page links are the new-tab additions",
+   ["/risk-evaluation/", "/fix-and-flip-calculator/", "/dscr-calculator/", "/brrrr-calculator/", "/short-term-rental-calculator/"]
+     .every(p => blankLinks.some(a => a.includes(`href="${p}"`))));
 ok("every new-tab link severs the opener handle",
    blankLinks.every(a => /rel="[^"]*noopener/.test(a)));
 ok("[PRESERVATION] the CPC handoff links keep referrer attribution (out of scope)",

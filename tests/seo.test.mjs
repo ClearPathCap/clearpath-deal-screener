@@ -147,6 +147,35 @@ ok(/coc >= tgtCoc && capRate >= 6/.test(str), "D STR strongest verdict: CoC ≥ 
 ok(/downAmt\s+= price \* down \+ furnish;/.test(str), "D STR cash-on-cash basis = down payment + furnishing");
 // No analyzer requires sign-in (pages say "No account needed to run an analysis").
 for (const f of ["flip.js", "ltr.js", "brrr.js", "rental.js"]) ok(!/isSignedIn|getSession|requireAuth/.test(src("docs/src/js/" + f)), `D ${f} runs without sign-in`);
+{ // …and neither do main.js's Validated wrappers that the Analyze buttons call.
+  const m = src("docs/src/js/main.js");
+  for (const fn of ["analyzeFlipValidated", "analyzeRentalValidated", "analyzeLtrValidated", "analyzeBrrrValidated"]) {
+    const i = m.indexOf(`function ${fn}()`);
+    const end = i < 0 ? -1 : m.slice(i).search(/\r?\n\}\r?\n/);   // checkouts may be CRLF
+    const body = i < 0 || end < 0 ? "" : m.slice(i, i + end);
+    ok(body.length > 0 && !/isSignedIn|getSession|requireAuth|getActiveTier/.test(body), `D ${fn} has no sign-in or tier gate`);
+  }
+}
+// The flip "Strong" bar the pages quote depends on the analyzer's target default
+// (review R1-F1): finance.js's $25,000 no-target branch is unreachable from the UI.
+ok(/const target = parseComma\(document\.getElementById\('f-target'\)\.value\) \|\| 40000;/.test(src("docs/src/js/flip.js")) &&
+   /id="f-target"[^>]*value="40,000"/.test(src("docs/index.html")), "D flip Min Profit Target defaults to $40,000 (analyzer + shell)");
+
+console.log("— §F page text carries the pinned numbers (review R1-F7) —");
+const pageVis = (slug) => visibleText(src(`docs/${slug}/index.html`));
+const has = (slug, list) => { const v = pageVis(slug); for (const t of list) ok(v.includes(t), `F /${slug}/ states "${t}"`); };
+has("fix-and-flip-calculator", ["ARV −5%, rehab +10% and one extra month of holding", "$20,000 at the default $40,000 target",
+  "at least $50,000 or your target", "ROI is at least 15%", "70% of the after-repair value minus the repair budget", "uses 75% instead", "below $0"]);
+has("risk-evaluation", ["ARV −5%, rehab +10%, +1 month of holding", "$20,000 at the default $40,000 target", "Rent −5%, vacancy +3 points, rate +0.5 points",
+  "vacancy +5 points or one fully vacant unit, whichever is higher", "at least 1.15 on 1–4 units or 1.20 on 5–8 units", "no more than 25% of your cash left in",
+  "more than 50% of your cash stays in the deal", "Stressed DSCR is below 1.0"]);
+has("dscr-calculator", ["Rent −5%, vacancy +3 points, rate +0.5 points", "vacancy +5 points or one fully vacant unit, whichever is higher",
+  "stressed DSCR of 1.15 or more", "stressed DSCR of 1.20 or more", "DSCR of at least 1.25", "at least $6,000 a year of cash flow"]);
+has("brrrr-calculator", ["ARV −5%", "rent −5%", "vacancy also rises by 5 points or to one fully vacant unit, whichever is higher",
+  "at least 1.15 (1.20 on 5–8 units)", "no more than 25% of your cash left in", "more than 50% of your cash left in the deal",
+  "DSCR of at least 1.25, at least 75% of your cash recovered"]);
+has("short-term-rental-calculator", ["does not run DealFit's built-in stress test", "cap rate of at least 6%"]);
+for (const p of PAGES) ok(!/floored at one fully vacant unit|\$25,000 when no target|rate \+0\.5%/.test(pageVis(p.slug) + src(`docs/${p.slug}/index.html`)), `F /${p.slug}/ carries none of the corrected R1 wordings`);
 
 console.log("— §E compliance wording —");
 const BANNED = /pre-?approv|approved for|guarantee|qualif(y|ies|ied) for|we lend|our loans|lowest rate|best rate|better rate|beat your lender|NMLS|licensed lender|lender-ready|risk-free|eliminate (the )?risk|safe investment|funding priority/i;
@@ -160,6 +189,25 @@ for (const p of PAGES) {
   const cpc = hrefs(src(`docs/${p.slug}/index.html`)).filter((h) => /^https:\/\/clearpathcapfunding\.com/.test(h));
   ok(cpc.length >= 1 && cpc.every((h) => h === "https://clearpathcapfunding.com/?src=dealscreener"), `E5 /${p.slug}/ CPC links all carry ?src=dealscreener on the homepage (CPC reads src only there)`);
   ok(/free on every DealFit plan/.test(vis) && /not an application or a commitment from any lender/.test(vis), `E6 /${p.slug}/ funding path: free on every plan, not an application`);
+}
+// Review R1-F7: the scan also covers what search engines and AI answers quote —
+// title, meta + OG descriptions and JSON-LD — on every page including the app
+// shell, plus the new Field Guide block (the shell's older upgrade copy is out of scope).
+for (const p of ALL) {
+  const html = src(p.file);
+  const meta = [(html.match(/<title>([^<]+)<\/title>/) || [])[1], metaContent(html, "name", "description"),
+    metaContent(html, "property", "og:title"), metaContent(html, "property", "og:description"),
+    ...[...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((x) => x[1])].join(" ");
+  const m = decode(meta).match(BANNED);
+  ok(!m, `E7 ${p.file} metadata + JSON-LD free of banned language${m ? ` (found "${m[0]}")` : ""}`);
+}
+{
+  const i = app.indexOf("<!-- ── FREE: How DealFit evaluates risk"), j = app.indexOf("</div>\n    </div>\n", i);
+  const block = i < 0 ? "" : visibleText(app.slice(i, j));
+  ok(block.length > 40 && !BANNED.test(block), "E8 app-shell Field Guide risk block is free of banned language");
+  ok([metaContent(app, "name", "description"), metaContent(app, "property", "og:description")]
+       .every((d) => /flip, rental and BRRRR include a built-in stress test/i.test(d || "") && !/calculators,? with built-in stress tests/i.test(d || "")),
+     "E9 app-shell descriptions never attach the stress test to the short-term rental calculator");
 }
 
 console.log(`seo: ${pass} passed, ${fail} failed`);

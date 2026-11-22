@@ -35,7 +35,7 @@
         {
           "@type": "Question",
           "name": "What does the DealFit stress test change?",
-          "acceptedAnswer": { "@type": "Answer", "text": "It re-runs the same deal with fixed, conservative haircuts. Fix and flip: after-repair value down 5%, rehab up 10% and one extra month of holding. Long-term rental: rent down 5%, vacancy up 3 points and the interest rate up 0.5%. BRRRR: after-repair value down 5% and rent down 5%. On 5 to 8 unit properties, vacancy is also floored at one fully vacant unit." }
+          "acceptedAnswer": { "@type": "Answer", "text": "It re-runs the same deal with fixed, conservative haircuts. Fix and flip: after-repair value down 5%, rehab up 10% and one extra month of holding. Long-term rental: rent down 5%, vacancy up 3 points and the interest rate up 0.5 percentage points. BRRRR: after-repair value down 5% and rent down 5%. On 5 to 8 unit properties, vacancy instead rises by 5 points or to one fully vacant unit, whichever is higher." }
         },
         {
           "@type": "Question",
@@ -55,7 +55,7 @@
         {
           "@type": "Question",
           "name": "Is DealFit free?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The analyzers and the stress test are free to use, and no account is needed to run an analysis. A free account saves deals to a pipeline. Paid plans add market data for the markets you invest in; they never change access to financing from Clear Path Capital." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The analyzers and the stress test are free to use, and no account is needed to run an analysis. A free account saves deals to a pipeline. Paid plans add more markets, market data, and unlimited pipeline saves and exports; they never change access to financing from Clear Path Capital." }
         }
       ]
     }
@@ -78,21 +78,21 @@
   <p class="seo-note">Free to use. No account needed to run an analysis.</p>
 
   <h2>How the risk evaluation works</h2>
-  <p>Every analysis clears three bars before DealFit calls it strong: a dollar floor, a return or debt-coverage bar, and a <strong>stress test</strong>. The stress test takes the deal you entered, applies the same conservative haircuts to every deal, and recalculates it with the same engine. The haircuts are fixed &mdash; you cannot loosen them to make a deal look better.</p>
+  <p>Fix &amp; flip, long-term rental and BRRRR analyses must clear a profit or debt-coverage bar <em>and</em> survive a <strong>stress test</strong> before DealFit gives its strongest verdict. The stress test takes the deal you entered, applies the same conservative haircuts to every deal, and recalculates it with the same engine. The haircuts are fixed &mdash; you cannot loosen them to make a deal look better.</p>
 
   <table class="seo-table">
     <thead><tr><th>Strategy</th><th>Stress test applied</th><th>Fails when</th></tr></thead>
     <tbody>
       <tr><td><a href="/fix-and-flip-calculator/">Fix &amp; flip</a></td><td>ARV &minus;5%, rehab +10%, +1 month of holding</td><td>Net profit goes below $0 under stress</td></tr>
-      <tr><td><a href="/dscr-calculator/">Long-term rental</a> (1&ndash;4 units)</td><td>Rent &minus;5%, vacancy +3 points, rate +0.5%</td><td>Stressed DSCR is below 1.0 or stressed cash flow is negative</td></tr>
-      <tr><td>Long-term rental (5&ndash;8 units)</td><td>Rent &minus;5%, rate +0.5%, vacancy +5 points or one fully vacant unit, whichever is higher</td><td>Stressed DSCR is below 1.0</td></tr>
-      <tr><td><a href="/brrrr-calculator/">BRRRR</a></td><td>ARV &minus;5% (a smaller refinance), rent &minus;5%; on 5&ndash;8 units, vacancy floored at one fully vacant unit</td><td>Stressed DSCR is below 1.0, or more than 50% of your cash stays in the deal after the refinance</td></tr>
+      <tr><td><a href="/dscr-calculator/">Long-term rental</a> (1&ndash;4 units)</td><td>Rent &minus;5%, vacancy +3 points, rate +0.5 points</td><td>Stressed DSCR is below 1.0 or stressed cash flow is negative</td></tr>
+      <tr><td>Long-term rental (5&ndash;8 units)</td><td>Rent &minus;5%, rate +0.5 points, vacancy +5 points or one fully vacant unit, whichever is higher</td><td>Stressed DSCR is below 1.0</td></tr>
+      <tr><td><a href="/brrrr-calculator/">BRRRR</a></td><td>ARV &minus;5% (a smaller refinance), rent &minus;5%; on 5&ndash;8 units, vacancy +5 points or one fully vacant unit, whichever is higher</td><td>Stressed DSCR is below 1.0, or more than 50% of your cash stays in the deal after the refinance</td></tr>
     </tbody>
   </table>
 
   <h2>Reading the margin of safety</h2>
   <ul>
-    <li><span class="seo-mos-strong">Strong</span> &mdash; the deal clears the stress test with room to spare. Fix &amp; flip: stressed profit is at least half of your profit target (or $25,000 when no target is set). Rental: stressed DSCR is at least 1.15 on 1&ndash;4 units or 1.20 on 5&ndash;8 units. BRRRR: the same DSCR bar, with no more than 25% of your cash left in after the refinance.</li>
+    <li><span class="seo-mos-strong">Strong</span> &mdash; the deal clears the stress test with room to spare. Fix &amp; flip: stressed profit is at least half of your minimum profit target ($20,000 at the default $40,000 target). Rental: stressed DSCR is at least 1.15 on 1&ndash;4 units or 1.20 on 5&ndash;8 units. BRRRR: the same DSCR bar, with no more than 25% of your cash left in after the refinance.</li>
     <li><span class="seo-mos-tight">Tight</span> &mdash; the deal survives the stress test, but with little cushion. Small surprises in value, rehab or rent could erase it.</li>
     <li><span class="seo-mos-fails">Fails</span> &mdash; a modest downside turns the deal negative. DealFit will not grade a deal that fails the stress test as a strong deal, however good the base case looks.</li>
   </ul>
@@ -108,7 +108,7 @@
   <h2 class="seo-faq-title">Questions</h2>
   <div class="seo-faq">
     <h3>What does the DealFit stress test change?</h3>
-    <p>It re-runs the same deal with fixed, conservative haircuts. Fix and flip: after-repair value down 5%, rehab up 10% and one extra month of holding. Long-term rental: rent down 5%, vacancy up 3 points and the interest rate up 0.5%. BRRRR: after-repair value down 5% and rent down 5%. On 5 to 8 unit properties, vacancy is also floored at one fully vacant unit.</p>
+    <p>It re-runs the same deal with fixed, conservative haircuts. Fix and flip: after-repair value down 5%, rehab up 10% and one extra month of holding. Long-term rental: rent down 5%, vacancy up 3 points and the interest rate up 0.5 percentage points. BRRRR: after-repair value down 5% and rent down 5%. On 5 to 8 unit properties, vacancy instead rises by 5 points or to one fully vacant unit, whichever is higher.</p>
     <h3>Can I change the stress-test haircuts?</h3>
     <p>No. The haircuts and risk floors are fixed constants, so every deal is held to the same test. You can change the deal's own inputs and targets, such as price, rehab budget, rent and your profit or cash-on-cash target.</p>
     <h3>Does a Strong margin of safety mean the deal is safe?</h3>
@@ -116,7 +116,7 @@
     <h3>Does the short-term rental analyzer run a stress test?</h3>
     <p>Not today. The short-term rental analyzer grades the deal on cash-on-cash return against your target and on cap rate. To test the downside, lower the occupancy rate or the revenue estimate yourself and analyze again.</p>
     <h3>Is DealFit free?</h3>
-    <p>Yes. The analyzers and the stress test are free to use, and no account is needed to run an analysis. A free account saves deals to a pipeline. Paid plans add market data for the markets you invest in; they never change access to financing from Clear Path Capital.</p>
+    <p>Yes. The analyzers and the stress test are free to use, and no account is needed to run an analysis. A free account saves deals to a pipeline. Paid plans add more markets, market data, and unlimited pipeline saves and exports; they never change access to financing from Clear Path Capital.</p>
   </div>
 
   <h2>Run the numbers</h2>

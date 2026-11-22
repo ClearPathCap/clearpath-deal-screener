@@ -69,7 +69,11 @@ export function analyzeRental() {
   const hoa     = parseComma(document.getElementById('v-hoa')?.value || '0') || 0;    // HOA (monthly $) — Wave A · A2; $0 default = confirmed no HOA
   const tgtCoc  = +document.getElementById('v-target').value || 6;
   // Item 14: editable interest rate field — default 6.75%
-  const interestRate = (+document.getElementById('v-interest-rate')?.value || 6.75) / 100;
+  // A BLANK field still uses the 6.75% default; an explicitly entered 0% is the
+  // user's rate and is used as 0% (it used to be silently replaced by 6.75%).
+  // A half-typed entry reads NaN and is blocked by validateInputs below.
+  const rateRaw = document.getElementById('v-interest-rate')?.value;
+  const interestRate = (rateRaw == null || String(rateRaw).trim() === '' ? 6.75 : +rateRaw) / 100;
   // Wave A · A4: optional property facts (handoff only). Blank stays unknown — no
   // default is ever assumed, stored or serialized; the STR math ignores both.
   const ptypeEl = document.getElementById('v-ptype');

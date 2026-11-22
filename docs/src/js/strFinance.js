@@ -24,7 +24,12 @@ export function computeStr({ price, rent, down, occ, mgmt, pm, tax, maint, furni
   const loan        = price - (price * down);
   const monthlyRate = interestRate / 12;
   const n           = 360;
-  const mo          = loan > 0 ? loan * monthlyRate * Math.pow(1 + monthlyRate, n) / (Math.pow(1 + monthlyRate, n) - 1) : 0;
+  // A 0% rate (validation allows 0–30%) is a straight-line payment: the
+  // amortization formula is 0/0 = NaN there (same guard as finance.js
+  // amortizedPaymentMonthly). Every other rate is unchanged.
+  const mo          = loan > 0
+    ? (monthlyRate === 0 ? loan / n : loan * monthlyRate * Math.pow(1 + monthlyRate, n) / (Math.pow(1 + monthlyRate, n) - 1))
+    : 0;
   const debt        = mo * 12;
   const cashflow    = noi - debt;
   const dscr        = debt > 0 ? noi / debt : 0;   // the metric a rental lender underwrites to

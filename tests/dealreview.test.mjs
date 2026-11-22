@@ -725,5 +725,48 @@ console.log('— §P update-path release —');
   }
 }
 
+// ── §Q · DF-P1 quick-read provenance through the REAL review path ───────────
+// Final re-verification N1 / N2 / I-b, executed on the real main.js prefill,
+// keystroke guards, release and Clear & New Deal — labels only, no number.
+console.log('— §Q DF-P1 quick-read provenance in a real saved-deal review —');
+{
+  const rowsQ = () => Object.fromEntries((el('fl-list').innerHTML.match(/<li>[\s\S]*?<\/li>/g) || []).map(li => {
+    const t = li.replace(/<[^>]+>/g, '|').split('|').filter(Boolean); return [t[0], t[1]]; }));
+  const FOUR = ['f-rate', 'f-points', 'f-cc1', 'f-cc2'];
+  const ROW = { 'f-rate': 'Loan rate (interest-only)', 'f-points': 'Points', 'f-cc1': 'Buying costs', 'f-cc2': 'Selling costs' };
+  const SAVED = 'From your saved deal', MINE = 'Your entry', DEF = 'DealFit default';
+  globalThis.clearNewDeal('flip');
+  globalThis.reviewDeal(FLIP.id);   // financed flip: loan 150,000; rate 10, points 3, buying 2, selling 5, hold 5 — all equal to the HTML defaults
+  ok(FOUR.concat(['f-hold', 'f-loan']).every(id => el(id).dataset.reviewPrefill === '1' && ue(id)), 'Q1 the review prefill marks rate, points, buying, selling, hold and loan as saved');
+  globalThis.analyzeFlip(); let r = rowsQ();
+  const before = flip.getLastFlipResult();
+  ok(FOUR.every(id => r[ROW[id]] === SAVED) && r['Hold period'] === SAVED && r['Loan amount'] === SAVED, 'Q2 untouched saved values read "From your saved deal" (even where they equal a default)');
+  ok(!/your own entry/.test(el('fl-lead').textContent) && /from your saved deal/.test(el('fl-lead').textContent), 'Q3 the lead never calls the saved values "your own entry" (N2): ' + el('fl-lead').textContent);
+  el('f-cc1').dispatchEvent({ type: 'input', isTrusted: false });
+  ok(el('f-cc1').dataset.reviewPrefill === '1', 'Q4 a programmatic (untrusted) input event does not turn a saved value into the user\'s entry');
+  typed('f-rate', '12'); typed('f-points', '2'); typed('f-cc1', '3'); typed('f-cc2', '6');
+  ok(FOUR.every(id => !el(id).dataset.reviewPrefill && ue(id)), 'Q5 a real keystroke clears the saved-deal mark on rate, points, buying and selling (N1)');
+  globalThis.analyzeFlip(); r = rowsQ();
+  ok(FOUR.every(id => r[ROW[id]] === MINE), 'Q6 the retyped rate, points, buying and selling costs read "Your entry" (N1): ' + FOUR.map(id => r[ROW[id]]).join(' / '));
+  ok(r['Hold period'] === SAVED && r['Loan amount'] === SAVED && r['Min Profit Target'] === SAVED, 'Q7 the values the user did not touch still read "From your saved deal"');
+  ok(/either your own entry or a value from your saved deal/.test(el('fl-lead').textContent), 'Q8 the lead names both sources (N2)');
+  const after = flip.getLastFlipResult();
+  ok(near(after.rate, 0.12) && near(after.points, 0.02) && after.cc1 === 3 && after.cc2 === 6 && after.ask === before.ask && after.loan === before.loan, 'Q9 the analyzer used exactly the typed numbers (the guard changes labels, not inputs)');
+  typed('f-rate', '10');   // I-b: the user types the default number back
+  globalThis.analyzeFlip(); r = rowsQ();
+  ok(r[ROW['f-rate']] === MINE, 'Q10 typing the default number (10%) during the review reads "Your entry", not the default (I-b)');
+  globalThis.cancelDealReview('flip');
+  ok(FOUR.every(id => ue(id)) && !ue('f-hold') && !el('f-hold').dataset.reviewPrefill, 'Q11 ending the review keeps the typed values the user\'s own and releases the untouched saved hold');
+  globalThis.clearNewDeal('flip');
+  ok(FOUR.concat(['f-hold']).every(id => !ue(id) && !el(id).dataset.reviewPrefill && v(id) === el(id).defaultValue), 'Q12 Clear & New Deal returns all five to unmarked defaults');
+  typed('f-ask', '200000'); typed('f-arv', '320000'); typed('f-rep', '30000'); typed('f-loan', '150000');
+  globalThis.analyzeFlip(); r = rowsQ();
+  ok(FOUR.every(id => r[ROW[id]] === DEF) && r['Hold period'] === DEF, 'Q13 on a fresh deal the untouched defaults read "DealFit default"');
+  typed('f-points', '3'); typed('f-cc2', '5');
+  globalThis.analyzeFlip(); r = rowsQ();
+  ok(r['Points'] === MINE && r['Selling costs'] === MINE && r[ROW['f-rate']] === DEF && r['Buying costs'] === DEF, 'Q14 a fresh deal: typing the default number reads "Your entry"; the untouched ones stay "DealFit default" (I-b)');
+  globalThis.clearNewDeal('flip');
+}
+
 console.log(`\ndealreview: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

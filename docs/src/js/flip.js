@@ -301,12 +301,19 @@ export function flipFirstLookModel({ used, raw = {}, defaults = {}, userEdited =
   }
   if (used.self) add('self', 'Self-renovating labor', 'Yes — Max Offer uses 75% of ARV', prefilled['self-reno'] ? 'saved' : 'entry');
   const assumed = items.filter(i => i.assumed).length;
+  const saved = items.filter(i => i.src === 'saved').length;
+  const entries = items.filter(i => i.src === 'entry' || i.src === 'adopted').length;
   const parts = [];
   if (cls === 'hot' && assumed > 0) parts.push('This strong signal relies partly on assumed inputs — confirm them before relying on it.');
+  // Re-verification N2: with no assumption, the lead names where the listed
+  // values came from — the user's entries, the saved deal, or both — and never
+  // calls a saved-deal value the user's own entry.
+  const noneAssumed = saved === 0 ? 'Every input listed below is your own entry.'
+    : entries > 0 ? 'No input listed below is assumed: each is either your own entry or a value from your saved deal.'
+    : 'No input listed below is assumed: each comes from your saved deal.';
   parts.push(assumed > 0
     ? 'Preliminary: built from your numbers plus ' + assumed + ' assumed input' + (assumed === 1 ? '' : 's') + ' (marked below). Replace any assumption with your own figure and analyze again.'
-    : 'Every input listed below is your own entry. The result is still an estimate — verify ARV with comps and repairs with bids.');
-  const saved = items.filter(i => i.src === 'saved').length;
+    : noneAssumed + ' The result is still an estimate — verify ARV with comps and repairs with bids.');
   if (saved > 0) parts.push(saved + ' value' + (saved === 1 ? ' comes' : 's come') + ' from your saved deal — confirm ' + (saved === 1 ? 'it still applies' : 'they still apply') + '.');
   if (cls === 'pass') parts.push('Nothing required is missing: this verdict reflects the economics of the numbers shown, not missing information.');
   const missing = [];

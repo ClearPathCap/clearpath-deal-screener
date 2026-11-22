@@ -178,6 +178,22 @@ const item = (m, k) => m.items.find(i => i.key === k);
   const typedFin = flip.flipFirstLookModel(base(fin));
   ok(item(typedFin, 'loan').source === 'Your entry' && item(typedFin, 'self').source === 'Your entry', 'B26 a typed loan and a user-toggled self-renovating stay "Your entry"');
   ok(['loan', 'rate', 'points'].every(k => /\(est\.\)$/.test(item(typedFin, k).value)) && item(typedFin, 'loan').value === '$150,000 (est.)', 'B27 every loan figure in the quick read carries "(est.)" (independent review L3, law §5)');
+  // Re-verification N2: a lead with no assumption must not call saved-deal values the user's own entry.
+  const ALL = { 'f-hold': true, 'f-carry': true, 'f-target': true, 'f-cc1': true, 'f-cc2': true, 'f-rate': true, 'f-points': true, 'f-loan': true, 'self-reno': true };
+  const finRaw = { ...D, 'f-carry': '2,900', 'f-target': '38,000', 'f-rate': '11', 'f-points': '2' };
+  const allSaved = flip.flipFirstLookModel(base({ ...fin, raw: finRaw, prefilled: { ...ALL }, userEdited: { ...ALL } }));
+  ok(allSaved.assumed === 0 && !/your own entry/.test(allSaved.lead) && /No input listed below is assumed: each comes from your saved deal\./.test(allSaved.lead)
+     && /9 values come from your saved deal — confirm they still apply\./.test(allSaved.lead), 'B28 only saved-deal values: the lead says they come from the saved deal, never "your own entry" (re-verification N2) — ' + allSaved.lead);
+  const mixed = flip.flipFirstLookModel(base({ ...fin, raw: { ...finRaw, 'f-rate': '12' }, prefilled: { ...ALL, 'f-rate': false }, userEdited: { ...ALL } }));
+  ok(mixed.assumed === 0 && item(mixed, 'rate').source === 'Your entry' && /each is either your own entry or a value from your saved deal\./.test(mixed.lead) && /8 values come from your saved deal/.test(mixed.lead),
+     'B29 entries and saved values together: the lead names both, and each row keeps its own label (re-verification N2)');
+  ok(/Every input listed below is your own entry\./.test(allMine.lead) && !/saved deal/.test(allMine.lead), 'B30 with no saved value the all-entries lead is unchanged');
+  ok(['hold', 'carry', 'target', 'cc1', 'cc2', 'rate', 'points'].every(k => item(allSaved, k).assumed === false) && item(allSaved, 'fin') === undefined, 'B31 the lead wording changes no row: saved values are still not counted as assumptions');
+  // Re-verification I-b: a value the user typed that equals the default is their entry; the same text untouched is the default.
+  const typedDefault = flip.flipFirstLookModel(base({ ...fin, raw: { ...D, 'f-carry': '2,900', 'f-target': '38,000' }, userEdited: { 'f-rate': true, 'f-points': true, 'f-cc1': true, 'f-cc2': true, 'f-hold': true } }));
+  ok(['rate', 'points', 'cc1', 'cc2', 'hold'].every(k => item(typedDefault, k).source === 'Your entry' && !item(typedDefault, k).assumed), 'B32 typing the default number (10%, 3 pts, 2%, 5%, 5 mo) reads "Your entry" — the source follows the interaction');
+  const untouchedDefault = flip.flipFirstLookModel(base({ ...fin, raw: { ...D, 'f-carry': '2,900', 'f-target': '38,000' } }));
+  ok(['rate', 'points', 'cc1', 'cc2', 'hold'].every(k => item(untouchedDefault, k).source === 'DealFit default' && item(untouchedDefault, k).assumed), 'B33 the same numbers left untouched read "DealFit default"');
 }
 
 // ── §C summaries ─────────────────────────────────────────────────────────────
@@ -346,6 +362,17 @@ console.log('— §F scope: engine, thresholds, billing and other analyzers unto
   ok(!/function compute[A-Z]\w*\(/.test(flipSrc.slice(flipSrc.indexOf('DF-P1 Mobile') > -1 ? flipSrc.indexOf('DF-P1 Mobile') : flipSrc.indexOf('DF-P1 mobile'))), 'F2 the DF-P1 code defines no compute* function (no second engine)');
   ok(/const target = parseComma\(document\.getElementById\('f-target'\)\.value\) \|\| 40000;/.test(flipSrc), 'F3 the analyzer\'s $40,000 target fallback is unchanged');
   ok(!/details/.test(src('docs/src/js/rental.js') + src('docs/src/js/ltr.js') + src('docs/src/js/brrr.js')), 'F4 STR / LTR / BRRRR analyzers carry no DF-P1 change');
+  // Re-verification N1: every quick-read field has a keystroke listener that marks it the user's and clears the
+  // review mark — the currency mask (format.js) for data-currency inputs, the main.js guard list for the rest.
+  const mainSrc = src('docs/src/js/main.js');
+  const guard = (mainSrc.match(/\n\[((?:'[a-z0-9-]+',?)+)\]\.forEach\(id => \{\r?\n  const el = document\.getElementById\(id\);\r?\n  if \(!el\) return;\r?\n  if \(el\.value !== ''[^\n]*\r?\n  el\.addEventListener\('input', \(e\) => \{ el\.dataset\.userEdited = '1'; if \(!e \|\| e\.isTrusted\) delete el\.dataset\.reviewPrefill; \}\);/) || [])[1];
+  const guarded = new Set(String(guard || '').replace(/'/g, '').split(','));
+  const currency = (id) => new RegExp('<input\\b[^>]*\\bid="' + id + '"[^>]*\\bdata-currency').test(html);
+  const FLQ = ['f-hold', 'f-cc1', 'f-cc2', 'f-carry', 'f-target', 'f-rate', 'f-points', 'f-loan'];
+  ok(!!guard && FLQ.every(id => currency(id) || guarded.has(id)) && ['f-rate', 'f-points', 'f-cc1', 'f-cc2'].every(id => guarded.has(id)),
+     'F5 rate, points, buying and selling costs are in the main.js keystroke guard; every other quick-read field is a currency input (re-verification N1)');
+  ok(!/getElementById\('f-(rate|points|cc1|cc2)'\)[^;\n]*dataset\.userEdited/.test(mainSrc + flipSrc) && !/\[['"]f-(rate|points|cc1|cc2)['"][^\]]*\]\.forEach\([^)]*\)\s*=>[^\n]*userEdited\) el\.value/.test(mainSrc + flipSrc),
+     'F6 no preset or default writer reads the userEdited mark of rate, points or buying / selling costs (the guard changes labels only)');
 }
 
 console.log(`\ndfp1: ${pass} passed, ${fail} failed`);

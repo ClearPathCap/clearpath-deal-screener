@@ -2173,7 +2173,10 @@ initCurrencyInputs();
 // render so (a) a keystroke that landed before this module ran is recognised
 // as the user's (value already differs from the HTML default) and (b) every
 // later keystroke marks the field. Programmatic writes never fire 'input'.
-['l-down','l-vac','l-pm','l-maint','l-capex','b-vac','b-pm','b-maint','b-capex','f-hold','v-occ','v-down','v-mgmt'].forEach(id => {
+// DF-P1 (re-verification N1): the flip rate, points and buying / selling costs
+// are listed too, so a keystroke during a saved-deal review makes them the
+// user's own in the quick read. No preset or default writer reads their marks.
+['l-down','l-vac','l-pm','l-maint','l-capex','b-vac','b-pm','b-maint','b-capex','f-hold','f-rate','f-points','f-cc1','f-cc2','v-occ','v-down','v-mgmt'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   if (el.value !== '' && el.value !== (el.defaultValue == null ? '' : String(el.defaultValue))) el.dataset.userEdited = '1';

@@ -223,7 +223,7 @@ for (const p of ALL) {
 {
   const code = (rel) => src(rel).replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "")
     .split(/\r?\n/).filter((l) => !/^\s*\/\//.test(l)).map((l) => l.replace(/\s\/\/\s.*$/, "")).join("\n");
-  const F6 = /lender-?ready|fundable|lender bar/i;
+  const F6 = /lender-?ready|fundable|lender bar|clears (the )?(typical [\d.–]+ )?underwriting/i;   // review L1: "clears underwriting" reads as passing a lender
   for (const rel of ["docs/index.html", "docs/shared.html", "docs/privacy.html", "docs/terms.html",
                      ...readdirSync(join(root, "docs/src/js")).filter((f) => f.endsWith(".js")).map((f) => "docs/src/js/" + f)]) {
     const m = code(rel).match(F6);
@@ -232,6 +232,8 @@ for (const p of ALL) {
   const fin = src("docs/src/js/finance.js");
   ok(/"Strong Small-Multifamily — Clears Every DealFit Bar" : "Strong Rental — Clears Every DealFit Bar"/.test(fin),
      "W2 the strongest LTR verdict names DealFit's own bars, not a lender");
+  ok(/\(band === '5-8' \? "the small-multifamily floor" : "DealFit's DSCR bar"\)/.test(fin) && !/: "underwriting"\)/.test(fin),
+     "W2b the strongest LTR verdict line says it clears DealFit's DSCR bar, never 'clears underwriting' (review L1)");
   ok(/Each lever on its own would bring this deal to <strong>' \+ \(g\.hotLabel \|\| 'the strongest verdict'\)/.test(src("docs/src/js/main.js")),
      "W3 the guidance fallback label is DealFit's strongest verdict");
   ok(/Unlimited exports \+ shareable deal summaries/.test(app), "W4 the paid-tier list sells deal summaries, never lender readiness");

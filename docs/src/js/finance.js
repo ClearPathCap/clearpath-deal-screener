@@ -711,7 +711,7 @@ export function ltrVerdict(m) {
       ? "Verify rent roll, leases, and stabilized occupancy before closing."
       : "Confirm market rent with comps before closing.";
     vsub =
-      "DSCR " + dscrText + " clears " + (band === '5-8' ? "the small-multifamily floor" : "underwriting") + " and " +
+      "DSCR " + dscrText + " clears " + (band === '5-8' ? "the small-multifamily floor" : "DealFit's DSCR bar") + " and " +
       (annualCF >= 6000
         ? money(annualCF) + "/yr cash flow is strong"
         : "cash-on-cash " + cocText + " beats your " + target + "% target") +
@@ -738,13 +738,13 @@ export function ltrVerdict(m) {
              "/mo negative after the CapEx reserve. Finance-and-hold and build a cushion — negotiate price or raise rent to firm it up.";
     } else if (d >= hotDscr && !survives) {
       vsub =
-        "DSCR " + dscrText + " clears underwriting at base case, but a stress test (rent −5%, vacancy +3pts, rate +0.5%) thins the margin of safety. Build in more cushion before treating it as a lock.";
+        "DSCR " + dscrText + " clears DealFit's DSCR bar at base case, but a stress test (rent −5%, vacancy +3pts, rate +0.5%) thins the margin of safety. Build in more cushion before treating it as a lock.";
     } else if (d >= hotDscr && m.coc < target && annualCF < 6000) {
       // WARM (b) — the DSCR finance-and-hold bridge
       vsub =
         "Cash-on-cash " + cocText + " is light and cash flow " + money(annualCF) +
         "/yr is below the $6,000 strong bar, but DSCR " + dscrText +
-        " clears typical 1.20–1.25 underwriting — a finance-and-hold candidate even if it's not a yield play.";
+        " clears the typical 1.20–1.25 DSCR range — a finance-and-hold candidate even if it's not a yield play.";
     } else {
       vsub =
         "DSCR " + dscrText + " covers the debt and it cash-flows $" + cfMo +

@@ -105,7 +105,62 @@
   <div class="market-slots" id="flip-slots"></div>
   <div class="review-banner" id="flip-review-banner" style="display:none"></div>
 
-  <div class="slabel">Renovation Scope</div>
+  <!-- DF-P1 mobile quick read (2026-11-22): the three numbers a flip needs —
+       purchase price, ARV, repair budget — plus the Min Profit Target the
+       verdict is judged against sit first on a phone. Every other existing
+       control (repair estimator + renovation scope, financing, hold and cost
+       assumptions, property details) is unchanged and lives in the collapsible
+       sections below, each summarizing its current values so no default is
+       hidden. Same field ids, same engine (computeFlip / computeFlipStress /
+       flipVerdict), same validation — layout only. -->
+  <div class="slabel">Quick Look <span class="slabel-note">— three numbers for a first read</span></div>
+  <div class="field-row">
+    <div class="field">
+      <label>Asking Price</label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-ask" class="has-pfx" placeholder="185,000" data-currency></div>
+      <div class="field-hint beginner-only">The price you'd pay to buy the property</div>
+    </div>
+    <div class="field">
+      <label><span class="pro-only">ARV</span><span class="beginner-only">ARV (After Repair Value)</span></label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-arv" class="has-pfx" placeholder="340,000" data-currency></div>
+      <div class="field-hint beginner-only">What the property will be worth after all repairs are done</div>
+    </div>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label>Repair Costs</label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-rep" class="has-pfx" placeholder="60,000" data-currency></div>
+      <div class="field-hint beginner-only">Your renovation budget — auto-filled from the planning estimate until you enter your contractor's number</div>
+    </div>
+    <div class="field">
+      <label>Min Profit Target</label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-target" class="has-pfx" value="40,000" placeholder="40,000" data-currency aria-describedby="f-target-source"></div>
+    </div>
+  </div>
+  <!-- The Min Profit Target hint runs full width under the row (it used to make
+       the two-column row ~130px tall on a phone) and now also says where the
+       pre-filled value comes from. -->
+  <div class="field-hint" id="f-target-source" style="margin:-4px 0 10px">Min Profit Target: your minimum acceptable project profit. Leave room for overruns, delays, partner splits, and the value of your time. It starts at about 9% of your market's median ARV ($40,000 with no market selected) — change it to your own number.</div>
+  <!-- Design wave · DealFit suggested project profit — EDUCATIONAL guidance in
+       the same unit as the target. flip.js fills and shows it after a valid
+       analysis; the adopt button just sets the target and re-analyzes. -->
+  <div class="flip-guide" id="flip-guide" style="display:none">
+    <div class="fg-label">DealFit suggested project profit</div>
+    <div class="fg-range" id="fg-range"></div>
+    <div class="fg-line" id="fg-labor" style="display:none"></div>
+    <div class="fg-line" id="fg-basis"></div>
+    <div class="fg-soft" id="fg-soft" style="display:none">Below DealFit&#8217;s suggested range — thin for this project&#8217;s size and risk.</div>
+    <button type="button" class="fg-adopt" id="fg-adopt"></button>
+    <div class="fg-qualifier">DealFit estimate only. Not a guarantee or lender requirement.</div>
+  </div>
+
+  <button class="btn-analyze" onclick="analyzeFlip()">Analyze This Deal</button>
+
+  <div class="slabel">Refine the Analysis <span class="slabel-note">— optional; current values shown</span></div>
+
+  <details class="more-section" id="flip-more-repair">
+    <summary><span class="ms-title">Repair estimator &amp; renovation scope</span><span class="ms-sum" id="flip-sum-repair">Hired labor</span></summary>
+    <div class="ms-body">
   <div class="toggle-row">
     <div>
       <div class="toggle-label">Self-Renovating</div>
@@ -119,54 +174,6 @@
       <input type="checkbox" id="self-reno" onchange="updateSelfReno()">
       <div class="toggle-track"></div>
     </label>
-  </div>
-
-  <div class="slabel">Property Info</div>
-  <div class="field full">
-    <label>Address <span>(optional)</span></label>
-    <input type="text" id="f-addr" placeholder="123 Oak Street, Charlotte NC">
-  </div>
-  <!-- Wave A · A1 (2026-09-06): structured City / State — auto-filled from the address when the parse is confident, never over the user's own edit; these are what the CPC handoff sends. -->
-  <div class="field-row">
-    <div class="field">
-      <label>City <span>(auto from address)</span></label>
-      <input type="text" id="f-city" placeholder="Charlotte" autocomplete="off">
-    </div>
-    <div class="field">
-      <label>State <span>(2-letter)</span></label>
-      <input type="text" id="f-state" placeholder="NC" maxlength="20" autocapitalize="characters" autocomplete="off">
-    </div>
-  </div>
-  <!-- Wave A · A4 (2026-09-06): optional property facts for the CPC handoff. Blank = unknown — nothing is defaulted, stored or serialized until the user supplies it; no flip computation depends on either. -->
-  <div class="field-row">
-    <div class="field">
-      <label>Property Type <span>(optional)</span></label>
-      <select id="f-ptype">
-        <option value="">Not specified</option>
-        <option>SFR</option>
-        <option>2–4 Unit</option>
-        <option>5–8 Unit</option>
-        <option>9+ Unit</option>
-        <option>Condo</option>
-        <option>Townhome</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Units <span>(optional)</span></label>
-      <div class="input-wrap"><input type="number" id="f-units" class="has-sfx" min="1" step="1" placeholder="e.g. 1"><span class="sfx">#</span></div>
-    </div>
-  </div>
-  <div class="field-row">
-    <div class="field">
-      <label>Asking Price</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-ask" class="has-pfx" placeholder="185,000" data-currency></div>
-      <div class="field-hint beginner-only">The price you'd pay to buy the property</div>
-    </div>
-    <div class="field">
-      <label><span class="pro-only">ARV</span><span class="beginner-only">ARV (After Repair Value)</span></label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-arv" class="has-pfx" placeholder="340,000" data-currency></div>
-      <div class="field-hint beginner-only">What the property will be worth after all repairs are done</div>
-    </div>
   </div>
 
   <!-- REPAIR ESTIMATOR — item 8: guide mode expanded descriptions -->
@@ -205,22 +212,13 @@
     </div>
     <button class="use-estimate" id="use-est-btn" style="display:none" onclick="useRepairEstimate()">↑ Use midpoint estimate in calculator</button>
   </div>
-
-  <div class="field-row">
-    <div class="field">
-      <label>Repair Costs</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-rep" class="has-pfx" placeholder="60,000" data-currency></div>
-      <div class="field-hint beginner-only">Your renovation budget — auto-filled from the planning estimate until you enter your contractor's number</div>
     </div>
-    <div class="field">
-      <label>Hold Period (months)</label>
-      <div class="input-wrap"><input type="number" id="f-hold" class="has-sfx" value="5" placeholder="5" oninput="updateCarryTotal()"><span class="sfx">mo</span></div>
-      <div class="field-hint beginner-only">How many months you expect to own it before selling</div>
-    </div>
-  </div>
+  </details>
 
   <!-- Financing (estimate) — opt-in loan model for true LTV/LTC + cost of capital -->
-  <div class="slabel">Financing <span style="font-weight:400;opacity:.6">(estimate — optional)</span></div>
+  <details class="more-section" id="flip-more-fin">
+    <summary><span class="ms-title">Financing <span style="font-weight:400;opacity:.6">(estimate — optional)</span></span><span class="ms-sum" id="flip-sum-fin">All-cash view — no loan cost modeled</span></summary>
+    <div class="ms-body">
   <div class="field-row">
     <div class="field">
       <label>Loan Amount</label>
@@ -240,9 +238,25 @@
       <div class="field-hint beginner-only">Lender + broker origination points. Estimate — set per deal.</div>
     </div>
   </div>
+    </div>
+  </details>
 
   <!-- item 10: Cost Assumptions section, carry total moved to bottom -->
-  <div class="slabel">Your Cost Assumptions</div>
+  <details class="more-section" id="flip-more-costs">
+    <summary><span class="ms-title">Hold &amp; cost assumptions</span><span class="ms-sum" id="flip-sum-costs">5 mo hold · $900/mo · buy 2% · sell 5%</span></summary>
+    <div class="ms-body">
+  <div class="field-row">
+    <div class="field">
+      <label>Hold Period (months)</label>
+      <div class="input-wrap"><input type="number" id="f-hold" class="has-sfx" value="5" placeholder="5" oninput="updateCarryTotal()"><span class="sfx">mo</span></div>
+      <div class="field-hint beginner-only">How many months you expect to own it before selling</div>
+    </div>
+    <div class="field">
+      <label>Monthly Hold Cost</label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-carry" class="has-pfx" value="900" placeholder="900" data-currency oninput="updateCarryTotal()"></div>
+      <div class="field-hint beginner-only">Monthly costs while you own it — taxes, insurance, utilities (excludes loan — modeled in Financing above)</div>
+    </div>
+  </div>
   <div class="field-row">
     <!-- UX wave finding 6: "Purchase Costs / Sale Costs" both said "closing
          fees", which read as double-counted to a beginner. Buy-side and
@@ -259,37 +273,57 @@
       <div class="field-hint beginner-only">Resale (disposition) costs — agent commissions, seller closing costs, concessions. We use 5% as a conservative market estimate.</div>
     </div>
   </div>
-  <div class="field-row">
-    <div class="field">
-      <label>Monthly Hold Cost</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-carry" class="has-pfx" value="900" placeholder="900" data-currency oninput="updateCarryTotal()"></div>
-      <div class="field-hint beginner-only">Monthly costs while you own it — taxes, insurance, utilities (excludes loan — modeled in Financing above)</div>
-    </div>
-    <div class="field">
-      <label>Min Profit Target</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-target" class="has-pfx" value="40,000" placeholder="40,000" data-currency></div>
-      <div class="field-hint">Your minimum acceptable project profit. Leave room for overruns, delays, partner splits, and the value of your time.</div>
-    </div>
-  </div>
-  <!-- Design wave · DealFit suggested project profit — EDUCATIONAL guidance in
-       the same unit as the target. flip.js fills and shows it after a valid
-       analysis; the adopt button just sets the target and re-analyzes. -->
-  <div class="flip-guide" id="flip-guide" style="display:none">
-    <div class="fg-label">DealFit suggested project profit</div>
-    <div class="fg-range" id="fg-range"></div>
-    <div class="fg-line" id="fg-labor" style="display:none"></div>
-    <div class="fg-line" id="fg-basis"></div>
-    <div class="fg-soft" id="fg-soft" style="display:none">Below DealFit&#8217;s suggested range — thin for this project&#8217;s size and risk.</div>
-    <button type="button" class="fg-adopt" id="fg-adopt"></button>
-    <div class="fg-qualifier">DealFit estimate only. Not a guarantee or lender requirement.</div>
-  </div>
   <!-- item 10: TOTAL HOLD COST label + carry total — moved here from above -->
   <div class="calc-label" id="hold-cost-label" style="display:none">Total Hold Cost</div>
   <div class="carry-total-row" id="carry-total-row" style="display:none">
     <span class="carry-total-text" id="carry-total-text"></span>
   </div>
+    </div>
+  </details>
 
-  <button class="btn-analyze" onclick="analyzeFlip()">Analyze This Deal</button>
+  <details class="more-section" id="flip-more-prop">
+    <summary><span class="ms-title">Property details <span style="font-weight:400;opacity:.6">(optional)</span></span><span class="ms-sum" id="flip-sum-prop">Address not entered</span></summary>
+    <div class="ms-body">
+  <div class="field full">
+    <label>Address <span>(optional)</span></label>
+    <input type="text" id="f-addr" placeholder="123 Oak Street, Charlotte NC">
+  </div>
+  <!-- Wave A · A1 (2026-09-06): structured City / State — auto-filled from the address when the parse is confident, never over the user's own edit; these are what the CPC handoff sends. -->
+  <div class="field-row">
+    <div class="field">
+      <label>City <span>(auto from address)</span></label>
+      <input type="text" id="f-city" placeholder="Charlotte" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>State <span>(2-letter)</span></label>
+      <input type="text" id="f-state" placeholder="NC" maxlength="20" autocapitalize="characters" autocomplete="off">
+    </div>
+  </div>
+  <!-- Wave A · A4 (2026-09-06): optional property facts for the CPC handoff. Blank = unknown — nothing is defaulted, stored or serialized until the user supplies it; no flip computation depends on either. -->
+  <div class="field-row">
+    <div class="field">
+      <label>Property Type <span>(optional)</span></label>
+      <select id="f-ptype">
+        <option value="">Not specified</option>
+        <option>SFR</option>
+        <option>2–4 Unit</option>
+        <option>5–8 Unit</option>
+        <option>9+ Unit</option>
+        <option>Condo</option>
+        <option>Townhome</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Units <span>(optional)</span></label>
+      <div class="input-wrap"><input type="number" id="f-units" class="has-sfx" min="1" step="1" placeholder="e.g. 1"><span class="sfx">#</span></div>
+    </div>
+  </div>
+    </div>
+  </details>
+
+  <!-- DF-P1: the primary Analyze sits under the Quick Look; this second trigger
+       (same handler, same validation) saves a scroll back up after refining. -->
+  <button class="btn-analyze btn-analyze-refine" onclick="analyzeFlip()">Re-analyze This Deal</button>
 
   <div class="results" id="flip-results">
     <div class="stale-notice" id="flip-stale" style="display:none">Inputs changed — re-analyze to update this result</div>
@@ -303,6 +337,18 @@
         onclick="showMaxOfferScenario('analyzer')"></button>
     </div>
     <div class="metrics" id="flip-metrics"></div>
+    <!-- DF-P1 mobile quick read: says the result is preliminary, lists the
+         assumptions behind it with their source (your entry / market estimate /
+         DealFit default / planning estimate), separates missing information from
+         a negative outcome, and opens the full analysis. Display only — flip.js
+         fills it from the exact values analyzeFlip used; no math lives here. -->
+    <div class="firstlook" id="flip-firstlook" style="display:none">
+      <div class="fl-title" id="fl-title">Preliminary read</div>
+      <div class="fl-lead" id="fl-lead"></div>
+      <ul class="fl-list" id="fl-list"></ul>
+      <div class="fl-missing" id="fl-missing"></div>
+      <button type="button" class="fl-open" id="fl-open" onclick="openFlipDetails()">Refine the full analysis &#8593;</button>
+    </div>
     <!-- Wave A · A8 (2026-09-06): the funding CTA sits above the long breakdown for mobile discoverability. Same container, same renderer, same gating — placement only. -->
     <div id="flip-funding-btn"></div>
     <div class="breakdown"><div class="btitle">Cost Breakdown</div><div id="flip-breakdown"></div></div>

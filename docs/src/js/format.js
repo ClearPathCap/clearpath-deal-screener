@@ -174,6 +174,12 @@ export function revealBlockingField(fieldId, message, prefix, msgId = fieldId + 
     const live = ensureLiveRegion(prefix);
     if (live) live.textContent = message || 'Please correct the highlighted field.';
   }
+  // DF-P1: a blocking field inside a collapsed <details> section (the Fix & Flip
+  // "Refine the Analysis" sections) cannot be seen or focused — open it first.
+  if (typeof el.closest === 'function') {
+    const section = el.closest('details');
+    if (section && !section.open) section.open = true;
+  }
   const reduced = typeof matchMedia === 'function' && !!matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
   if (typeof el.focus === 'function') { try { el.focus({ preventScroll: true }); } catch { el.focus(); } }

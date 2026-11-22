@@ -1,6 +1,7 @@
 // ─── App entry — page nav, toast, modal, init ─────────────────────────────────
 
-import { analyzeFlip, setFlipPreset, resetFlip, getLastFlipResult, clearLastFlipResult } from './flip.js';
+import { analyzeFlip, setFlipPreset, resetFlip, getLastFlipResult, clearLastFlipResult,
+         refreshFlipSummaries, openFlipDetails } from './flip.js';
 import { analyzeRental, setRentalPreset, resetRental, clearLastRentalResult, getLastRentalResult } from './rental.js';
 import { analyzeLtr, setLtrPreset, resetLtr, getLastLtrResult, clearLastLtrResult } from './ltr.js';
 import { analyzeBrrr, setBrrrPreset, resetBrrr, clearLastBrrrResult, getLastBrrrResult } from './brrr.js';
@@ -403,7 +404,7 @@ function reviewDeal(id) {
   const selfEl = document.getElementById(SELF_ID[type]);
   if (selfEl) selfEl.checked = type === 'flip' ? !!data.self : (data.pm === 0);
   if (type === 'rental') updateSelfManage();                       // PM field/label follow the toggle
-  if (type === 'flip') { onSelfRenoToggle(); calcRepair(); updateCarryTotal(); }   // repair UI + carry total (f-rep protected)
+  if (type === 'flip') { onSelfRenoToggle(); calcRepair(); updateCarryTotal(); refreshFlipSummaries(); }   // repair UI + carry total (f-rep protected); DF-P1 section summaries show the saved values
   if (type === 'ltr' || type === 'brrr') {
     // One band sync from the SAVED unit count: property-type select (stored
     // 'Multifamily' → the 5–8 / 9+ option), rent label, live 9+ hint, band
@@ -637,6 +638,7 @@ function clearNewDeal(type) {
     document.getElementById('flip-notes').value     = '';
     calcRepair();
     updateCarryTotal();
+    refreshFlipSummaries();   // DF-P1: collapsed section summaries follow the cleared form
   } else if (type === 'ltr') {
     ['l-addr','l-city','l-state','l-price','l-rent','l-tax','l-ins'].forEach(id => {
       const el = document.getElementById(id);
@@ -2065,6 +2067,7 @@ Object.assign(window, {
   pickerCancel,
   // flip
   analyzeFlip: analyzeFlipValidated,
+  openFlipDetails,          // DF-P1: Quick read → the full analysis
   setFlipPreset,
   resetFlip,
   // rental

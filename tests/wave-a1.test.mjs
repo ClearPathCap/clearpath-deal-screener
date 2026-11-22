@@ -39,7 +39,7 @@ const STUBS = {
     export const redeemServerCode = async () => ({ ok: false, msg: '' });
     export const syncEntitlement = async () => 'starter';`,
   'flip.js': `export const getLastFlipResult = () => globalThis.__lastResults.flip;
-    export const analyzeFlip=()=>{},setFlipPreset=()=>{},resetFlip=()=>{},getFlipMarket=()=>({}),clearLastFlipResult=()=>{};`,
+    export const analyzeFlip=()=>{},setFlipPreset=()=>{},resetFlip=()=>{},getFlipMarket=()=>({}),clearLastFlipResult=()=>{},refreshFlipSummaries=()=>{},openFlipDetails=()=>{};`,
   'rental.js': `export const getLastRentalResult = () => globalThis.__lastResults.rental;
     export const analyzeRental=()=>{},setRentalPreset=()=>{},resetRental=()=>{},clearLastRentalResult=()=>{};`,
   'ltr.js': `export const getLastLtrResult = () => globalThis.__lastResults.ltr;

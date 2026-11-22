@@ -37,6 +37,10 @@ function flipCarry(m) {
 }
 
 let lastFlipResult = null;
+// DF-P1: true once a market preset has written the flip defaults (hold cost,
+// Min Profit Target) — lets the quick read name a value's source honestly.
+let _flipPresetApplied = false;
+let _adoptedTarget = null;   // the Min Profit Target text written by "Use DealFit midpoint", if any
 
 export function getLastFlipResult() { return lastFlipResult; }
 // Saved-deal review: entering a review invalidates the last result so an
@@ -45,6 +49,7 @@ export function clearLastFlipResult() { lastFlipResult = null; }
 
 export function setFlipPreset(slug, el) {
   if (el) el.classList.add('active');
+  _flipPresetApplied = true;
   const m      = getFlipMarket(slug);
   const carry  = flipCarry(m);
   const target = Math.max(10000, Math.round((m.medianArv || 300000) * 0.09 / 1000) * 1000);
@@ -68,6 +73,7 @@ export function setFlipPreset(slug, el) {
 
   const e = document.getElementById('f-carry');
   if (e) e.dispatchEvent(new Event('input'));
+  refreshFlipSummaries();
 }
 
 export function analyzeFlip() {
@@ -221,6 +227,25 @@ export function analyzeFlip() {
     hot: cls === 'hot',
   };
 
+  // DF-P1: preliminary quick read — the exact values this run used, each with
+  // its source. Display only; nothing here feeds the verdict or the record.
+  const fieldRaw = (id) => { const x = document.getElementById(id); return x ? String(x.value ?? '') : ''; };
+  const fieldDefault = (id) => { const x = document.getElementById(id); return x && x.defaultValue != null ? String(x.defaultValue) : ''; };
+  const edited = (id) => { const x = document.getElementById(id); return !!(x && x.dataset && x.dataset.userEdited); };
+  const FL_IDS = ['f-hold', 'f-cc1', 'f-cc2', 'f-carry', 'f-target', 'f-rate', 'f-points'];
+  renderFlipFirstLook(flipFirstLookModel({
+    used: { hold, cc1: cc1 * 100, cc2: cc2 * 100, carry, target, rate: rate * 100, points: points * 100, loan, rep, self, financed },
+    raw: Object.fromEntries(FL_IDS.map(id => [id, fieldRaw(id)])),
+    defaults: Object.fromEntries(FL_IDS.map(id => [id, fieldDefault(id)])),
+    userEdited: { 'f-hold': edited('f-hold'), 'f-carry': edited('f-carry'), 'f-target': edited('f-target') },
+    presetApplied: _flipPresetApplied,
+    adoptedTarget: _adoptedTarget,
+    repSource: lastFlipResult.repSource,
+    cls,
+    addr, state: lastFlipResult.state, ptype,
+  }));
+  refreshFlipSummaries();
+
   const r = document.getElementById('flip-results');
   r.style.display = 'block';
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -228,7 +253,124 @@ export function analyzeFlip() {
   maybeShowFundingButton(lastFlipResult);
 }
 
+// ─── DF-P1 mobile quick read ─────────────────────────────────────────────────
+// Pure: which inputs behind a flip result were the user's own, and which were
+// assumed. `used` holds the values analyzeFlip actually computed with (whole
+// percents); `raw` the field text. A blank or zero field that the analyzer's
+// fallback replaced is reported as the DealFit default it became — never as
+// the user's entry. Changes no number and no verdict.
+const FL_SRC = { entry: 'Your entry', adopted: 'DealFit suggestion you adopted', market: 'Market estimate', default: 'DealFit default', estimate: 'Planning estimate' };
+const FL_CHOSEN = new Set(['entry', 'adopted']);   // the user's own choice — not an assumption
+export function flipFirstLookModel({ used, raw = {}, defaults = {}, userEdited = {}, presetApplied = false, adoptedTarget = null, repSource, cls, addr, state, ptype }) {
+  const pctTxt = (v) => (Math.round(v * 100) / 100) + '%';
+  const sourceOf = (id, { marketDriven = false } = {}) => {
+    const r = String(raw[id] ?? '').trim();
+    if (r === '' || !(parseComma(r) > 0)) return 'default';       // the analyzer's `||` fallback stood in
+    if (userEdited[id]) return 'entry';
+    if (id === 'f-target' && adoptedTarget != null && r === String(adoptedTarget)) return 'adopted';
+    if (marketDriven && presetApplied) return 'market';
+    return r === String(defaults[id] ?? '') ? 'default' : 'entry';
+  };
+  const items = [];
+  const add = (key, label, value, src) => items.push({ key, label, value, src, source: FL_SRC[src], assumed: !FL_CHOSEN.has(src) });
+  if (repSource === 'estimator') add('rep', 'Repair budget', fmt(used.rep), 'estimate');
+  add('target', 'Min Profit Target', fmt(used.target), sourceOf('f-target', { marketDriven: true }));
+  add('hold', 'Hold period', used.hold + ' mo', sourceOf('f-hold'));
+  add('carry', 'Monthly hold cost (excl. loan)', fmt(used.carry) + '/mo', sourceOf('f-carry', { marketDriven: true }));
+  add('cc1', 'Buying costs', pctTxt(used.cc1), sourceOf('f-cc1'));
+  add('cc2', 'Selling costs', pctTxt(used.cc2), sourceOf('f-cc2'));
+  if (used.financed) {
+    add('loan', 'Loan amount', fmt(used.loan), 'entry');
+    add('rate', 'Loan rate (interest-only)', pctTxt(used.rate), sourceOf('f-rate'));
+    add('points', 'Points', pctTxt(used.points), sourceOf('f-points'));
+  } else {
+    add('fin', 'Financing', 'All cash — no loan cost', 'default');
+  }
+  if (used.self) add('self', 'Self-renovating labor', 'Yes — Max Offer uses 75% of ARV', 'entry');
+  const assumed = items.filter(i => i.assumed).length;
+  const parts = [];
+  if (cls === 'hot' && assumed > 0) parts.push('This strong signal relies partly on assumed inputs — confirm them before relying on it.');
+  parts.push(assumed > 0
+    ? 'Preliminary: built from your numbers plus ' + assumed + ' assumed input' + (assumed === 1 ? '' : 's') + ' (marked below). Replace any assumption with your own figure and analyze again.'
+    : 'Every input listed below is your own entry. The result is still an estimate — verify ARV with comps and repairs with bids.');
+  if (cls === 'pass') parts.push('Nothing required is missing: this verdict reflects the economics of the numbers shown, not missing information.');
+  const missing = [];
+  if (!String(addr || '').trim()) missing.push('property address');
+  if (!String(state || '').trim()) missing.push('state');
+  if (!String(ptype || '').trim()) missing.push('property type');
+  const missingText = missing.length
+    ? 'Not yet provided (does not change these numbers): ' + missing.join(', ') + '. Add them under Property details before you save the deal or send it for funding review.'
+    : '';
+  return { items, assumed, lead: parts.join(' '), missingText };
+}
+
+function renderFlipFirstLook(model) {
+  const box = document.getElementById('flip-firstlook');
+  if (!box) return;
+  const lead = document.getElementById('fl-lead');
+  if (lead) lead.textContent = model.lead;
+  const list = document.getElementById('fl-list');
+  if (list) list.innerHTML = model.items.map(i =>
+    '<li><span class="fl-k">' + escapeText(i.label) + '<span class="fl-src' + (i.assumed ? ' assumed' : '') + '">' + escapeText(i.source) + '</span></span>' +
+    '<span class="fl-v">' + escapeText(i.value) + '</span></li>').join('');
+  const miss = document.getElementById('fl-missing');
+  if (miss) miss.textContent = model.missingText;
+  box.style.display = '';
+}
+function escapeText(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+// Pure: the one-line summary each collapsed section shows, from field text.
+// Mirrors the analyzer's own fallbacks so a collapsed line never shows a value
+// the analysis would not use.
+export function flipSectionSummaries(v) {
+  const num = (s, d) => { const n = parseComma(String(s ?? '')); return n > 0 ? n : d; };
+  const sqft = num(v.sqft, 0);
+  const loan = String(v.loan ?? '').trim() === '' ? 0 : (parseComma(v.loan) || 0);
+  const street = String(v.addr || '').split(',')[0].trim();
+  return {
+    repair: (v.self ? 'Self-renovating labor' : 'Hired labor') + (sqft ? ' · ' + sqft.toLocaleString('en-US') + ' sf' : ''),
+    fin: loan > 0
+      ? fmt(loan) + ' loan · ' + num(v.rate, 10) + '% · ' + num(v.points, 3) + ' pts'
+      : 'All-cash view — no loan cost modeled',
+    costs: num(v.hold, 5) + ' mo hold · ' + fmt(num(v.carry, 900)) + '/mo · buy ' + num(v.cc1, 2) + '% · sell ' + num(v.cc2, 5) + '%',
+    prop: street ? street + (String(v.state || '').trim() ? ', ' + String(v.state).trim() : '') : 'Address not entered',
+  };
+}
+
+export function refreshFlipSummaries() {
+  if (typeof document === 'undefined' || !document.getElementById) return;
+  const val = (id) => { const x = document.getElementById(id); return x ? x.value : ''; };
+  const s = flipSectionSummaries({
+    self: !!document.getElementById('self-reno')?.checked, sqft: val('sqft'),
+    loan: val('f-loan'), rate: val('f-rate'), points: val('f-points'),
+    hold: val('f-hold'), carry: val('f-carry'), cc1: val('f-cc1'), cc2: val('f-cc2'),
+    addr: val('f-addr'), state: val('f-state'),
+  });
+  for (const [k, text] of Object.entries(s)) {
+    const x = document.getElementById('flip-sum-' + k);
+    if (x) x.textContent = text;
+  }
+}
+
+// The route from the quick read to the complete analysis: open every
+// collapsed section and bring the first one into view.
+export function openFlipDetails() {
+  if (typeof document === 'undefined' || !document.querySelectorAll) return;
+  const sections = [...document.querySelectorAll('#page-flip details.more-section')];
+  sections.forEach(d => { d.open = true; });
+  const first = sections[0];
+  if (first) {
+    const reduced = typeof matchMedia === 'function' && !!matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (typeof first.scrollIntoView === 'function') first.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    const sum = first.querySelector && first.querySelector('summary');
+    if (sum && typeof sum.focus === 'function') { try { sum.focus({ preventScroll: true }); } catch { sum.focus(); } }
+  }
+}
+
 export function resetFlip() {
+  { const fl = document.getElementById('flip-firstlook'); if (fl) fl.style.display = 'none'; }
   document.getElementById('flip-results').style.display = 'none';
   document.getElementById('flip-notes').value = '';
   document.getElementById('flip-funding-btn').innerHTML = '';
@@ -284,6 +426,7 @@ export function adoptDealFitTarget() {
   const t = document.getElementById('f-target');
   if (!t) return;
   t.value = _lastGuide.mid.toLocaleString();
+  _adoptedTarget = t.value;          // DF-P1: the quick read names this the user's adopted DealFit suggestion
   analyzeFlip();
 }
 
@@ -292,4 +435,11 @@ if (typeof document !== 'undefined' && document.getElementById) {
   if (t && t.addEventListener) t.addEventListener('input', updateGuideSoftState);
   const a = document.getElementById('fg-adopt');
   if (a && a.addEventListener) a.addEventListener('click', adoptDealFitTarget);
+  // DF-P1: keep each collapsed section's summary line current as the user edits.
+  const page = document.getElementById('page-flip');
+  if (page && page.addEventListener) {
+    page.addEventListener('input', refreshFlipSummaries);
+    page.addEventListener('change', refreshFlipSummaries);
+  }
+  refreshFlipSummaries();
 }

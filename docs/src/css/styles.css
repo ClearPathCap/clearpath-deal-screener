@@ -767,3 +767,33 @@ button.deal-badge{font-family:var(--font)}
 .get-app-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .get-app-btn svg{width:14px;height:14px}
 .ios-share-glyph{width:16px;height:16px;vertical-align:-3px;display:inline-block;color:var(--info,#4aa3ff)}
+/* ── DF-P1 mobile quick read (2026-11-22) ─────────────────────────────────────
+   Fix & Flip: the three numbers + Min Profit Target sit first; every other
+   existing control lives in a native <details> section (keyboard + screen-
+   reader operable with no script) whose summary line shows the CURRENT values,
+   so no assumption is hidden when collapsed. Layout and copy only. */
+.slabel-note{font-weight:400;letter-spacing:.02em;text-transform:none;color:var(--muted)}
+.more-section{background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:10px}
+.more-section > summary{list-style:none;cursor:pointer;display:flex;flex-direction:column;gap:3px;min-height:44px;justify-content:center;padding:10px 40px 10px 14px;position:relative;border-radius:10px}
+.more-section > summary::-webkit-details-marker{display:none}
+.more-section > summary::after{content:'+';position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:18px;line-height:1;color:var(--muted)}
+.more-section[open] > summary::after{content:'\2212'}
+.more-section > summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.more-section .ms-title{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--text)}
+.more-section .ms-sum{font-family:var(--mono);font-size:12px;color:#9a9a9a;line-height:1.4;overflow-wrap:anywhere}
+.more-section .ms-body{padding:4px 14px 6px;border-top:1px solid var(--border)}
+.more-section .ms-body .repair-card,.more-section .ms-body .toggle-row{background:var(--surface2)}
+.more-section .ms-body > .toggle-row:first-child,.more-section .ms-body > .field:first-child,.more-section .ms-body > .field-row:first-child{margin-top:10px}
+.firstlook{border:1px solid var(--border-strong);border-radius:12px;padding:14px;margin-bottom:14px;background:var(--surface)}
+.firstlook .fl-title{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--info)}
+.firstlook .fl-lead{font-size:13px;line-height:1.5;color:var(--text);margin:6px 0 8px}
+.firstlook .fl-list{list-style:none;margin:0;padding:0;font-size:12px;line-height:1.45}
+.firstlook .fl-list li{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--border)}
+.firstlook .fl-list .fl-k{color:var(--text)}
+.firstlook .fl-list .fl-v{font-family:var(--mono);text-align:right;color:var(--text)}
+.firstlook .fl-src{display:block;font-family:var(--font);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#9a9a9a}
+.firstlook .fl-src.assumed{color:var(--warn)}
+.firstlook .fl-missing{font-size:12px;line-height:1.5;color:#9a9a9a;margin-top:8px}
+.firstlook .fl-missing:empty{display:none}
+.firstlook .fl-open{display:block;width:100%;min-height:44px;margin-top:10px;background:transparent;border:1px solid var(--border-strong);border-radius:8px;color:var(--text);font-family:var(--font);font-size:12px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+.firstlook .fl-open:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

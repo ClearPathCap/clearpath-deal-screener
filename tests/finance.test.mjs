@@ -335,13 +335,13 @@ eq("gate: DSCR 0.9 out of box", qualifiesForCpcLtr({ loan: 200000, ltv: 0.75, ds
   const warmFloor = base8(6618);
   near("5-8 WARM DSCR ≈ 1.22", warmFloor.dscr, 1.22, 0.02);
   eq("5-8 DSCR 1.22 → WARM", ltrVerdict(warmFloor).cls, "warm");
-  truthy("5-8 1.22 clears-floor copy", /clears the ~1\.20/.test(ltrVerdict(warmFloor).vsub));
+  truthy("5-8 1.22 clears-floor copy", /clears DealFit's 1\.20 small-multifamily floor/.test(ltrVerdict(warmFloor).vsub));
 
   // WARM (below floor) — DSCR ~1.05, covers debt but under the ~1.20 lender floor.
   const warmBelow = base8(5795);
   near("5-8 WARM DSCR ≈ 1.05", warmBelow.dscr, 1.05, 0.02);
   eq("5-8 DSCR 1.05 → WARM", ltrVerdict(warmBelow).cls, "warm");
-  truthy("5-8 1.05 below-floor copy", /below the ~1\.20 small-multifamily lender floor/.test(ltrVerdict(warmBelow).vsub));
+  truthy("5-8 1.05 below-floor copy", /is below DealFit's 1\.20 small-multifamily floor/.test(ltrVerdict(warmBelow).vsub));
 
   // COLD — DSCR ~0.95, debt not covered.
   const cold = base8(5310);

@@ -79,8 +79,9 @@ const pos = (needle) => page.indexOf(needle);
      'A2 purchase price, ARV, repair budget and Min Profit Target all precede the primary Analyze button');
   ok(['id="f-ask"', 'id="f-arv"', 'id="f-rep"', 'id="f-target"'].every(n => pos(n) < pos('<details')),
      'A3 none of the four quick inputs sits inside a collapsible section');
-  ok(/id="f-target"[^>]*value="40,000"/.test(page) && /id="f-target-source"[^>]*>[^<]*about 9% of your market's median ARV \(\$40,000 with no market selected\)/.test(page),
-     'A4 the Min Profit Target keeps its $40,000 shell default and its pre-fill source is stated beside it');
+  ok(/id="f-target"[^>]*value="40,000"/.test(page) && /id="f-target-source"[^>]*>[^<]*pre-filled from your market \(about 9% of its median ARV\), or \$40,000 by default; you can change it/.test(page),
+     'A4 the Min Profit Target keeps its $40,000 shell default and its pre-fill source is stated beside it (SEO wave-2 wording)');
+  ok(!/no market (is )?selected/.test(html), 'A4b independent review M1: the app no longer says "with no market selected" (matches SEO wave-2 W6)');
   const sections = [...page.matchAll(/<details class="more-section" id="([^"]+)">([\s\S]*?)<\/details>/g)].map(m => ({ id: m[1], body: m[2] }));
   ok(sections.map(s => s.id).join() === 'flip-more-repair,flip-more-fin,flip-more-costs,flip-more-prop', 'A5 four refine sections in order: repair, financing, costs, property');
   const inSection = (sid, ids) => { const s = sections.find(x => x.id === sid); return !!s && ids.every(i => s.body.includes('id="' + i + '"')); };
@@ -104,6 +105,13 @@ const pos = (needle) => page.indexOf(needle);
   ok(/onclick="openFlipDetails\(\)"/.test(res) && /window|Object\.assign/.test(src('docs/src/js/main.js')) && /openFlipDetails,\s+\/\/ DF-P1/.test(src('docs/src/js/main.js')),
      'A13 the quick read offers the route to the full analysis, exposed to the inline handler');
   ok(!/first look/i.test(html + src('docs/src/js/flip.js') + src('docs/src/css/styles.css')), 'A14 no "first look" wording (prohibited funding-priority phrase, tier law)');
+  { const mainSrc = src('docs/src/js/main.js');
+    const fnBody = (name) => { const i = mainSrc.indexOf('function ' + name + '('); return i < 0 ? '' : mainSrc.slice(i, mainSrc.indexOf('\n}', i)); };
+    ok(/selfEl\.checked = type === 'flip' \? !!data\.self[^\n]*\r?\n\s*if \(selfEl && type === 'flip' && selfEl\.dataset\) selfEl\.dataset\.reviewPrefill = '1';/.test(mainSrc)
+       && /delete s\.dataset\.reviewPrefill/.test(fnBody('releaseReviewProtection'))
+       && /delete s\.dataset\.reviewPrefill/.test(fnBody('updateSelfReno'))
+       && /delete s\.dataset\.reviewPrefill/.test(fnBody('clearNewDeal')),
+       'A15 main.js marks the reviewed self-renovating toggle as prefilled and releases it on review end, user toggle and Clear & New Deal (independent review L2)'); }
 }
 
 // ── §B pure source-labelling model ───────────────────────────────────────────
@@ -163,6 +171,13 @@ const item = (m, k) => m.items.find(i => i.key === k);
   const adoptEd = flip.flipFirstLookModel(base({ adoptedTarget: '39,000', userEdited: { 'f-target': true }, raw: { ...D, 'f-carry': '2,900', 'f-target': '39,000' } }));
   ok(item(adoptEd, 'target').source === 'DealFit suggestion you adopted', 'B23 adopting after typing still reads as the adopted suggestion');
   ok(/You can add them under Property details/.test(m.missingText) && !/before you save/.test(m.missingText), 'B24 the missing-facts line does not claim saving requires them (review L4)');
+  // Independent review L2 + L3: saved-deal loan and self-renovating rows; "(est.)" on every loan figure.
+  const fin = { used: { ...base().used, loan: 150000, rate: 11, points: 2, financed: true, self: true }, raw: { ...D, 'f-carry': '2,900', 'f-target': '38,000', 'f-rate': '11', 'f-points': '2' } };
+  const savedFin = flip.flipFirstLookModel(base({ ...fin, prefilled: { 'f-loan': true, 'self-reno': true, 'f-rate': true, 'f-points': true }, userEdited: { 'f-rate': true, 'f-points': true } }));
+  ok(['loan', 'rate', 'points', 'self'].every(k => item(savedFin, k).source === 'From your saved deal'), 'B25 a saved deal\'s loan, rate, points and self-renovating rows read "From your saved deal" (independent review L2)');
+  const typedFin = flip.flipFirstLookModel(base(fin));
+  ok(item(typedFin, 'loan').source === 'Your entry' && item(typedFin, 'self').source === 'Your entry', 'B26 a typed loan and a user-toggled self-renovating stay "Your entry"');
+  ok(['loan', 'rate', 'points'].every(k => /\(est\.\)$/.test(item(typedFin, k).value)) && item(typedFin, 'loan').value === '$150,000 (est.)', 'B27 every loan figure in the quick read carries "(est.)" (independent review L3, law §5)');
 }
 
 // ── §C summaries ─────────────────────────────────────────────────────────────
@@ -171,9 +186,15 @@ console.log('— §C collapsed-section summaries mirror the analyzer\'s own fall
   const s = flip.flipSectionSummaries({ self: false, sqft: '', loan: '', rate: '10', points: '3', hold: '5', carry: '2,900', cc1: '2', cc2: '5', addr: '', state: '' });
   ok(s.repair === 'Hired labor' && s.fin === 'All-cash view — no loan cost modeled' && s.costs === '5 mo hold · $2,900/mo · buy 2% · sell 5%' && s.prop === 'Address not entered', 'C1 default summaries');
   const t = flip.flipSectionSummaries({ self: true, sqft: '1400', loan: '150,000', rate: '11.5', points: '2', hold: '7', carry: '1,250', cc1: '1.5', cc2: '6', addr: '412 Oak St, Charlotte NC', state: 'NC' });
-  ok(t.repair === 'Self-renovating labor · 1,400 sf' && t.fin === '$150,000 loan · 11.5% · 2 pts' && t.costs === '7 mo hold · $1,250/mo · buy 1.5% · sell 6%' && t.prop === '412 Oak St, NC', 'C2 edited summaries');
+  ok(t.repair === 'Self-renovating labor · 1,400 sf' && t.fin === '$150,000 loan · 11.5% · 2 pts (est.)' && t.costs === '7 mo hold · $1,250/mo · buy 1.5% · sell 6%' && t.prop === '412 Oak St, NC', 'C2 edited summaries');
   const z = flip.flipSectionSummaries({ hold: '', carry: '', cc1: '0', cc2: '', rate: '', points: '', loan: '100,000' });
-  ok(z.costs === '5 mo hold · $900/mo · buy 2% · sell 5%' && z.fin === '$100,000 loan · 10% · 3 pts', 'C3 blank / zero fields summarise as the fallback the analyzer would use');
+  ok(z.costs === '5 mo hold · $900/mo · buy 2% · sell 5%' && z.fin === '$100,000 loan · 10% · 3 pts (est.)', 'C3 blank / zero fields summarise as the fallback the analyzer would use; loan terms carry (est.) (independent review L3)');
+  // Independent review L1: a half-typed number (validity.badInput → value '') is never summarised as the fallback.
+  const half = flip.flipSectionSummaries({ hold: '', cc1: '', cc2: '2', rate: '', points: '3', loan: '100,000', sqft: '', self: false,
+    badInput: { hold: true, cc1: true, rate: true, sqft: true } });
+  ok(half.costs === 'hold needs a number · $900/mo · buy % needs a number · sell 2%' && half.fin === '$100,000 loan · rate needs a number · 3 pts (est.)'
+     && half.repair === 'Hired labor · square footage needs a number' && !/5 mo hold|buy 2%|10%/.test(half.costs + half.fin),
+     'C6 half-typed hold / buy % / rate / sqft read "needs a number", never the 5 mo / 2% / 10% fallback (independent review L1)');
   const bad = flip.flipSectionSummaries({ loan: '12a', carry: '9OO', hold: '5', cc1: '2', cc2: '5' });
   ok(bad.fin === 'Loan amount needs a valid dollar amount' && /monthly cost needs a valid amount/.test(bad.costs) && !/\$12|\$9\//.test(bad.fin + bad.costs),
      'C4 a malformed loan / hold cost is never summarised as a parsed dollar amount (browser finding 1, review L3)');
@@ -279,6 +300,16 @@ console.log('— §D2 provenance across presets, adoption, reset and review (exe
   el('flip-results').style.display = 'none'; flip.analyzeFlip(); r = rows();
   ok(['Hold period', 'Monthly hold cost (excl. loan)', 'Min Profit Target', 'Buying costs', 'Selling costs'].every(k => r[k] === 'From your saved deal'), 'D2-8 review-prefilled values read "From your saved deal", never "Your entry" (review M1, executed)');
   ok(/5 values come from your saved deal/.test(el('fl-lead').textContent), 'D2-9 the lead asks the user to confirm the saved values');
+  // independent review L2, executed: a review-prefilled loan and self-renovating toggle (main.js reviewDeal marks both)
+  el('f-loan').value = '150,000'; el('f-loan').dataset.userEdited = '1'; el('f-loan').dataset.reviewPrefill = '1';
+  el('self-reno').checked = true; el('self-reno').dataset.reviewPrefill = '1';
+  el('flip-results').style.display = 'none'; flip.analyzeFlip(); r = rows();
+  ok(r['Loan amount'] === 'From your saved deal' && r['Self-renovating labor'] === 'From your saved deal' && /\$150,000 \(est\.\)/.test(el('fl-list').innerHTML),
+     'D2-10 a review-prefilled loan and self-renovating toggle read "From your saved deal"; the loan shows "(est.)" (executed)');
+  delete el('self-reno').dataset.reviewPrefill; delete el('f-loan').dataset.reviewPrefill;
+  el('flip-results').style.display = 'none'; flip.analyzeFlip(); r = rows();
+  ok(r['Loan amount'] === 'Your entry' && r['Self-renovating labor'] === 'Your entry', 'D2-11 once the user toggles / retypes them they read "Your entry"');
+  el('f-loan').value = ''; delete el('f-loan').dataset.userEdited; el('self-reno').checked = false;
   ['f-hold', 'f-carry', 'f-target', 'f-cc1', 'f-cc2'].forEach(id => fresh(id, el(id).defaultValue));
 }
 

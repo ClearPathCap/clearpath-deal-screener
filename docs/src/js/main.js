@@ -403,6 +403,7 @@ function reviewDeal(id) {
   autofillAddressComponents({ flip: 'f', rental: 'v', ltr: 'l', brrr: 'b' }[type]);
   const selfEl = document.getElementById(SELF_ID[type]);
   if (selfEl) selfEl.checked = type === 'flip' ? !!data.self : (data.pm === 0);
+  if (selfEl && type === 'flip' && selfEl.dataset) selfEl.dataset.reviewPrefill = '1';   // DF-P1: the quick read labels it "From your saved deal" until the user toggles it
   if (type === 'rental') updateSelfManage();                       // PM field/label follow the toggle
   if (type === 'flip') { onSelfRenoToggle(); calcRepair(); updateCarryTotal(); refreshFlipSummaries(); }   // repair UI + carry total (f-rep protected); DF-P1 section summaries show the saved values
   if (type === 'ltr' || type === 'brrr') {
@@ -464,6 +465,7 @@ function releaseReviewProtection(type) {
     delete el.dataset.reviewPrefill;
   }
   reviewPrefilledIds[type] = [];
+  if (type === 'flip') { const s = document.getElementById('self-reno'); if (s && s.dataset) delete s.dataset.reviewPrefill; }   // DF-P1
 }
 // Deleting the deal under review ends the review (pipeline.js owns the delete).
 onDealReviewEnded((type) => { if (type) { exitReviewUI(type); releaseReviewProtection(type); } });
@@ -629,6 +631,7 @@ function clearNewDeal(type) {
     const targetEl = document.getElementById('f-target');
     if (targetEl) { delete targetEl.dataset.userEdited; targetEl.value = '40,000'; }
     document.getElementById('self-reno').checked = false; // item 7: default unchecked (70% rule)
+    { const s = document.getElementById('self-reno'); if (s.dataset) delete s.dataset.reviewPrefill; }   // DF-P1
     { const s = document.getElementById('f-ptype'); if (s) s.value = ''; const u = document.getElementById('f-units'); if (u) u.value = ''; }   // A4: unknown again
     resetFlip();
     renderMarketSlots('flip-slots', 'flip');
@@ -1304,6 +1307,7 @@ function switchRentalView(view, btn) {
 // ─── Self-reno toggle — recalc + re-run analysis (item 9) ────────────────────
 
 function updateSelfReno() {
+  { const s = document.getElementById('self-reno'); if (s && s.dataset) delete s.dataset.reviewPrefill; }   // DF-P1: a user toggle makes it their entry
   onSelfRenoToggle();
   // Re-run full flip analysis if results are already showing (item 9)
   if (getLastFlipResult()) analyzeFlipValidated();

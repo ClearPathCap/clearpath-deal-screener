@@ -244,7 +244,7 @@ export function analyzeFlip() {
     userEdited: Object.fromEntries(FL_IDS.map(id => [id, flag(id, 'userEdited')])),
     // A saved-deal review prefill marks fields userEdited (to protect them from
     // presets) AND reviewPrefill; a real keystroke clears reviewPrefill.
-    prefilled: Object.fromEntries(FL_IDS.map(id => [id, flag(id, 'reviewPrefill')])),
+    prefilled: Object.fromEntries(FL_IDS.concat(['f-loan', 'self-reno']).map(id => [id, flag(id, 'reviewPrefill')])),
     presetText: _presetText,
     adoptedTarget: _adoptedTarget,
     repSource: lastFlipResult.repSource,
@@ -289,14 +289,17 @@ export function flipFirstLookModel({ used, raw = {}, defaults = {}, userEdited =
   add('carry', 'Monthly hold cost (excl. loan)', fmt(used.carry) + '/mo', sourceOf('f-carry', { marketDriven: true }));
   add('cc1', 'Buying costs', pctTxt(used.cc1), sourceOf('f-cc1'));
   add('cc2', 'Selling costs', pctTxt(used.cc2), sourceOf('f-cc2'));
+  // Independent review L2: a saved deal's loan and self-renovating toggle read
+  // "From your saved deal", like every other prefilled value. L3 (law §5): every
+  // loan figure carries "(est.)".
   if (used.financed) {
-    add('loan', 'Loan amount', fmt(used.loan), 'entry');
-    add('rate', 'Loan rate (interest-only)', pctTxt(used.rate), sourceOf('f-rate'));
-    add('points', 'Points', pctTxt(used.points), sourceOf('f-points'));
+    add('loan', 'Loan amount', fmt(used.loan) + ' (est.)', prefilled['f-loan'] ? 'saved' : 'entry');
+    add('rate', 'Loan rate (interest-only)', pctTxt(used.rate) + ' (est.)', sourceOf('f-rate'));
+    add('points', 'Points', pctTxt(used.points) + ' (est.)', sourceOf('f-points'));
   } else {
     add('fin', 'Financing', 'All cash — no loan cost', 'default');
   }
-  if (used.self) add('self', 'Self-renovating labor', 'Yes — Max Offer uses 75% of ARV', 'entry');
+  if (used.self) add('self', 'Self-renovating labor', 'Yes — Max Offer uses 75% of ARV', prefilled['self-reno'] ? 'saved' : 'entry');
   const assumed = items.filter(i => i.assumed).length;
   const parts = [];
   if (cls === 'hot' && assumed > 0) parts.push('This strong signal relies partly on assumed inputs — confirm them before relying on it.');
@@ -338,7 +341,11 @@ function escapeText(s) {
 // the analysis would not use.
 export function flipSectionSummaries(v) {
   const num = (s, d) => { const n = parseComma(String(s ?? '')); return n > 0 ? n : d; };
-  const sqft = num(v.sqft, 0);
+  // Independent review L1: a half-typed number field (`validity.badInput`, e.g.
+  // "5e") reads as '' in the DOM; the summary must say it needs a number, never
+  // show the fallback Analyze would refuse to use.
+  const bad = v.badInput || {};
+  const sqft = bad.sqft ? 0 : num(v.sqft, 0);
   // A malformed dollar entry blocks Analyze, so the summary must not present
   // a parse of it ("12a" → $12) as a valid amount (browser check finding 1).
   const loanBad = isMalformedCurrency(String(v.loan ?? ''));
@@ -346,15 +353,20 @@ export function flipSectionSummaries(v) {
   const loan = loanBad || String(v.loan ?? '').trim() === '' ? 0 : (parseComma(v.loan) || 0);
   const street = String(v.addr || '').split(',')[0].trim();
   const st = String(v.state || '').trim().toUpperCase();
+  const part = (key, d, txt, badTxt) => bad[key] ? badTxt : txt(num(v[key], d));
   return {
     repair: (v.self ? 'Self-renovating labor' : 'Hired labor')
-      + (sqft ? ' · ' + sqft.toLocaleString('en-US') + ' sf' + (v.tier ? ' · ' + v.tier + ' estimate' : '') : ''),
+      + (bad.sqft ? ' · square footage needs a number'
+        : sqft ? ' · ' + sqft.toLocaleString('en-US') + ' sf' + (v.tier ? ' · ' + v.tier + ' estimate' : '') : ''),
     fin: loanBad ? 'Loan amount needs a valid dollar amount'
       : loan > 0
-      ? fmt(loan) + ' loan · ' + num(v.rate, 10) + '% · ' + num(v.points, 3) + ' pts'
+      ? fmt(loan) + ' loan · ' + part('rate', 10, n => n + '%', 'rate needs a number') + ' · '
+        + part('points', 3, n => n + ' pts', 'points need a number') + ' (est.)'
       : 'All-cash view — no loan cost modeled',
-    costs: num(v.hold, 5) + ' mo hold · ' + (carryBad ? 'monthly cost needs a valid amount' : fmt(num(v.carry, 900)) + '/mo')
-      + ' · buy ' + num(v.cc1, 2) + '% · sell ' + num(v.cc2, 5) + '%',
+    costs: part('hold', 5, n => n + ' mo hold', 'hold needs a number') + ' · '
+      + (carryBad ? 'monthly cost needs a valid amount' : fmt(num(v.carry, 900)) + '/mo')
+      + ' · ' + part('cc1', 2, n => 'buy ' + n + '%', 'buy % needs a number')
+      + ' · ' + part('cc2', 5, n => 'sell ' + n + '%', 'sell % needs a number'),
     prop: street ? street + (st ? ', ' + st : '') : 'Address not entered',
   };
 }
@@ -362,7 +374,9 @@ export function flipSectionSummaries(v) {
 export function refreshFlipSummaries() {
   if (typeof document === 'undefined' || !document.getElementById) return;
   const val = (id) => { const x = document.getElementById(id); return x ? x.value : ''; };
+  const badIn = (id) => inputIsIncomplete(document.getElementById(id));
   const s = flipSectionSummaries({
+    badInput: { sqft: badIn('sqft'), rate: badIn('f-rate'), points: badIn('f-points'), hold: badIn('f-hold'), cc1: badIn('f-cc1'), cc2: badIn('f-cc2') },
     self: !!document.getElementById('self-reno')?.checked, sqft: val('sqft'),
     loan: val('f-loan'), rate: val('f-rate'), points: val('f-points'),
     hold: val('f-hold'), carry: val('f-carry'), cc1: val('f-cc1'), cc2: val('f-cc2'),

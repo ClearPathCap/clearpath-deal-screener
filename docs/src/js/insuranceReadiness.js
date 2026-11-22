@@ -52,8 +52,8 @@ export function insurancePresentation(status) {
     return {
       status,
       tag: 'NEEDS INSURANCE',
-      label: 'Add Insurance for a Lender-Ready DSCR',
-      sub: 'Insurance required for lender-ready calculation — annual insurance wasn\'t entered, so the DSCR and NOI shown are Pending. Add insurance for an accurate figure; you can still explore funding in the meantime.',
+      label: 'Add Insurance to Complete the DSCR',
+      sub: 'Insurance is required for a complete DSCR calculation — annual insurance wasn\'t entered, so the DSCR and NOI shown are Pending. Add insurance for an accurate figure; you can still explore funding in the meantime.',
       pendingText: 'Pending',
     };
   }
@@ -61,8 +61,8 @@ export function insurancePresentation(status) {
     return {
       status,
       tag: 'VERIFY INSURANCE',
-      label: 'Verify Insurance for a Lender-Ready DSCR',
-      sub: 'Insurance entered as $0 — confirm before lender review. A $0 insurance figure isn\'t lender-ready without verification, so the DSCR and NOI shown are Pending; you can still explore funding in the meantime.',
+      label: 'Verify Insurance to Complete the DSCR',
+      sub: 'Insurance entered as $0 — confirm before lender review. A $0 insurance figure can\'t be used without verification, so the DSCR and NOI shown are Pending; you can still explore funding in the meantime.',
       pendingText: 'Pending',
     };
   }
@@ -72,10 +72,10 @@ export function insurancePresentation(status) {
 // Clipboard-summary warning line (LTR/BRRR deal summaries); null for 'valid'.
 export function insuranceSummaryWarning(status) {
   if (status === INS_MISSING) {
-    return '⚠ INSURANCE NOT ENTERED — NOI/DSCR are Pending and not lender-ready until insurance is added.';
+    return '⚠ INSURANCE NOT ENTERED — NOI/DSCR are Pending and incomplete until insurance is added.';
   }
   if (status === INS_EXPLICIT_ZERO) {
-    return '⚠ INSURANCE ENTERED AS $0 — confirm before lender review; NOI/DSCR are Pending and not lender-ready until verified.';
+    return '⚠ INSURANCE ENTERED AS $0 — confirm before lender review; NOI/DSCR are Pending and incomplete until verified.';
   }
   return null;
 }
@@ -152,8 +152,8 @@ export function incomePresentation(taxSt, insSt) {
     return {
       status: 'taxes_and_insurance',
       tag: 'NEEDS TAXES + INSURANCE',
-      label: 'Add Taxes & Insurance for a Lender-Ready DSCR',
-      sub: 'Property taxes and insurance are required for a lender-ready calculation — taxes weren\'t entered and insurance ' +
+      label: 'Add Taxes & Insurance to Complete the DSCR',
+      sub: 'Property taxes and insurance are required for a complete DSCR calculation — taxes weren\'t entered and insurance ' +
         (insZero ? 'was entered as $0 (confirm before lender review)' : 'wasn\'t entered') +
         ', so the DSCR and NOI shown are Pending. Resolve both for accurate figures; you can still explore funding in the meantime.',
       pendingText: 'Pending',
@@ -163,8 +163,8 @@ export function incomePresentation(taxSt, insSt) {
     return {
       status: 'taxes_missing',
       tag: 'NEEDS PROPERTY TAXES',
-      label: 'Add Property Taxes for a Lender-Ready DSCR',
-      sub: 'Property taxes are required for a lender-ready calculation — annual taxes weren\'t entered, so the DSCR and NOI shown are Pending. Add taxes for an accurate figure; you can still explore funding in the meantime.',
+      label: 'Add Property Taxes to Complete the DSCR',
+      sub: 'Property taxes are required for a complete DSCR calculation — annual taxes weren\'t entered, so the DSCR and NOI shown are Pending. Add taxes for an accurate figure; you can still explore funding in the meantime.',
       pendingText: 'Pending',
     };
   }
@@ -174,7 +174,7 @@ export function incomePresentation(taxSt, insSt) {
 // Clipboard-summary warning for missing taxes; composes with insuranceSummaryWarning.
 export function taxSummaryWarning(status) {
   if (status === INS_MISSING) {
-    return '⚠ PROPERTY TAXES NOT ENTERED — NOI/DSCR are Pending and not lender-ready until taxes are added.';
+    return '⚠ PROPERTY TAXES NOT ENTERED — NOI/DSCR are Pending and incomplete until taxes are added.';
   }
   return null;
 }

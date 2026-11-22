@@ -259,7 +259,7 @@ function near(label, actual, expected, tol = 2) {
     type: "ltr", tax: taxRaw || 0, taxStatus: IR.taxStatus(taxRaw),
     ins: 14000, insStatus: "valid",
     NOI: 70048, dscr: 1.6456, cashFlowYr: 22380, cashFlowMo: 1865, capRate: 10.8,
-    verdict: "Strong Rental — Lender-Ready", rent: 8500, hoa: 0,
+    verdict: "Strong Rental — Clears Every DealFit Bar", rent: 8500, hoa: 0,
   });
   const hBlank = IR.incomeDependentHandoff(mkResult(undefined));
   eq("F5: blank taxes omit annualTaxes", hBlank.annualTaxes, undefined);
@@ -327,7 +327,7 @@ function near(label, actual, expected, tol = 2) {
   near("F6: W4-F4b NOI", f4b.noi, 31995, 0.5);
   near("F6: W4-F4b CoC", f4b.coc, 5.9026, 0.001);
   eq("F6: W4-F4b verdict WARM", f4b.cls, "warm");
-  truthy("F6: W4-F4b no bridge suffix (DSCR 1.22 < 1.25)", !/Lender-fundable/.test(f4b.vsub));
+  truthy("F6: W4-F4b no bridge suffix (DSCR 1.22 < 1.25)", !/Finance-and-hold angle/.test(f4b.vsub));
 
   // Blank combined field pends; explicit 0 computes; populated computes.
   const pend = IR.strExpensePresentation(IR.taxStatus(undefined));

@@ -63,7 +63,7 @@ eq("ready: valid -> true", IR.insuranceReady("valid"), true);
 const pMissing = IR.insurancePresentation("missing");
 const pZero = IR.insurancePresentation("explicit_zero");
 eq("missing: tag NEEDS INSURANCE", pMissing.tag, "NEEDS INSURANCE");
-truthy("missing: sub contains required phrase", pMissing.sub.includes("Insurance required for lender-ready calculation"));
+truthy("missing: sub contains required phrase", pMissing.sub.includes("Insurance is required for a complete DSCR calculation"));
 eq("missing: pendingText", pMissing.pendingText, "Pending");
 truthy("missing: internal-review pathway retained", pMissing.sub.includes("explore funding"));
 eq("zero: tag VERIFY INSURANCE", pZero.tag, "VERIFY INSURANCE");
@@ -110,7 +110,7 @@ const resultOf = (type, m, insRaw) => ({
   cashFlowYr: m.cashFlowYr,
   cashFlowMo: m.cashFlowMo,
   capRate: m.capRate,
-  verdict: "Strong Rental — Lender-Ready",
+  verdict: "Strong Rental — Clears Every DealFit Bar",
   rent: 2400,
   tax: 3000,
   hoa: 0,

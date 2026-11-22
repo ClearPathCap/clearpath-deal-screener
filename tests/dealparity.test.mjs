@@ -74,7 +74,7 @@ ok("B3: current numbers are the engine's (dscr 1.25, cf ≈ $6.5k/yr, stressed D
 ok("B4: every lever is present and finite for the live case",
    Number.isFinite(G.levers.price) && Number.isFinite(G.levers.rent) && Number.isFinite(G.levers.down));
 ok("B5: hotLabel is the ENGINE's lender-ready verdict text at the lever (not a restated string)",
-   G.hotLabel === verdictOf({ ...ORANGE, price: G.levers.price }).verdict && /Lender-Ready/.test(G.hotLabel));
+   G.hotLabel === verdictOf({ ...ORANGE, price: G.levers.price }).verdict && /Clears Every DealFit Bar/.test(G.hotLabel));
 ok("B6: guidance never mutates its input", (() => {
   const before = JSON.stringify(ORANGE); F.ltrGuidance(ORANGE); return JSON.stringify(ORANGE) === before; })());
 ok("B7: guidance refuses non-LTR / empty input honestly (null, no throw)",

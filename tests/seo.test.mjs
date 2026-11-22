@@ -11,7 +11,7 @@
 //       update the page copy IN THE SAME COMMIT, never just the pin.
 //   §E  compliance wording: broker-not-lender + estimate disclaimer on every
 //       page, no lending/approval/guarantee language, CPC links attributed.
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
@@ -169,7 +169,7 @@ ok(/const target = Math\.max\(10000, Math\.round\(\(m\.medianArv \|\| 300000\) \
 console.log("— §F page text carries the pinned numbers (review R1-F7) —");
 const pageVis = (slug) => visibleText(src(`docs/${slug}/index.html`));
 const has = (slug, list) => { const v = pageVis(slug); for (const t of list) ok(v.includes(t), `F /${slug}/ states "${t}"`); };
-has("fix-and-flip-calculator", ["ARV −5%, rehab +10% and one extra month of holding", "pre-filled from your market, or $40,000 with no market selected",
+has("fix-and-flip-calculator", ["ARV −5%, rehab +10% and one extra month of holding", "pre-filled from your market, or $40,000 by default",
   "at least $50,000 or your target", "ROI is at least 15%", "70% of the after-repair value minus the repair budget", "uses 75% instead", "below $0"]);
 has("risk-evaluation", ["ARV −5%, rehab +10%, +1 month of holding", "half of your minimum profit target, which DealFit pre-fills from your market", "Rent −5%, vacancy +3 points, rate +0.5 points",
   "vacancy +5 points or one fully vacant unit, whichever is higher", "at least 1.15 on 1–4 units or 1.20 on 5–8 units", "no more than 25% of your cash left in",
@@ -214,6 +214,41 @@ for (const p of ALL) {
   ok([metaContent(app, "name", "description"), metaContent(app, "property", "og:description")]
        .every((d) => /flip, rental and BRRRR include a built-in stress test/i.test(d || "") && !/calculators,? with built-in stress tests/i.test(d || "")),
      "E9 app-shell descriptions never attach the stress test to the short-term rental calculator");
+}
+
+// ─── W. Wave 2 (2026-11-22): F4 / F5 wording and F6 lender-readiness wording ───
+// F6: no user-facing app string may call a deal or a figure "lender-ready",
+// "fundable" or a "lender bar" — those read as an approval or qualification
+// signal. Comments are stripped first (they may explain the old rule).
+{
+  const code = (rel) => src(rel).replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "")
+    .split(/\r?\n/).filter((l) => !/^\s*\/\//.test(l)).map((l) => l.replace(/\s\/\/\s.*$/, "")).join("\n");
+  const F6 = /lender-?ready|fundable|lender bar/i;
+  for (const rel of ["docs/index.html", "docs/shared.html", "docs/privacy.html", "docs/terms.html",
+                     ...readdirSync(join(root, "docs/src/js")).filter((f) => f.endsWith(".js")).map((f) => "docs/src/js/" + f)]) {
+    const m = code(rel).match(F6);
+    ok(!m, `W1 ${rel} has no lender-readiness wording outside comments${m ? ` (found "${m[0]}")` : ""}`);
+  }
+  const fin = src("docs/src/js/finance.js");
+  ok(/"Strong Small-Multifamily — Clears Every DealFit Bar" : "Strong Rental — Clears Every DealFit Bar"/.test(fin),
+     "W2 the strongest LTR verdict names DealFit's own bars, not a lender");
+  ok(/Each lever on its own would bring this deal to <strong>' \+ \(g\.hotLabel \|\| 'the strongest verdict'\)/.test(src("docs/src/js/main.js")),
+     "W3 the guidance fallback label is DealFit's strongest verdict");
+  ok(/Unlimited exports \+ shareable deal summaries/.test(app), "W4 the paid-tier list sells deal summaries, never lender readiness");
+  // F4: the flip target is $40,000 by default (index.html value), and the market pre-fill replaces it.
+  const flipPage = src("docs/fix-and-flip-calculator/index.html");
+  ok(/id="f-target"[^>]*value="40,000"/.test(app), "W5 the flip minimum-profit target input defaults to 40,000");
+  ok(!/no market (is )?selected/.test(flipPage) && (flipPage.match(/\$40,000 by default/g) || []).length === 3,
+     "W6 the flip page says $40,000 by default (FAQ JSON-LD, FAQ text, table) and never 'no market selected'");
+  // F5: a stressed flip profit of exactly $0 grades Tight, so Tight is "breaks even or better".
+  ok(/stressedProfit < 0 \? 'fails' : stressedProfit >= strongBar \? 'strong' : 'tight'/.test(fin),
+     "W7 engine: flip Fails only below $0 stressed profit (so $0 is Tight)");
+  ok(/Breaks even or better under stress, but with a thin cushion/.test(flipPage) && !/Still profitable under stress/.test(flipPage),
+     "W8 the flip page's Tight row matches the engine at exactly $0");
+  const risk = src("docs/risk-evaluation/index.html");
+  ok(/the deal does not survive the stress test, by the rule for its strategy in the &ldquo;Fails when&rdquo; column above/.test(risk)
+     && !/a modest downside turns the deal negative/.test(risk),
+     "W9 the risk page's Fails line defers to each strategy's own rule (BRRRR can fail on cash left in)");
 }
 
 console.log(`seo: ${pass} passed, ${fail} failed`);

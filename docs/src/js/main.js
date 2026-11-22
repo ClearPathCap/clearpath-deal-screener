@@ -1489,7 +1489,7 @@ function renderLtrGuidanceHTML(data) {
   if (gates.floorOk !== null) {
     parts.push(row('Small-multifamily floor — DSCR ≥ ' + gates.smallMfFloor.toFixed(2), dscrTxt + ' · ' + mark(gates.floorOk), okCls(gates.floorOk)));
   }
-  parts.push(row('Lender bar — DSCR ≥ ' + gates.hotDscr.toFixed(2), dscrTxt + ' · ' + mark(gates.dscrOk), okCls(gates.dscrOk)));
+  parts.push(row('Strong-verdict bar — DSCR ≥ ' + gates.hotDscr.toFixed(2), dscrTxt + ' · ' + mark(gates.dscrOk), okCls(gates.dscrOk)));
   const cashOk = gates.dollarOk || gates.cocOk;
   parts.push(row('Cash-flow bar — ' + fmt(gates.dollarBar) + '/yr or CoC ≥ ' + gates.target + '%',
     fmt(Math.round(c.cashFlowYr)) + '/yr · CoC ' + pct(c.coc) + ' · ' + mark(cashOk), okCls(cashOk)));
@@ -1498,13 +1498,13 @@ function renderLtrGuidanceHTML(data) {
   parts.push(row('Stress test (' + stressLaw + ')',
     'DSCR ' + sDscr + ' · ' + fmt(Math.round(c.stressedCfMo)) + '/mo · ' + mark(gates.survives), okCls(gates.survives)));
   if (g.isHot) {
-    parts.push('<p style="margin:10px 0 0">Every bar clears as underwritten — this deal is lender-ready under DealFit&#8217;s existing rules.</p>');
+    parts.push('<p style="margin:10px 0 0">Every bar clears as underwritten — this deal reaches DealFit&#8217;s strongest verdict under its existing rules.</p>');
   } else {
     parts.push(title('What moves it'));
     parts.push(row('Negotiate price to', g.levers.price != null ? '≤ ' + fmt(g.levers.price) : 'No price clears every bar', g.levers.price != null ? 'good' : 'bad'));
     parts.push(row('Or raise rent to', g.levers.rent != null ? '≥ ' + fmt(g.levers.rent) + '/mo' : 'Not reachable', g.levers.rent != null ? 'good' : 'bad'));
     parts.push(row('Or put down', g.levers.down != null ? '≥ ' + g.levers.down + '%' : 'Not reachable at ≤ 100%', g.levers.down != null ? 'good' : 'bad'));
-    parts.push('<p style="margin:10px 0 0">Each lever on its own would bring this deal to <strong>' + (g.hotLabel || 'lender-ready') + '</strong> under DealFit&#8217;s existing rules. Real negotiations usually move more than one.</p>');
+    parts.push('<p style="margin:10px 0 0">Each lever on its own would bring this deal to <strong>' + (g.hotLabel || 'the strongest verdict') + '</strong> under DealFit&#8217;s existing rules. Real negotiations usually move more than one.</p>');
   }
   parts.push('<p style="margin:10px 0 0;font-size:11px">These are DealFit&#8217;s own verdict rules applied to your inputs — estimates only, not lender requirements, an approval, or an offer.</p>');
   return parts.join('');

@@ -703,7 +703,7 @@ export function ltrVerdict(m) {
       : "Even all-cash, operating costs exceed income before any debt service — the property is cash-flow negative on its own. Rework rent or expenses, or walk.";
   } else if (g.dscrOk && (g.dollarOk || g.cocOk) && g.cfPositive && survives) {
     cls = "hot";
-    verdict = band === '5-8' ? "Strong Small-Multifamily — Lender-Ready" : "Strong Rental — Lender-Ready";
+    verdict = band === '5-8' ? "Strong Small-Multifamily — Clears Every DealFit Bar" : "Strong Rental — Clears Every DealFit Bar";
     const stressText = band === '5-8'
       ? "Survives a stress test (rent −5%, one-vacant-unit vacancy, rate +0.5%)"
       : "Survives a stress test (rent −5%, vacancy +3pts, rate +0.5%)";
@@ -726,7 +726,7 @@ export function ltrVerdict(m) {
     } else {
       // 1.0 ≤ DSCR < 1.20 — covers debt but under the small-multifamily lender floor.
       verdict = "Covers Debt — Below Small-Multifamily Floor";
-      vsub = "DSCR " + dscrText + " covers debt but below the ~1.20 small-multifamily lender floor — needs more cushion to be fundable; verify rent roll, leases, stabilized occupancy.";
+      vsub = "DSCR " + dscrText + " covers debt but below the ~1.20 small-multifamily lender floor — needs more cushion to clear it; verify rent roll, leases, stabilized occupancy.";
     }
   } else {
     cls = "warm";
@@ -734,7 +734,7 @@ export function ltrVerdict(m) {
     if (m.cashFlowMo < 0) {
       // B5: DSCR ≥ 1.0 covers the debt, but the CapEx reserve tips monthly cash flow negative.
       verdict = "Covers Debt — Thin After Reserves";
-      vsub = "DSCR " + dscrText + " covers the debt (lender-fundable), but it runs about $" + Math.abs(cfMo) +
+      vsub = "DSCR " + dscrText + " covers the debt, but it runs about $" + Math.abs(cfMo) +
              "/mo negative after the CapEx reserve. Finance-and-hold and build a cushion — negotiate price or raise rent to firm it up.";
     } else if (d >= hotDscr && !survives) {
       vsub =
@@ -1072,7 +1072,7 @@ export function brrrVerdict(m) {
     cls = "warm";
     verdict = "Covers Debt — Thin After Reserves";
     vsub =
-      "DSCR " + dscrText + " covers the refi debt (lender-fundable), but the hold runs about $" +
+      "DSCR " + dscrText + " covers the refi debt, but the hold runs about $" +
       Math.abs(Math.round(cf)) + "/mo negative after the CapEx reserve. Build a cushion — push rent, " +
       "trim the refi loan, or negotiate the basis to firm it up.";
   } else if (

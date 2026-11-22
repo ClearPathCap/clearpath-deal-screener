@@ -223,7 +223,7 @@ for (const p of ALL) {
 {
   const code = (rel) => src(rel).replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "")
     .split(/\r?\n/).filter((l) => !/^\s*\/\//.test(l)).map((l) => l.replace(/\s\/\/\s.*$/, "")).join("\n");
-  const F6 = /lender-?ready|fundable|lender bar|clears (the )?(typical [\d.–]+ )?underwriting/i;   // review L1: "clears underwriting" reads as passing a lender
+  const F6 = /lender[-\s]?ready|fundable|lender bar|clears (the )?(typical [\d.–]+ )?underwriting|best[-\s]pricing|screener confirms/i;   // review L1: "clears underwriting" reads as passing a lender
   for (const rel of ["docs/index.html", "docs/shared.html", "docs/privacy.html", "docs/terms.html",
                      ...readdirSync(join(root, "docs/src/js")).filter((f) => f.endsWith(".js")).map((f) => "docs/src/js/" + f)]) {
     const m = code(rel).match(F6);

@@ -721,8 +721,8 @@ export function ltrVerdict(m) {
     cls = "warm";
     if (d >= rules.smallMfFloor) {
       // 1.20 ≤ DSCR < 1.25, or ≥ 1.25 that failed the multifamily stress test.
-      verdict = "Clears the Floor — Light for Best Pricing";
-      vsub = "DSCR " + dscrText + " clears the ~1.20 small-multifamily floor but light for best pricing — one vacant unit could break it. Verify rent roll, leases, and stabilized occupancy.";
+      verdict = "Clears the Floor — Thin Cushion";
+      vsub = "DSCR " + dscrText + " clears the ~1.20 small-multifamily floor, but with a thin cushion — one vacant unit could break it. Verify rent roll, leases, and stabilized occupancy.";
     } else {
       // 1.0 ≤ DSCR < 1.20 — covers debt but under the small-multifamily lender floor.
       verdict = "Covers Debt — Below Small-Multifamily Floor";
@@ -1085,7 +1085,7 @@ export function brrrVerdict(m) {
     const why = !survives
       ? "it thins under a stress test (ARV −5%, rent −5%)"
       : m.dscr !== null && m.dscr < hotDscr
-        ? "cash flow is thin for best-pricing DSCR"
+        ? "DSCR is under DealFit's DSCR bar"
         : "capital is partly trapped";
     vsub =
       "DSCR " + dscrText + " and " + recText + " recovered — the mechanics work but " +
@@ -1098,7 +1098,7 @@ export function brrrVerdict(m) {
     verdict = "Partial BRRRR — Capital Trapped or Tight";
     const why = rec < 40
       ? "only " + recText + " of your capital comes back — the hold works, but the recycle doesn't"
-      : "cash flow is thin for best-pricing DSCR";
+      : "cash flow is thin against the refi debt";
     vsub =
       "DSCR " + dscrText + " covers the refi debt and the hold cash-flows, but " + why +
       ". Push ARV, rent, or the refi LTV to tighten it.";

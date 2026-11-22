@@ -310,5 +310,22 @@ for (const p of ALL) {
      "X7 the STR page defines DSCR as the engine computes it (NOI / debt) in FAQ text and JSON-LD, with no lender-norm claim");
 }
 
+// ─── Y. Wave 4 (2026-11-22): STR occupancy and property-manager hints state DealFit's own defaults ───
+{
+  const mainY = src("docs/src/js/main.js"), rentalY = src("docs/src/js/rental.js");
+  const valY = (id) => (app.match(new RegExp(`id="${id}"[^>]*value="([^"]*)"`)) || [])[1];
+  ok(valY("v-occ") === "65" && /const occ = \+document\.getElementById\('v-occ'\)\?\.value \|\| 65;/.test(mainY)
+     && /const occ = Math\.round\(\(\(m\.occLow \|\| 0\.55\) \+ \(m\.occHigh \|\| 0\.65\)\) \/ 2 \* 100\);/.test(rentalY)
+     && /if \(occEl && !occEl\.dataset\.userEdited\) occEl\.value = occ;/.test(rentalY)
+     && /DealFit starts at 65%; picking a market sets it to the middle of that market's range in DealFit's data, unless you've changed it\./.test(mainY),
+     "Y1 the occupancy hint states DealFit's 65% default and the market-midpoint preset (rental.js), not an industry range");
+  ok(/if \(!pmInput\.value \|\| \+pmInput\.value === 0\) pmInput\.value = 8;/.test(mainY)
+     && /DealFit starts at 8% when you choose a hired manager; use your manager's quote\./.test(app),
+     "Y2 the property-manager hint states DealFit's 8% hired-manager default (main.js updateSelfManage)");
+  const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "").split(/\n/).filter((l) => !/^\s*\/\//.test(l)).join("\n");
+  const INDUSTRY = /markets typically run|Typical range:/i;
+  ok(!INDUSTRY.test(strip(app)) && !INDUSTRY.test(strip(mainY)), "Y3 no 'markets typically run' / 'Typical range:' industry norm in the shell or main.js");
+}
+
 console.log(`seo: ${pass} passed, ${fail} failed`);
 if (fail) { for (const f of fails) console.log("  ✗ " + f); process.exit(1); }

@@ -118,7 +118,7 @@ function updateOccHint() {
   if (hint) {
     const occ = +document.getElementById('v-occ')?.value || 65;
     const nights = Math.round(occ / 100 * 365);
-    hint.textContent = `The percentage of nights your property is booked over a year. A ${occ}% rate means roughly ${nights} nights booked. STR markets typically run 55–75% — higher in peak tourist areas, lower in seasonal markets. Your gross rent estimate assumes this rate.`;
+    hint.textContent = `The percentage of nights your property is booked over a year. A ${occ}% rate means roughly ${nights} nights booked. DealFit starts at 65%; picking a market sets it to the middle of that market's range in DealFit's data, unless you've changed it. Your gross rent estimate assumes this rate.`;
   }
   updateEffRevHint();   // keep the booked-revenue preview in sync
 }

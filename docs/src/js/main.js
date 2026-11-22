@@ -17,6 +17,7 @@ import { saveDeal as _saveDeal, renderPipeline,
 import { openShareApp, shareDeal }                                   from './share.js';
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { consumeInstallLink, openInstallFromLink }                   from './install.js';   // business-card ?install=1
+import { consumeToolLink }                                            from './toolLink.js';  // public tool pages: /?tool=<name>
 import { ALL_MARKETS as PICKER_ALL, STR_MARKETS, FLIP_MARKETS, LTR_MARKETS } from './markets.js';
 import { initCurrencyInputs, fmtCurrencyInput, parseComma, parseNumOpt, isMalformedCurrency, fmt, pct, escapeHtml, revealBlockingField, clearBlockingMarks, markBlockingField } from './format.js';
 import { propertyBand, BAND_RULES,
@@ -2176,6 +2177,14 @@ handleCheckoutReturn();   // Wave 5: checkout return is a sync TRIGGER, never en
 applyTierToUI();
 renderAllSlots();
 renderGuideMarketIntel();   // item 4: build region intel from selected markets
+// Public tool pages (/risk-evaluation/ and the calculator pages) link in as
+// /?tool=<name>: open that analyzer and strip the parameter. Nothing is
+// prefilled, stored or opened as a modal; an unknown name is ignored.
+const toolLink = consumeToolLink();
+if (toolLink) {
+  showPage(toolLink.page, document.querySelector('.nav-btn[data-tab="' + toolLink.page + '"]'));
+  if (toolLink.view) switchRentalView(toolLink.view, document.getElementById('subtab-' + toolLink.view));
+}
 initOnboarding();
 openInstallFromLink();      // business-card QR: open "Get the App" after load
 

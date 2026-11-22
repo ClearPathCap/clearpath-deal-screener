@@ -32,7 +32,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .cpc-logo{height:26px;width:auto;max-width:140px;object-fit:contain;flex-shrink:0}
 .app-subtitle{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-left:1px solid var(--border);padding-left:8px;white-space:nowrap}
 .header-meta{margin-bottom:0}
-.header h1{font-size:22px;font-weight:800;line-height:1.1;margin-bottom:4px}
+.header h1,.header h2{font-size:22px;font-weight:800;line-height:1.1;margin-bottom:4px}
 .header p{font-size:12px;color:var(--muted);margin-bottom:0}
 .header-actions{display:flex;gap:6px;align-items:center;flex-shrink:0;padding-top:2px}
 .tier-badge{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .2s;white-space:nowrap}
@@ -315,6 +315,27 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
   .legal-doc h1{font-size:28px}
   .legal-doc p,.legal-doc li{font-size:15px}
 }
+/* ─── Public tool pages (/risk-evaluation/, /*-calculator/) ──────────────────
+   Static, crawlable explainers that reuse the legal-page column. Everything is
+   scoped to .seo-* so no analyzer surface can change. */
+.seo-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0 0 10px !important}
+.legal-doc .seo-lede{font-size:16px;line-height:1.6;color:var(--text);margin:10px 0 18px}
+.seo-cta{display:inline-block;background:var(--accent);color:var(--accent-text) !important;font-weight:800;font-size:13px;letter-spacing:.04em;
+  text-decoration:none;padding:12px 18px;border-radius:8px;margin:4px 0 8px}
+.seo-cta:hover{opacity:.9}
+.seo-note{font-size:12px !important;color:var(--muted) !important}
+.seo-table{width:100%;border-collapse:collapse;margin:6px 0 16px;font-size:13px}
+.seo-table th,.seo-table td{text-align:left;vertical-align:top;padding:8px 8px;border-bottom:1px solid var(--border);line-height:1.5}
+.seo-table th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.seo-mos-strong{color:var(--accent);font-weight:700}
+.seo-mos-tight{color:var(--warn);font-weight:700}
+.seo-mos-fails{color:var(--danger);font-weight:700}
+.seo-faq h3{text-transform:none !important;letter-spacing:0 !important;font-size:14px !important}
+.seo-related{list-style:none;padding:0 !important}
+.seo-related li{border-bottom:1px solid var(--border);padding:8px 0;margin:0 !important}
+.seo-disclaimer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border)}
+.seo-disclaimer p{font-size:12px !important;line-height:1.6 !important;color:var(--muted) !important}
+@media (min-width:640px){ .seo-table{font-size:14px} }
 /* In-app persistent legal linkage — deliberately quiet, below all analyzer UI. */
 .legal-footer{display:flex;align-items:center;justify-content:center;gap:8px;
   padding:18px 12px 4px;font-size:11px;letter-spacing:.04em;color:var(--muted2)}

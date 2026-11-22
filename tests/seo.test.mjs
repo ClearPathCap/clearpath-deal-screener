@@ -253,5 +253,37 @@ for (const p of ALL) {
      "W9 the risk page's Fails line defers to each strategy's own rule (BRRRR can fail on cash left in)");
 }
 
+// ─── X. Wave 3 (2026-11-22): no unsupported generalized lender claims ─────────
+// A lender-norm statement ("most private lenders want…", a "typical terms"
+// rate range) is a market claim DealFit cannot support. The Field Guide states
+// DealFit's OWN figures instead, and each one is pinned to the code it describes.
+{
+  const guide = app.replace(/<!--[\s\S]*?-->/g, "");
+  const LENDER_NORM = /(most|many|typical) (private )?lenders? (want|look for|require|expect)|lenders? (typically|usually) |typical private money terms|Rate: 8–12%|industry standard|standard DSCR cash-out|lenders don.t count|ratio a rental lender/i;
+  const m = guide.match(LENDER_NORM);
+  ok(!m, `X1 the app shell states no generalized lender requirement or typical-terms range${m ? ` (found "${m[0]}")` : ""}`);
+  const funding = src("docs/src/js/funding.js");
+  ok(/if \(ltc !== undefined && ltc > 0\.90\) return false;/.test(funding) && /if \(arv && loan \/ arv > 0\.70\) return false;/.test(funding)
+     && (guide.match(/70% of ARV/g) || []).length === 2 && (guide.match(/90% of total cost/g) || []).length === 2,
+     "X2 both Field Guide 70%-of-ARV lines describe DealFit's own funding screen (funding.js: loan/ARV ≤ 0.70, LTC ≤ 0.90)");
+  const val = (id) => (app.match(new RegExp(`id="${id}"[^>]*value="([^"]*)"`)) || [])[1];
+  ok(val("f-rate") === "10" && val("f-points") === "3" && val("f-hold") === "5"
+     && /DealFit's starting financing assumptions<\/div>\s*<div class="gi-val">Rate: 10% · Points: 3 · Hold: 5 mo — edit them for your deal<\/div>/.test(guide),
+     "X3 the Field Guide's starting assumptions equal the flip inputs' defaults (rate 10, points 3, hold 5)");
+  ok(val("l-down") === "20" && /DealFit starts at 20%; use the down payment your lender quotes/.test(guide)
+     && val("b-refiltv") === "75" && /DealFit starts at 75%; use the LTV your refinance lender quotes/.test(guide),
+     "X4 the LTR down-payment and BRRRR refi-LTV hints quote DealFit's own input defaults (20, 75)");
+  const finX = src("docs/src/js/finance.js");
+  ok(/const cashFlowYr = NOI - debtYr - capexRes;/.test(finX) && /DealFit deducts it below NOI, so it lowers cash flow but not DSCR/.test(guide),
+     "X5 the CapEx hint matches the engine (reserve below NOI: cash flow only)");
+  ok(/const maxOffer = arv \* \(self \? 0\.75 : 0\.70\) - rep;/.test(finX) && /With Self-Renovating turned on, DealFit uses 75% instead/.test(guide),
+     "X6 the 70% rule note matches the engine (0.70, or 0.75 when self-renovating)");
+  const strPage = src("docs/short-term-rental-calculator/index.html");
+  ok(/const dscr\s+= debt > 0 \? noi \/ debt : 0;/.test(src("docs/src/js/strFinance.js"))
+     && (strPage.match(/DealFit also shows DSCR — net operating income divided by the loan payment\./g) || []).length === 2
+     && !LENDER_NORM.test(strPage),
+     "X7 the STR page defines DSCR as the engine computes it (NOI / debt) in FAQ text and JSON-LD, with no lender-norm claim");
+}
+
 console.log(`seo: ${pass} passed, ${fail} failed`);
 if (fail) { for (const f of fails) console.log("  ✗ " + f); process.exit(1); }

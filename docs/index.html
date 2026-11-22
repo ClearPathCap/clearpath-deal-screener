@@ -577,7 +577,7 @@
       <div class="field">
         <label>Down Payment</label>
         <div class="input-wrap"><input type="number" id="l-down" class="has-sfx" value="20" placeholder="20"><span class="sfx">%</span></div>
-        <div class="field-hint beginner-only">20% is typical. 25% down (75% LTV) is a common DSCR structure — putting more down quietly flatters DSCR.</div>
+        <div class="field-hint beginner-only">DealFit starts at 20%; use the down payment your lender quotes. Putting more down raises DSCR, which can make a thin deal look stronger.</div>
       </div>
       <div class="field">
         <label>Vacancy</label>
@@ -640,7 +640,7 @@
       <div class="field">
         <label>CapEx Reserve</label>
         <div class="input-wrap"><input type="number" id="l-capex" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
-        <div class="field-hint beginner-only">Capital reserve for big-ticket items. Deducted below NOI (lenders don't count it against DSCR).</div>
+        <div class="field-hint beginner-only">Capital reserve for big-ticket items. DealFit deducts it below NOI, so it lowers cash flow but not DSCR.</div>
       </div>
     </div>
 
@@ -794,7 +794,7 @@
       <div class="field">
         <label>Refi LTV</label>
         <div class="input-wrap"><input type="number" id="b-refiltv" class="has-sfx" value="75" placeholder="75"><span class="sfx">%</span></div>
-        <div class="field-hint beginner-only">New loan = ARV × this. 75% is the standard DSCR cash-out LTV.</div>
+        <div class="field-hint beginner-only">New loan = ARV × this. DealFit starts at 75%; use the LTV your refinance lender quotes.</div>
       </div>
       <div class="field">
         <label>Refi Rate</label>
@@ -981,7 +981,7 @@
       <div class="guide-item">
         <div class="gi-label">The 70% Rule</div>
         <div class="gi-val">Max Offer = (ARV × 0.70) − Repairs</div>
-        <div class="gi-note">Industry standard for fix &amp; flips. If you're self-performing, you can push to 75–78% and still hit your target.</div>
+        <div class="gi-note">The rule of thumb DealFit uses for flips. With Self-Renovating turned on, DealFit uses 75% instead.</div>
       </div>
     </div>
 
@@ -1025,12 +1025,12 @@
       <div class="guide-item">
         <div class="gi-label">LTV — Loan to Value</div>
         <div class="gi-val">Loan Amount ÷ ARV</div>
-        <div class="gi-note">Most private lenders want LTV under 70% of ARV. With no loan entered, the screener shows price-to-ARV instead — an all-cash reference, not a true LTV.</div>
+        <div class="gi-note">DealFit's flip funding screen flags a loan above 70% of ARV (or above 90% of total cost); each lender sets its own limits. With no loan entered, the screener shows price-to-ARV instead — an all-cash reference, not a true LTV.</div>
       </div>
       <div class="guide-item">
         <div class="gi-label">LTC — Loan to Cost</div>
         <div class="gi-val">Loan Amount ÷ (Purchase + Rehab)</div>
-        <div class="gi-note">How much of your total project cost the loan covers. Private lenders typically cap this near 90%. Shown only when you enter a loan.</div>
+        <div class="gi-note">How much of your total project cost the loan covers. DealFit's flip funding screen flags anything above 90%; each lender sets its own limit. Shown only when you enter a loan.</div>
       </div>
       <div class="guide-item">
         <div class="gi-label">ROI — Return on Investment</div>
@@ -1061,15 +1061,15 @@
       <div class="guide-item">
         <div class="gi-label">Key metrics lenders care about</div>
         <div class="gi-val">LTV · ARV · Borrower experience · Exit strategy</div>
-        <div class="gi-note">Many private lenders look for LTV under about 70% of ARV. DealFit shows the estimated figure so you can see where the deal stands before you present it.</div>
+        <div class="gi-note">DealFit calculates loan-to-ARV and checks a flip against its own funding screen (loan up to 70% of ARV and 90% of total cost), so you can see where the deal stands before you present it. Each lender sets its own limits.</div>
       </div>
       <div class="guide-item">
         <div class="gi-label">What Clear Path Capital does</div>
         <div class="gi-note">CPC brokers private money — meaning they work on your behalf to shop your scenario to lenders. You don't call lenders; they do.</div>
       </div>
       <div class="guide-item">
-        <div class="gi-label">Typical private money terms</div>
-        <div class="gi-val">Rate: 8–12% · LTV: up to 70% ARV · Term: 6–18 mo</div>
+        <div class="gi-label">DealFit's starting financing assumptions</div>
+        <div class="gi-val">Rate: 10% · Points: 3 · Hold: 5 mo — edit them for your deal</div>
         <div class="gi-note">Terms vary widely by borrower experience, market, and deal quality. Clear Path Capital helps investors explore financing options through multiple private lending partners. Rates, terms, and availability depend on the lender and the individual transaction.</div>
       </div>
     </div>

@@ -28,7 +28,7 @@ globalThis.__tier = 'starter';
 const STUBS = {
   'supabaseClient.js': `export const supabase = globalThis.__supabaseStub;`,
   'auth.js': `export const entitlementStatus = () => (globalThis.__entitlementStatus || 'verified'); 
-    export const isSignedIn = () => globalThis.__authState.signedIn;
+    export const isSignedIn = () => globalThis.__authState.signedIn; export const getUserId = () => '';
     export const getUserEmail = () => globalThis.__authState.email;
     const L = []; export const onAuthChange = f => L.push(f);
     globalThis.__notifyAuth = () => L.forEach(f => { try { f(); } catch {} });

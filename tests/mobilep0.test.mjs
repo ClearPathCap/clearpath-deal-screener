@@ -496,10 +496,15 @@ console.log('— §F market pushes only at boot / a genuine sign-in, for the own
   // change date and record leave storage AND the page BEFORE the plan check (current_tier)
   // answers — whether it is slow, fails, or never returns. main.js's own hideForeignMarkets,
   // compiled from source, is registered exactly as main registers it.
-  const hm = mj.match(/function hideForeignMarkets\(\) \{([\s\S]*?)\r?\n\}/);
-  const earlyHook = hm ? new Function('purgeForeignMarketSlots', 'renderAllSlots', 'renderGuideMarketIntel', hm[1]) : null;
-  const earlyRenders = [];
-  if (earlyHook) auth.onAuthChange(() => earlyHook(msync.purgeForeignMarketSlots, () => { earlyRenders.push([0, 1, 2, 3, 4, 5].map(i => tiers.getMarketForSlot(i))); }, () => {}), { beforeEntitlement: true });
+  // O1 renamed it hideForeignAccountData (it now also covers saved deals and the account line); either name compiles.
+  const hm = mj.match(/function (?:hideForeignAccountData|hideForeignMarkets)\(\) \{([\s\S]*?)\r?\n\}/);
+  const earlyHook = hm ? new Function('purgeForeignMarketSlots', 'renderAllSlots', 'renderGuideMarketIntel', 'getReviewingDealId', 'getDeals', 'dropForeignPipeline',
+    'cancelDealReview', 'renderPipeline', 'updateAccountUI', 'document', hm[1]) : null;
+  const earlyRenders = [], pipeRenders = [], acctRenders = [];
+  const docShim = { getElementById: (id) => (id === 'page-pipeline' ? { classList: { contains: () => true } } : null) };   // the pipeline page is open
+  if (earlyHook) auth.onAuthChange(() => earlyHook(msync.purgeForeignMarketSlots, () => { earlyRenders.push([0, 1, 2, 3, 4, 5].map(i => tiers.getMarketForSlot(i))); }, () => {},
+    () => null, storage.getDeals, storage.dropForeignPipeline || (() => false), () => {}, () => { pipeRenders.push(storage.getDeals().map(d => d.name).join()); },
+    () => { acctRenders.push(auth.getUserId()); }, docShim), { beforeEntitlement: true });
   const order = [];   // auth ordering, independent of main.js: an early subscriber vs the plan-check answer
   auth.onAuthChange(() => order.push('early'), { beforeEntitlement: true });
   let tierAnswered = false;
@@ -543,10 +548,74 @@ console.log('— §F market pushes only at boot / a genuine sign-in, for the own
   const bootHidden = !tierAnswered && tiers.getMarketForSlot(3) === '' && rec(3) === null && earlyRenders.some(r => r[3] === '');
   await boot; await settle(60);
   ok(bootHidden && tiers.getMarketForSlot(2) === 'durham-nc', 'R7f boot as B with A’s market on the device: hidden before the first plan check; B’s own arrives after');
-  ok(/onAuthChange\(hideForeignMarkets, \{ beforeEntitlement: true \}\);/.test(mj)
+  ok(/onAuthChange\((?:hideForeignAccountData|hideForeignMarkets), \{ beforeEntitlement: true \}\);/.test(mj)
      && /_session = next;\s*notifyEarly\(\);[^\n]*\n\s*await syncEntitlement\(\);/.test(rd('docs/src/js/auth.js'))
      && /const bootSession = _session;\s*notifyEarly\(\);[^\n]*\n\s*await syncEntitlement\(\);/.test(rd('docs/src/js/auth.js')),
      'R7g source: main registers the purge-and-render before the plan check; auth runs it before the first await on every auth event and at boot');
+
+
+  // O1 (pre-release check 2026-11-23): saved deals and the account line follow the account on the
+  // same early path. save_pipeline is a wholesale replace, so a save built on another account's
+  // cache would copy its deals into the new account and erase the new account's own.
+  const dA = { id: 9001, name: 'ALPHA-SECRET', type: 'flip', notes: 'A private note' }, dB = { id: 9002, name: 'BRAVO', type: 'flip', notes: 'B note' };
+  const pipesFor = { 'u-a': [dA], 'u-b': [dB] }; let pipeDelay = 0, saveDelay = 0; const saveLog = [];
+  const PIPE = { get_pipeline: () => later({ data: (pipesFor[auth.getUserId()] || []).slice(), error: null, status: 200 }, pipeDelay),
+                 save_pipeline: (args) => { saveLog.push({ who: auth.getUserId(), names: (args.p_deals || []).map(d => d.name) }); return later({ data: null, error: null, status: 200 }, saveDelay); } };
+  const asP = (session, mode, extra = {}) => { st = S({ session, rpc: { ...RPCWR, ...PIPE, ...(mode ? { current_tier: tierRpc(mode) } : {}), ...extra } }); return st; };
+  const names = () => storage.getDeals().map(d => d.name).join();
+  asP(null); await cb('SIGNED_OUT', null); await settle();
+  asP(UA); await cb('SIGNED_IN', UA); await settle(); await storage.hydratePipeline();
+  const o1Setup = names() === 'ALPHA-SECRET' && storage.pipelineHydrationOk();
+  const o1 = {};
+  for (const mode of ['slow', 'fail', 'pending']) {
+    if (mode !== 'slow') { asP(UA); await cb('SIGNED_IN', UA); await settle(); await storage.hydratePipeline(); }
+    pipeRenders.length = 0; acctRenders.length = 0; tierAnswered = false; saveLog.length = 0;
+    asP(UB, mode); const sw = cb('SIGNED_IN', UB); await settle(10);
+    const sv = await storage.saveDeals([{ id: 9100, name: 'B-NEW' }, ...storage.getDeals()]);   // the candidate pipeline.js builds on Save
+    o1[mode] = { answered: tierAnswered, uid: auth.getUserId(), cache: names(), hydrated: storage.pipelineHydrationOk(), state: storage.pipelineLoadState(),
+                 rendered: pipeRenders.some(r => r === ''), acct: acctRenders.includes('u-b'), save: sv.ok === false && sv.reason === 'stale', saves: saveLog.length };
+    if (mode !== 'pending') { await sw; await settle(80); }
+  }
+  ok(o1Setup, 'O1a setup: A’s saved deal is in the pipeline cache, hydrated, while A is signed in');
+  ok(['slow', 'fail', 'pending'].every(k => !o1[k].answered && o1[k].uid === 'u-b' && o1[k].cache === '' && !o1[k].hydrated && o1[k].state === 'loading' && o1[k].rendered && o1[k].acct),
+     'O1b a direct switch A → B drops A’s saved deals, re-renders the open pipeline as "loading" and the account line as B — before the plan check answers (' + JSON.stringify(o1) + ')');
+  ok(['slow', 'fail', 'pending'].every(k => o1[k].save && o1[k].saves === 0), 'O1c …and a Save in that window is refused before any request: A’s deals are never written into B, B’s are never erased');
+  // a late get_pipeline answer for A lands after B is signed in
+  asP(null); await cb('SIGNED_OUT', null); await settle();
+  asP(UA); await cb('SIGNED_IN', UA); await settle();
+  pipeDelay = 40; const lateA = storage.hydratePipeline(); await settle(5);
+  pipeDelay = 0; asP(UB); await cb('SIGNED_IN', UB); await settle(5);
+  await lateA; await settle(50);
+  const afterLate = { cache: names(), hydrated: storage.pipelineHydrationOk() };
+  await storage.hydratePipeline();
+  ok(afterLate.cache === '' && !afterLate.hydrated && names() === 'BRAVO' && storage.pipelineHydrationOk(),
+     'O1d a late pipeline answer for A, landing after B signed in, is discarded; B’s own pipeline then loads normally (' + JSON.stringify(afterLate) + ')');
+  // an in-flight save as A when B signs in
+  asP(null); await cb('SIGNED_OUT', null); await settle(); asP(UA); await cb('SIGNED_IN', UA); await settle(); await storage.hydratePipeline();
+  saveDelay = 40; saveLog.length = 0; const inflightSave = storage.saveDeals([{ id: 9200, name: 'A-NEW' }, ...storage.getDeals()]); await settle(5);
+  saveDelay = 0; asP(UB); await cb('SIGNED_IN', UB); await settle(5);
+  const rIn = await inflightSave; await settle(20);
+  ok(rIn.ok === false && rIn.accountChanged === true && saveLog.length === 1 && saveLog[0].who === 'u-a' && !/A-NEW|ALPHA-SECRET/.test(names()),
+     'O1e a save in flight when the account changes lands on A only and is never committed to the cache under B');
+  // same account: token refresh / tab-return SIGNED_IN with a slow plan check keep the user's own deals
+  asP(null); await cb('SIGNED_OUT', null); await settle(); asP(UA); await cb('SIGNED_IN', UA); await settle(); await storage.hydratePipeline();
+  pipeRenders.length = 0; asP(UA, 'slow'); const t1 = cb('TOKEN_REFRESHED', UA); await settle(10);
+  const keep1 = names() === 'ALPHA-SECRET' && storage.pipelineHydrationOk(); await t1; await settle(80);
+  asP(UA, 'slow'); const t2 = cb('SIGNED_IN', UA); await settle(10);
+  const keep2 = names() === 'ALPHA-SECRET' && storage.pipelineHydrationOk() && pipeRenders.length === 0; await t2; await settle(80);
+  ok(keep1 && keep2, 'O1f same-account TOKEN_REFRESHED / SIGNED_IN: the user’s own saved deals stay loaded and are not re-rendered early');
+  // ordinary sign-out drops the deals at once
+  asP(null); const so = cb('SIGNED_OUT', null); const soNow = { cache: names(), state: storage.pipelineLoadState() }; await so; await settle();
+  ok(soNow.cache === '' && soNow.state === 'idle', 'O1g sign-out drops the saved deals synchronously, before anything awaits');
+  // B's own pipeline read fails after a switch: A's proven hydration never carries over to B
+  asP(UA); await cb('SIGNED_IN', UA); await settle(); await storage.hydratePipeline();
+  asP(UB, null, { get_pipeline: () => NET_PG }); await cb('SIGNED_IN', UB); await settle(); await storage.hydratePipeline();
+  saveLog.length = 0; const sv2 = await storage.saveDeals([{ id: 9300, name: 'B-2' }, ...storage.getDeals()]);
+  ok(names() === '' && !storage.pipelineHydrationOk() && storage.pipelineLoadState() === 'failed' && sv2.reason === 'stale' && saveLog.length === 0,
+     'O1h B’s pipeline read fails after the switch: nothing of A’s is shown, the view says it could not load, and a Save is refused (no wholesale replace)');
+  ok(/onAuthChange\(hideForeignAccountData, \{ beforeEntitlement: true \}\);/.test(mj) && /if \(dropForeignPipeline\(\)\) \{/.test(mj) && /updateAccountUI\(\);\s*\}/.test(mj)
+     && /if \(uidNow\(\) !== uid\) return _cache;/.test(rd('docs/src/js/storage.js')) && /if \(_cacheFor !== uid\) return \{ ok: false, reason: 'stale', accountChanged: true \};/.test(rd('docs/src/js/storage.js')),
+     'O1i source: main drops another account’s deals and refreshes the account line before the plan check; storage tags its cache with the account and guards reads and saves');
 
   const T = auth.authEventAllowsMarketPush;
   ok(T('SIGNED_IN', null, UA) && T('INITIAL_SESSION', null, UA) && !T('SIGNED_IN', UA, UA) && !T('SIGNED_IN', UA, UB)

@@ -89,10 +89,13 @@ const compiled = new AsyncFunction('hydrateMarketsOnAuth', 'readOnlySync', 'rend
 auth.onAuthChange((s, ctx) => { compiled(msync.hydrateMarketsOnAuth, auth.readOnlySync || (() => false), () => {}, () => {}, msync.purgeForeignMarketSlots || (() => 0), s, ctx).catch(() => {}); });
 
 // Lane-5 R7: main.js's own hideForeignMarkets, compiled from source, registered as main registers it.
-const hm = mainSrc.match(/function hideForeignMarkets\(\) \{([\s\S]*?)\r?\n\}/);
-const earlyHook = hm ? new Function('purgeForeignMarketSlots', 'renderAllSlots', 'renderGuideMarketIntel', hm[1]) : null;
+// (O1 renamed it hideForeignAccountData; either name compiles. Its pipeline / account-line parts are no-ops here.)
+const hm = mainSrc.match(/function (?:hideForeignAccountData|hideForeignMarkets)\(\) \{([\s\S]*?)\r?\n\}/);
+const earlyHook = hm ? new Function('purgeForeignMarketSlots', 'renderAllSlots', 'renderGuideMarketIntel', 'getReviewingDealId', 'getDeals', 'dropForeignPipeline',
+  'cancelDealReview', 'renderPipeline', 'updateAccountUI', 'document', hm[1]) : null;
 const earlyRenders = [];
-if (earlyHook) auth.onAuthChange(() => earlyHook(msync.purgeForeignMarketSlots, () => { earlyRenders.push([0, 1, 2, 3, 4, 5].map(i => tiers.getMarketForSlot(i))); }, () => {}), { beforeEntitlement: true });
+if (earlyHook) auth.onAuthChange(() => earlyHook(msync.purgeForeignMarketSlots, () => { earlyRenders.push([0, 1, 2, 3, 4, 5].map(i => tiers.getMarketForSlot(i))); }, () => {},
+  () => null, () => [], () => false, () => {}, () => {}, () => {}, { getElementById: () => null }), { beforeEntitlement: true });
 
 for (let i = 0; i < 6; i++) tiers.setMarketSlot(i, '');
 tiers.setMarketSlot(0, 'tampa-fl');

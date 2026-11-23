@@ -14,7 +14,7 @@
 //   • clearPipelineCache() — drop the cache on sign-out (anonymous = empty)
 
 import { supabase } from './supabaseClient.js';
-import { isSignedIn } from './auth.js';
+import { isSignedIn, getUserId } from './auth.js';
 import { noteServerResult, isNetworkFailure } from './connectivity.js';
 
 // Wave 5 (§18-1 ratified matrix): pipeline capacity is NOT a tier
@@ -24,6 +24,14 @@ import { noteServerResult, isNetworkFailure } from './connectivity.js';
 export const PIPELINE_ALLOWANCE = 25;
 
 let _cache = [];  // current pipeline, in memory (source of truth is the server)
+// O1 (pre-release check 2026-11-23): the account whose server answer the cache holds ('' = none).
+// A cache is never shown, reused or saved for a different account: on a direct account switch
+// (another tab signs in as someone else) the previous account's deals are dropped at once, a
+// late answer for the previous account is discarded, and a save built on another account's
+// cache is refused — save_pipeline is a WHOLESALE replace, so that save would copy one
+// account's deals into another and erase the other's own.
+let _cacheFor = '';
+const uidNow = () => (isSignedIn() ? (getUserId() || '') : '');
 let _mutationInFlight = false;  // at most one unresolved save/delete mutation
 
 // UX wave hardening (silent-wipe): save_pipeline is a WHOLESALE replace, so a
@@ -72,6 +80,8 @@ export async function saveDeals(candidate) {
   // server actually confirmed this session. Refusing here (not in callers)
   // covers save, edit, delete, and every future mutation path identically.
   if (!_hydrated) return { ok: false, reason: 'stale' };
+  const uid = uidNow();
+  if (_cacheFor !== uid) return { ok: false, reason: 'stale', accountChanged: true };   // O1: never another account's cache
   const snapshot = Array.isArray(candidate) ? candidate.slice() : [];
   _mutationInFlight = true;
   try {
@@ -81,6 +91,9 @@ export async function saveDeals(candidate) {
       console.warn('Pipeline save failed:', error);
       return { ok: false, reason: classifyMutationFailure(error), offline: isNetworkFailure(error, status) };
     }
+    // O1: the account changed while saving — the save landed on the account that made it;
+    // never commit it here, under the account that is signed in now.
+    if (uidNow() !== uid) return { ok: false, reason: 'stale', accountChanged: true };
     _cache = snapshot;
     return { ok: true };
   } catch (e) {
@@ -95,18 +108,22 @@ export async function saveDeals(candidate) {
 // Pull the signed-in user's pipeline from the server into the cache. Called on
 // sign-in and at boot when a session is restored. Returns the deals.
 export async function hydratePipeline() {
-  if (!isSignedIn()) { _cache = []; _hydrated = false; _loadState = 'idle'; return _cache; }
+  if (!isSignedIn()) { _cache = []; _hydrated = false; _cacheFor = ''; _loadState = 'idle'; return _cache; }
   if (!_hydrated) _loadState = 'loading';
+  const uid = uidNow();
   try {
     const { data, error, status } = await supabase.rpc('get_pipeline');
+    if (uidNow() !== uid) return _cache;   // O1: a late answer for a previous account is discarded, never applied
     noteServerResult('pipeline', { ok: !error, error, status });
     if (error) { console.warn('Pipeline load failed:', error); if (!_hydrated) { _loadState = 'failed'; _loadFailKind = isNetworkFailure(error, status) ? 'offline' : 'server'; } return _cache; }
     // Success — including the server truthfully answering "empty". Only here
     // does the cache become a legitimate base for a wholesale replace.
     _cache = Array.isArray(data) ? data : [];
+    _cacheFor = uid;
     _hydrated = true;
     _loadState = 'ok';
   } catch (e) {
+    if (uidNow() !== uid) return _cache;   // O1: the failure belongs to a previous account
     console.warn('Pipeline load failed:', e);
     noteServerResult('pipeline', { error: e });
     if (!_hydrated) { _loadState = 'failed'; _loadFailKind = isNetworkFailure(e) ? 'offline' : 'server'; }
@@ -117,4 +134,13 @@ export async function hydratePipeline() {
 
 // On sign-out, drop the cache so the next (anonymous) view shows nothing.
 // Hydration knowledge dies with the session it was proven in.
-export function clearPipelineCache() { _cache = []; _hydrated = false; _loadState = 'idle'; }
+export function clearPipelineCache() { _cache = []; _hydrated = false; _cacheFor = ''; _loadState = 'idle'; }
+
+// O1: drop a cache that belongs to an account other than the one signed in now. Synchronous and
+// network-free; runs on the auth path BEFORE the plan check. Signed in, the view then says
+// "Loading your saved deals…" until this account's own pipeline arrives. Returns true if dropped.
+export function dropForeignPipeline() {
+  if (!_cacheFor || _cacheFor === uidNow()) return false;
+  _cache = []; _hydrated = false; _cacheFor = ''; _loadState = isSignedIn() ? 'loading' : 'idle';
+  return true;
+}

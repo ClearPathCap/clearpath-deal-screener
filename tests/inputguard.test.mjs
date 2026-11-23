@@ -28,7 +28,7 @@ const SLOTS = ['bridgeport-ct', 'charlotte-nc'];
 const LABELS = { 'bridgeport-ct': 'Bridgeport, CT', 'charlotte-nc': 'Charlotte, NC' };
 const STUBS = {
   'supabaseClient.js': `export const supabase = globalThis.__supabaseStub;`,
-  'auth.js': `export const entitlementStatus = () => (globalThis.__entitlementStatus || 'verified'); export const isSignedIn = () => false; export const getUserEmail = () => '';
+  'auth.js': `export const entitlementStatus = () => (globalThis.__entitlementStatus || 'verified'); export const isSignedIn = () => false; export const getUserId = () => ''; export const getUserEmail = () => '';
     const L = []; export const onAuthChange = f => L.push(f);
     export const initAuthAndEntitlement = async () => {}; export const sendOtpCode = async () => ({ ok: true, msg: '' });
     export const verifyOtpCode = async () => ({ ok: true, msg: '' }); export const signOutAccount = async () => {};

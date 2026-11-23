@@ -73,7 +73,7 @@ const STUBS = {
   'markets.js': `export const ALL_MARKETS=[],STR_MARKETS={},FLIP_MARKETS={},LTR_MARKETS={};`,
   // UX wave: main.js imports market sync; inert here — §A-§F never exercise it.
   'marketSync.js': `export const hydrateMarketsOnAuth=async()=>({status:'signed-out',pulled:0,pushed:0}),
-    pushMarketChange=async()=>({ok:true,local:true});`,
+    pushMarketChange=async()=>({ok:true,local:true}), purgeForeignMarketSlots=()=>0;`,
 };
 
 registerHooks({

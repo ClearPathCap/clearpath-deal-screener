@@ -41,7 +41,7 @@ const STUBS = {
   'marketIntel.js': `export const fetchMarketIntel = async () => new Map();`,
   'install.js': `export const openInstall=()=>{},triggerInstall=()=>{},initInstallHint=()=>{},consumeInstallLink=()=>false,openInstallFromLink=()=>{};`,
   'share.js': `export const openShareApp=()=>{},shareDeal=()=>{};`,
-  'marketSync.js': `export const hydrateMarketsOnAuth=async()=>({status:'signed-out',pulled:0,pushed:0}), pushMarketChange=async()=>({ok:true,local:true});`,
+  'marketSync.js': `export const hydrateMarketsOnAuth=async()=>({status:'signed-out',pulled:0,pushed:0}), pushMarketChange=async()=>({ok:true,local:true}), purgeForeignMarketSlots=()=>0;`,
 };
 registerHooks({
   resolve(spec, ctx, next) { const base = spec.split('/').pop(); if (STUBS[base] && ctx.parentURL && ctx.parentURL.includes('/docs/src/js/')) return { url: 'stub:' + base, shortCircuit: true }; return next(spec, ctx); },

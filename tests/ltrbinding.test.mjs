@@ -70,7 +70,7 @@ const STUBS = {
   'repair.js': `export const setRepairTier=()=>{},calcRepair=()=>{},useRepairEstimate=()=>{},onSelfRenoToggle=()=>{},updateRepairRangesForMarket=()=>{},repairFieldShouldSelectOnFocus=()=>false,repairEstimateSnapshot=()=>null,repairEstimateSnapshotFor=()=>null;`,
   'share.js': `export const openShareApp=()=>{},shareDeal=()=>{};`,
   'marketSync.js': `export const hydrateMarketsOnAuth=async()=>({status:'signed-out',pulled:0,pushed:0}),
-    pushMarketChange=async()=>({ok:true,local:true});`,
+    pushMarketChange=async()=>({ok:true,local:true}), purgeForeignMarketSlots=()=>0;`,
 };
 registerHooks({
   resolve(spec, ctx, next) {

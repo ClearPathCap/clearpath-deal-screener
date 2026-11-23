@@ -59,7 +59,7 @@ const STUBS = {
   'install.js': `export const openInstall=()=>{},triggerInstall=()=>{},initInstallHint=()=>{},consumeInstallLink=()=>false,openInstallFromLink=()=>{};`,
   'share.js': `export const openShareApp=()=>{},shareDeal=()=>{};`,
   'marketSync.js': `export const hydrateMarketsOnAuth=async()=>({status:'signed-out',pulled:0,pushed:0}),
-    pushMarketChange=async()=>({ok:true,local:true});`,
+    pushMarketChange=async()=>({ok:true,local:true}), purgeForeignMarketSlots=()=>0;`,
 };
 registerHooks({
   resolve(spec, ctx, next) {

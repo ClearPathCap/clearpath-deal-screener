@@ -492,6 +492,62 @@ console.log('— §F market pushes only at boot / a genuine sign-in, for the own
   localStorage.setItem = realSet;
   ok(!threw && p3 === 1 && tiers.getMarketForSlot(1) === '', 'R3 a storage exception during the purge is contained; the other account’s value is still cleared');
 
+  // Lane-5 R7 (owner decision 2026-11-23): on a DIRECT switch the previous account's market,
+  // change date and record leave storage AND the page BEFORE the plan check (current_tier)
+  // answers — whether it is slow, fails, or never returns. main.js's own hideForeignMarkets,
+  // compiled from source, is registered exactly as main registers it.
+  const hm = mj.match(/function hideForeignMarkets\(\) \{([\s\S]*?)\r?\n\}/);
+  const earlyHook = hm ? new Function('purgeForeignMarketSlots', 'renderAllSlots', 'renderGuideMarketIntel', hm[1]) : null;
+  const earlyRenders = [];
+  if (earlyHook) auth.onAuthChange(() => earlyHook(msync.purgeForeignMarketSlots, () => { earlyRenders.push([0, 1, 2, 3, 4, 5].map(i => tiers.getMarketForSlot(i))); }, () => {}), { beforeEntitlement: true });
+  const order = [];   // auth ordering, independent of main.js: an early subscriber vs the plan-check answer
+  auth.onAuthChange(() => order.push('early'), { beforeEntitlement: true });
+  let tierAnswered = false;
+  const tierRpc = (mode) => () => {
+    if (mode === 'pending') return new Promise(() => {});
+    const ans = mode === 'fail' ? NET_PG : mode === 'error' ? { data: null, error: { message: 'internal', code: 'XX000' }, status: 500 } : PRO;
+    return new Promise(r => setTimeout(() => { tierAnswered = true; order.push('tier'); r(ans); }, 60));
+  };
+  const asT = (session, mode) => { st = S({ session, rpc: { ...RPCWR, current_tier: tierRpc(mode) } }); return st; };
+  const backToA = async () => { asR(UA); await cb('SIGNED_IN', UA); await settle(); };
+  asR(null); await cb('SIGNED_OUT', null); await settle();
+  resetDevice(); localStorage.removeItem('slotChangeDates');
+  rowsFor['u-a'] = [{ slot_index: 3, market_id: 'reno-nv', changed_at: '2026-11-20T12:00:00.000Z' }]; rowsFor['u-b'] = [{ slot_index: 2, market_id: 'durham-nc', changed_at: null }];
+  tiers.setMarketSlot(4, 'austin-tx');                    // an unattributed local-only pick (B's sign-in will try, and be refused, to push it — not a new write path)
+  await backToA();
+  const aShown = tiers.getMarketForSlot(3) === 'reno-nv' && !!dates()[3] && JSON.parse(rec(3) || '{}').u === 'u-a';
+  const r7 = {};
+  for (const mode of ['slow', 'fail', 'error', 'pending']) {
+    if (mode !== 'slow') await backToA();
+    tierAnswered = false; earlyRenders.length = 0; order.length = 0;
+    asT(UB, mode); const sw = cb('SIGNED_IN', UB); await settle(10);
+    r7[mode] = { answered: tierAnswered, uid: auth.getUserId(), v: tiers.getMarketForSlot(3), date: !!dates()[3], rec: rec(3), render: earlyRenders.find(r => r[3] === ''),
+                 local: tiers.getMarketForSlot(4), writes: (st.rpcCalls || []).filter(c => c.name === 'set_user_market').length, firstEarly: order[0] === 'early' };
+    if (mode !== 'pending') { await sw; await settle(60); }
+  }
+  ok(aShown, 'R7a setup: A’s server market, change date and record are on the device while A is signed in');
+  ok(['slow', 'fail', 'error', 'pending'].every(k => !r7[k].answered && r7[k].uid === 'u-b' && r7[k].v === '' && !r7[k].date && r7[k].rec === null),
+     'R7b a direct switch A → B removes A’s market, date and record from STORAGE before the plan check answers — slow, offline, server error, never (' + JSON.stringify(r7) + ')');
+  ok(['slow', 'fail', 'error', 'pending'].every(k => !!r7[k].render && r7[k].render[4] === 'austin-tx'), 'R7c …and the PAGE is re-rendered without it, before the plan check, in all four cases');
+  ok(['slow', 'fail', 'error', 'pending'].every(k => r7[k].local === 'austin-tx' && r7[k].writes === 0 && r7[k].firstEarly),
+     'R7d the unattributed local pick is kept; nothing is written before the plan check; the early subscriber runs first');
+  // same account (tab return / token refresh) with a slow or hanging plan check: nothing of the user's own is cleared or re-rendered
+  asR(null); await cb('SIGNED_OUT', null); await settle(); await backToA();
+  earlyRenders.length = 0; asT(UA, 'slow'); const sa = cb('SIGNED_IN', UA); await settle(10);
+  const keptSame = tiers.getMarketForSlot(3) === 'reno-nv' && !!dates()[3] && earlyRenders.length === 0; await sa; await settle(60);
+  asT(UA, 'slow'); const tr = cb('TOKEN_REFRESHED', UA); await settle(10);
+  const keptTok = tiers.getMarketForSlot(3) === 'reno-nv' && earlyRenders.length === 0; await tr; await settle(60);
+  ok(keptSame && keptTok && tiers.getMarketForSlot(3) === 'reno-nv', 'R7e same-account SIGNED_IN / TOKEN_REFRESHED: the signed-in user’s own market is not cleared or re-rendered early');
+  // boot as B with A's market still on the device and a slow plan check: hidden before the first answer
+  tierAnswered = false; earlyRenders.length = 0; asT(UB, 'slow'); const boot = auth.initAuthAndEntitlement(); await settle(10);
+  const bootHidden = !tierAnswered && tiers.getMarketForSlot(3) === '' && rec(3) === null && earlyRenders.some(r => r[3] === '');
+  await boot; await settle(60);
+  ok(bootHidden && tiers.getMarketForSlot(2) === 'durham-nc', 'R7f boot as B with A’s market on the device: hidden before the first plan check; B’s own arrives after');
+  ok(/onAuthChange\(hideForeignMarkets, \{ beforeEntitlement: true \}\);/.test(mj)
+     && /_session = next;\s*notifyEarly\(\);[^\n]*\n\s*await syncEntitlement\(\);/.test(rd('docs/src/js/auth.js'))
+     && /const bootSession = _session;\s*notifyEarly\(\);[^\n]*\n\s*await syncEntitlement\(\);/.test(rd('docs/src/js/auth.js')),
+     'R7g source: main registers the purge-and-render before the plan check; auth runs it before the first await on every auth event and at boot');
+
   const T = auth.authEventAllowsMarketPush;
   ok(T('SIGNED_IN', null, UA) && T('INITIAL_SESSION', null, UA) && !T('SIGNED_IN', UA, UA) && !T('SIGNED_IN', UA, UB)
      && !T('TOKEN_REFRESHED', null, UA) && !T('TOKEN_REFRESHED', UA, UA) && !T('USER_UPDATED', UA, UA) && !T('SIGNED_OUT', UA, null) && !T('SIGNED_IN', null, null),

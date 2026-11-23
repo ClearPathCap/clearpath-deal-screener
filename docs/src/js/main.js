@@ -2215,6 +2215,13 @@ openInstallFromLink();      // business-card QR: open "Get the App" after load
 onAuthChange(refreshTierUI);
 onAuthChange(syncPipelineOnAuth);
 onAuthChange(syncMarketsOnAuth);   // UX wave finding 3: market slots follow the account
+// Lane-5 R7: on a direct account switch (or a boot with another account's slots on the
+// device) hide the other account's server-held slots BEFORE the plan check, which may be
+// slow, fail or never return. Synchronous, no network write: storage purge + re-render only.
+onAuthChange(hideForeignMarkets, { beforeEntitlement: true });
+function hideForeignMarkets() {
+  if (purgeForeignMarketSlots() > 0) { renderAllSlots(); renderGuideMarketIntel(); }
+}
 // Lane-5 R1b: another tab may purge or pull the shared market slots (localStorage) while this
 // tab's own sync changes nothing; re-render from storage so this page never keeps showing a
 // value that storage no longer holds. Display only: no network write, no sync.

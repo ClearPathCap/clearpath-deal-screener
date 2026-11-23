@@ -44,6 +44,7 @@ const sessionFor = (id) => {
   return { access_token: b64u({ alg: 'none', typ: 'JWT' }) + '.' + b64u({ sub: id, exp: now + 3600, aud: 'authenticated', role: 'authenticated', session_id: 's-' + id }) + '.x',
     refresh_token: 'r-' + id + '-' + (++seq), expires_in: 3600, expires_at: now + 3600, token_type: 'bearer', user: userObj(id) };
 };
+let tierMode = 'ok', tierAnswered = false;
 let authedAs = 'u-a';        // who the fake backend thinks the bearer is
 let pendingUser = 'u-a';     // who a verifyOtp signs in
 const calls = [];
@@ -53,7 +54,10 @@ globalThis.fetch = async (input, init = {}) => {
   calls.push({ path: u.pathname, body });
   const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json' } });
   switch (u.pathname) {
-    case '/rest/v1/rpc/current_tier': return json('pro');
+    case '/rest/v1/rpc/current_tier':   // lane-5 R7: the plan check may be slow, fail or never answer
+      if (tierMode === 'pending') return new Promise(() => {});
+      if (tierMode === 'slow' || tierMode === 'fail') return new Promise(r => setTimeout(() => { tierAnswered = true; r(tierMode === 'fail' ? json({ message: 'internal' }, 500) : json('pro')); }, 300));
+      return json('pro');
     case '/rest/v1/rpc/get_user_markets': return json(authedAs === 'u-b' ? [{ slot_index: 1, market_id: 'charlotte-nc', changed_at: null }] : []);   // B holds one server slot
     case '/rest/v1/rpc/set_user_market': return json({ ok: false, reason: 'cooldown' });   // refused: the slot stays local-only (worst case)
     case '/rest/v1/rpc/get_pipeline': return json([]);
@@ -83,6 +87,12 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const compiled = new AsyncFunction('hydrateMarketsOnAuth', 'readOnlySync', 'renderAllSlots', 'renderGuideMarketIntel', 'purgeForeignMarketSlots',
   ...(m ? m[1].split(',').map(s => s.trim()).filter(Boolean) : []), m ? m[2] : 'throw new Error("syncMarketsOnAuth not found")');
 auth.onAuthChange((s, ctx) => { compiled(msync.hydrateMarketsOnAuth, auth.readOnlySync || (() => false), () => {}, () => {}, msync.purgeForeignMarketSlots || (() => 0), s, ctx).catch(() => {}); });
+
+// Lane-5 R7: main.js's own hideForeignMarkets, compiled from source, registered as main registers it.
+const hm = mainSrc.match(/function hideForeignMarkets\(\) \{([\s\S]*?)\r?\n\}/);
+const earlyHook = hm ? new Function('purgeForeignMarketSlots', 'renderAllSlots', 'renderGuideMarketIntel', hm[1]) : null;
+const earlyRenders = [];
+if (earlyHook) auth.onAuthChange(() => earlyHook(msync.purgeForeignMarketSlots, () => { earlyRenders.push([0, 1, 2, 3, 4, 5].map(i => tiers.getMarketForSlot(i))); }, () => {}), { beforeEntitlement: true });
 
 for (let i = 0; i < 6; i++) tiers.setMarketSlot(i, '');
 tiers.setMarketSlot(0, 'tampa-fl');
@@ -140,6 +150,21 @@ reset(); await auth.signOutAccount(); await settle(); pendingUser = 'u-b';
 const v4 = await auth.verifyOtpCode('u-b@local.test', '123456'); await settle();
 ok(v4.ok && tiers.getMarketForSlot(1) === 'charlotte-nc' && writes().length === 0,
    'K12 E2: B signs in again — the server restores B’s own market (nothing written)');
+console.log('— lane-5 R7: a DIRECT switch B → A (no sign-out) while the plan check is slow / failing / never answers ─');
+const viaSdk = {};
+for (const mode of ['slow', 'fail', 'pending']) {
+  if (mode !== 'slow') { tierMode = 'ok'; pendingUser = 'u-b'; await auth.verifyOtpCode('u-b@local.test', '123456'); await settle(); }   // B (and B's market) back
+  const had = tiers.getMarketForSlot(1) === 'charlotte-nc';
+  reset(); earlyRenders.length = 0; tierAnswered = false; tierMode = mode; pendingUser = 'u-a';
+  const sw = auth.verifyOtpCode('u-a@local.test', '123456');   // the real SDK emits SIGNED_IN for A while B is signed in
+  await settle(80);
+  viaSdk[mode] = { had, answered: tierAnswered, ev: events.includes('SIGNED_IN'), uid: auth.getUserId(), v: tiers.getMarketForSlot(1), rec: localStorage.getItem('marketSlotFrom_1'),
+                   render: earlyRenders.some(r => r[1] === ''), local: tiers.getMarketForSlot(0), writes: writes().length };
+  if (mode !== 'pending') { await sw; await settle(400); }
+}
+ok(['slow', 'fail', 'pending'].every(k => viaSdk[k].had && viaSdk[k].ev && !viaSdk[k].answered && viaSdk[k].uid === 'u-a' && viaSdk[k].v === '' && viaSdk[k].rec === null && viaSdk[k].render),
+   'K13 R7 through the real SDK: B’s market leaves storage and the page before the plan check answers — slow, failing, never (' + JSON.stringify(viaSdk) + ')');
+ok(['slow', 'fail', 'pending'].every(k => viaSdk[k].local === 'tampa-fl' && viaSdk[k].writes === 0), 'K14 …the unattributed local pick is kept and nothing is written before the plan check');
 ok(calls.every(c => !/^https?:/.test(c.path)) && !calls.some(c => /supabase\.co/.test(c.path)), 'K10 every request went to the in-memory fake (no network)');
 
 console.log(`\nf7sdk: ${pass} passed, ${fail} failed`);

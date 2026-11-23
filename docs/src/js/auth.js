@@ -11,8 +11,15 @@ import { noteServerResult, isNetworkFailure, onReconnect } from './connectivity.
 
 let _session = null;
 const _listeners = [];
+const _early = [];
 
-export function onAuthChange(fn) { _listeners.push(fn); }
+// Lane-5 R7: `{ beforeEntitlement: true }` registers a SYNCHRONOUS subscriber (no network write)
+// that runs the instant the session user changes (and at boot) — BEFORE the plan check
+// (`current_tier`), which may be slow, fail or never return. It is for display hygiene only
+// (hiding another account's device-held data); it gets the session and no context, must not
+// await, and must never write to the network. Every other subscriber still runs after the plan check.
+export function onAuthChange(fn, opts) { ((opts && opts.beforeEntitlement) ? _early : _listeners).push(fn); }
+function notifyEarly() { _early.forEach(fn => { try { fn(_session); } catch (e) { console.warn(e); } }); }
 
 // Lane-2 review F7: every subscriber call carries an explicit, frozen context, decided
 // from the auth EVENT and the user it was decided for — not a timing-sensitive global
@@ -61,6 +68,7 @@ export async function initAuthAndEntitlement() {
     const next = session || null;
     const pushFor = authEventAllowsMarketPush(event, _session, next) ? next : null;
     _session = next;
+    notifyEarly();   // R7: before the plan check
     await syncEntitlement();
     notify('auth:' + event, pushFor);
   });
@@ -69,6 +77,7 @@ export async function initAuthAndEntitlement() {
   // visitor suppress server truth with ?dev=1. Server answer lands on every boot
   // and every auth change, always.
   const bootSession = _session;
+  notifyEarly();   // R7: before the first plan check
   await syncEntitlement();
   notify('boot', bootSession);
 

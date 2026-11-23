@@ -123,6 +123,17 @@ C.noteServerResult('t', { error: NET_AUTH });
 ok(retried >= 1, 'C8 the browser coming back online re-runs the registered read retries when a request had failed');
 const before = retried; C.noteServerResult('t', { ok: true }); (winL.online || []).forEach(f => f({ type: 'online' })); await new Promise(r => setTimeout(r, 0));
 ok(retried === before, 'C9 no retry storm: nothing re-runs when the server is already reachable');
+// Browser finding (implementer, 2026-11-22): signed out after a failed sign-in, Retry had nothing
+// to re-read, so the banner kept claiming "offline" with no fresh evidence. Now it returns to unknown.
+C.noteServerResult('sign-in', { error: NET_AUTH });
+ok(C.serverUnreachable() && banner.hidden === false, 'C10a a failed sign-in shows the banner');
+await C.retryNow();   // the registered retryer above makes no server call (like signed-out auth)
+ok(!C.serverUnreachable() && banner.hidden === true, 'C10b Retry with nothing to re-read clears the claim (unknown), so the banner is not stuck on "offline"');
+let probeOn = true; C.onReconnect(async () => { if (probeOn) C.noteServerResult('probe', { error: NET_PG.error, status: 0 }); });
+C.noteServerResult('t', { error: NET_AUTH });
+await C.retryNow();
+ok(C.serverUnreachable() && banner.hidden === false, 'C10c …but a retry whose read still fails keeps the banner (evidence wins)');
+probeOn = false;
 
 // ── §E entitlement ───────────────────────────────────────────────────────────
 console.log('— §E entitlement stays server-only; an unreachable check is unverified, fail-closed ─');

@@ -38,7 +38,9 @@ export function serverUnreachable() { return _reachable === false; }
 
 // Record the outcome of ONE server call. `ok` = the server answered (even with a
 // refusal); otherwise pass the error (+ PostgREST status) for classification.
+let _resultSeq = 0;             // bumps on every recorded server outcome
 export function noteServerResult(op, { ok = false, error = null, status } = {}) {
+  _resultSeq++;
   if (ok || !isNetworkFailure(error, status)) {
     if (_reachable !== true || _failedOps.size) { _reachable = true; _failedOps.clear(); renderNetStatus(); }
     return 'answered';
@@ -56,8 +58,15 @@ export async function retryNow() {
   if (_retrying) return;
   _retrying = true;
   setBusy(true);
+  const seq = _resultSeq;
   try { for (const fn of _retryers) { try { await fn(); } catch (e) { console.warn('Reconnect retry failed:', e); } } }
-  finally { _retrying = false; setBusy(false); renderNetStatus(); }
+  finally {
+    // Nothing to re-read (e.g. signed out after a failed sign-in): there is no fresh
+    // evidence either way, so the warning returns to "unknown" instead of claiming
+    // offline indefinitely; the next real request re-classifies it.
+    if (_resultSeq === seq && _reachable === false) { _reachable = null; _failedOps.clear(); }
+    _retrying = false; setBusy(false); renderNetStatus();
+  }
 }
 
 const browserOffline = () => typeof navigator !== 'undefined' && navigator && navigator.onLine === false;

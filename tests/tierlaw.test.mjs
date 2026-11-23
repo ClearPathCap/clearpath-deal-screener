@@ -146,8 +146,11 @@ ok("[K-4B] docs/terms.html exists and is a DealFit page",
    /<title>Terms of Service — DealFit/.test(termsHtml) && /styles\.css/.test(termsHtml));
 ok("[K-4B] docs/privacy.html exists and is a DealFit page",
    /<title>Privacy Policy — DealFit/.test(privacyHtml) && /styles\.css/.test(privacyHtml));
+// Re-pinned 2026-11-23 (owner publication GO, Mobile Phase 0): the privacy policy's Effective Date is
+// the actual publication date, November 23, 2026 (its §5 hosting/software-delivery wording changed);
+// the Terms are unchanged and keep August 26, 2026.
 ok("[K-4B] both documents carry the governed effective date",
-   /Effective Date: August 26, 2026/.test(termsHtml) && /Effective Date: August 26, 2026/.test(privacyHtml));
+   /Effective Date: August 26, 2026/.test(termsHtml) && /Effective Date: November 23, 2026/.test(privacyHtml));
 ok("[K-4B] the app links to Terms at its canonical path", /href="terms\.html"/.test(html));
 ok("[K-4B] the app links to Privacy at its canonical path", /href="privacy\.html"/.test(html));
 ok("[K-4B] the legal links live in a single quiet footer, not the analyzer body",

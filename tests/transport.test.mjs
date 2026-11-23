@@ -382,7 +382,8 @@ ok("[K-4C2] no custom client-side consent control exists — consent lives only 
 ok("[K-4C2] the shipped legal surface still serves the URLs Stripe is configured with",
    /href="terms\.html"/.test(shellHtml) && /href="privacy\.html"/.test(shellHtml)
    && /Effective Date: August 26, 2026/.test(src("docs/terms.html"))
-   && /Effective Date: August 26, 2026/.test(src("docs/privacy.html")));
+   // Re-pinned 2026-11-23 (owner publication GO): privacy's governed date is its publication date.
+   && /Effective Date: November 23, 2026/.test(src("docs/privacy.html")));
 
 console.error = realConsoleError;
 console.log(`\ntransport: ${pass} passed, ${fail} failed`);

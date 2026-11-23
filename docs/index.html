@@ -33,8 +33,7 @@
 <link rel="apple-touch-icon" href="icons/clearpath-mark.png">
 <link rel="icon" href="favicon.svg">
 <link rel="manifest" href="manifest.json">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/fonts.css">
 <link rel="stylesheet" href="src/css/styles.css">
 </head>
 <body>
@@ -48,6 +47,9 @@
   <button class="nav-btn" data-tab="pipeline" onclick="showPage('pipeline',this)">Pipeline</button>
   <button class="nav-btn" data-tab="guide" onclick="showPage('guide',this)">Guide</button>
 </div>
+<!-- Mobile Phase 0: truthful connectivity status (src/js/connectivity.js). Hidden until a
+     server request actually fails (or the browser reports offline); Retry re-runs READS only. -->
+<div id="net-status" class="net-status" role="status" aria-live="polite" hidden><span class="net-status-msg"></span><button type="button" class="net-status-retry">Retry</button></div>
 
 <!-- Global utility row — share + install, kept off the wordmark row (Round 2 #3) -->
 <div class="util-bar">
@@ -1275,6 +1277,7 @@
       </div>
       <div id="account-row" style="display:none">
         <div class="redeem-label">Signed in as <strong id="account-email"></strong> · <a href="#" class="sign-out-link" onclick="signOutAccount();return false;" style="color:var(--accent);text-decoration:underline">Sign out</a></div>
+        <div id="account-plan-unverified" class="gi-offline" role="status" hidden>Couldn’t check your plan with DealFit’s server, so premium features stay off until it reconnects. <button type="button" class="net-status-retry" onclick="retryConnection()">Retry</button></div>
       </div>
     </div>
 

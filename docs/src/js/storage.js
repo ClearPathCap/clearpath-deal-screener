@@ -15,6 +15,7 @@
 
 import { supabase } from './supabaseClient.js';
 import { isSignedIn } from './auth.js';
+import { noteServerResult, isNetworkFailure } from './connectivity.js';
 
 // Wave 5 (§18-1 ratified matrix): pipeline capacity is NOT a tier
 // differentiator. Every signed-in tier gets the same allowance — an
@@ -36,6 +37,12 @@ let _hydrated = false;
 
 // True once this session has a confirmed server round-trip to build saves on.
 export function pipelineHydrationOk() { return _hydrated; }
+
+// Mobile Phase 0: what the pipeline view may truthfully say. 'loading' before the
+// first answer, 'failed' when the last load did not get one (the cache is NOT the
+// account's pipeline then — never render it as "no deals saved").
+let _loadState = 'idle';   // 'idle' | 'loading' | 'ok' | 'failed'
+export function pipelineLoadState() { return _hydrated ? 'ok' : _loadState; }
 
 // Synchronous read for the UI. Returns a copy so callers can't mutate the cache.
 export function getDeals() { return _cache.slice(); }
@@ -64,16 +71,18 @@ export async function saveDeals(candidate) {
   const snapshot = Array.isArray(candidate) ? candidate.slice() : [];
   _mutationInFlight = true;
   try {
-    const { error } = await supabase.rpc('save_pipeline', { p_deals: snapshot });
+    const { error, status } = await supabase.rpc('save_pipeline', { p_deals: snapshot });
+    noteServerResult('save', { ok: !error, error, status });
     if (error) {
       console.warn('Pipeline save failed:', error);
-      return { ok: false, reason: classifyMutationFailure(error) };
+      return { ok: false, reason: classifyMutationFailure(error), offline: isNetworkFailure(error, status) };
     }
     _cache = snapshot;
     return { ok: true };
   } catch (e) {
     console.warn('Pipeline save failed:', e);
-    return { ok: false, reason: classifyMutationFailure(e) };
+    noteServerResult('save', { error: e });
+    return { ok: false, reason: classifyMutationFailure(e), offline: isNetworkFailure(e) };
   } finally {
     _mutationInFlight = false;  // no code path may strand the lock
   }
@@ -82,16 +91,21 @@ export async function saveDeals(candidate) {
 // Pull the signed-in user's pipeline from the server into the cache. Called on
 // sign-in and at boot when a session is restored. Returns the deals.
 export async function hydratePipeline() {
-  if (!isSignedIn()) { _cache = []; _hydrated = false; return _cache; }
+  if (!isSignedIn()) { _cache = []; _hydrated = false; _loadState = 'idle'; return _cache; }
+  if (!_hydrated) _loadState = 'loading';
   try {
-    const { data, error } = await supabase.rpc('get_pipeline');
-    if (error) { console.warn('Pipeline load failed:', error); return _cache; }
+    const { data, error, status } = await supabase.rpc('get_pipeline');
+    noteServerResult('pipeline', { ok: !error, error, status });
+    if (error) { console.warn('Pipeline load failed:', error); if (!_hydrated) _loadState = 'failed'; return _cache; }
     // Success — including the server truthfully answering "empty". Only here
     // does the cache become a legitimate base for a wholesale replace.
     _cache = Array.isArray(data) ? data : [];
     _hydrated = true;
+    _loadState = 'ok';
   } catch (e) {
     console.warn('Pipeline load failed:', e);
+    noteServerResult('pipeline', { error: e });
+    if (!_hydrated) _loadState = 'failed';
     // _hydrated deliberately NOT set: an unheard server never authorizes a save.
   }
   return _cache;
@@ -99,4 +113,4 @@ export async function hydratePipeline() {
 
 // On sign-out, drop the cache so the next (anonymous) view shows nothing.
 // Hydration knowledge dies with the session it was proven in.
-export function clearPipelineCache() { _cache = []; _hydrated = false; }
+export function clearPipelineCache() { _cache = []; _hydrated = false; _loadState = 'idle'; }

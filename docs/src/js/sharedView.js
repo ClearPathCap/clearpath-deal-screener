@@ -6,6 +6,7 @@
 // Live semantics: every load shows the owner's latest SAVED state.
 
 import { supabase } from './supabaseClient.js';
+import { isNetworkFailure } from './connectivity.js';
 import { fmt, pct, escapeHtml } from './format.js';
 import { flipProfitClass } from './finance.js';
 
@@ -70,14 +71,24 @@ async function load() {
   const content = document.getElementById('shared-content');
   const token = new URLSearchParams(location.search).get('d') || '';
   const fail = () => { loading.style.display = 'none'; missing.style.display = 'block'; };
+  // Mobile Phase 0: "could not reach the server" is not "this link is invalid".
+  const offline = () => {
+    loading.style.display = 'none';
+    const o = document.getElementById('shared-offline');
+    if (!o) { fail(); return; }
+    o.style.display = 'block';
+    const b = document.getElementById('shared-retry');
+    if (b && !b.dataset.wired) { b.dataset.wired = '1'; b.addEventListener('click', () => { o.style.display = 'none'; loading.style.display = ''; load(); }); }
+  };
   if (!/^[0-9a-f]{32}$/.test(token)) { fail(); return; }
   try {
-    const { data, error } = await supabase.rpc('get_shared_deal', { p_token: token });
+    const { data, error, status } = await supabase.rpc('get_shared_deal', { p_token: token });
+    if (error && isNetworkFailure(error, status)) { offline(); return; }
     if (error || !data || !data.ok || !data.deal) { fail(); return; }
     content.innerHTML = buildSharedDealHTML(data.deal);
     loading.style.display = 'none';
     content.style.display = 'block';
-  } catch { fail(); }
+  } catch (e) { if (isNetworkFailure(e)) offline(); else fail(); }
 }
 
 if (typeof document !== 'undefined' && document.getElementById('shared-loading')) load();

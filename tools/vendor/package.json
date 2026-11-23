@@ -1,0 +1,18 @@
+{
+  "name": "dealfit-vendor",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Build-time only: regenerates docs/vendor/ (Supabase SDK bundle + self-hosted fonts). Nothing here is served; the site stays no-build at runtime.",
+  "type": "module",
+  "scripts": {
+    "vendor": "node build.mjs",
+    "verify": "node build.mjs --verify"
+  },
+  "devDependencies": {
+    "@fontsource-variable/outfit": "5.3.0",
+    "@fontsource-variable/syne": "5.3.0",
+    "@fontsource/dm-mono": "5.3.0",
+    "@supabase/supabase-js": "2.112.3",
+    "esbuild": "0.28.2"
+  }
+}

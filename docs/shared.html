@@ -8,9 +8,7 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Shared Deal — DealFit by Clear Path Capital</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/fonts.css">
 <link rel="stylesheet" href="src/css/styles.css">
 <style>
   /* Page-scoped chrome only — everything else reuses the app stylesheet. */
@@ -38,6 +36,10 @@
   <div id="shared-missing" class="shared-state" style="display:none">
     This shared deal isn't available.<br>
     The link may have been revoked, or the deal removed.
+  </div>
+  <div id="shared-offline" class="shared-state" role="status" style="display:none">
+    Couldn’t load this shared deal — no connection to DealFit’s server.<br>
+    <button type="button" id="shared-retry" class="net-status-retry" style="margin-top:12px">Retry</button>
   </div>
   <div id="shared-content" style="display:none"></div>
 

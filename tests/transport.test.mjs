@@ -30,8 +30,16 @@ const ok = (label, v) => { if (v) pass++; else { fail++; fails.push(label); } };
 
 // ── §A · SDK determinism (source text) ───────────────────────────────────────
 const clientSrc = src("docs/src/js/supabaseClient.js");
+// RE-PINNED (Mobile Phase 0, 2026-11-22): the same exact 2.112.3 SDK is now VENDORED
+// (tools/vendor/build.mjs → docs/vendor/) instead of fetched from esm.sh, so the
+// determinism guarantee is stronger: the bytes change only with a commit. The pin
+// moves from the CDN URL to the vendored path + the artifact's own version stamp.
 ok("[DEFECT-CLOSING] supabaseClient pins the exact SDK version 2.112.3",
-   clientSrc.includes("https://esm.sh/@supabase/supabase-js@2.112.3"));
+   clientSrc.includes("from '../../vendor/supabase-js-2.112.3.js'")
+   && /@supabase\/supabase-js 2\.112\.3 /.test(src("docs/vendor/supabase-js-2.112.3.js").slice(0, 200))
+   && JSON.parse(src("docs/vendor/VENDOR_MANIFEST.json")).packages.find(p => p.name === "@supabase/supabase-js").version === "2.112.3");
+ok("[MOBILE-P0] no runtime import of the SDK from any CDN",
+   !/https?:\/\//.test((clientSrc.match(/^\s*import[^\n]*$/gm) || []).join("\n")));
 ok("[DEFECT-CLOSING] no floating @2 SDK import survives",
    !/@supabase\/supabase-js@2['"]/.test(clientSrc));
 ok("[DEFECT-CLOSING] no other module imports the SDK directly",

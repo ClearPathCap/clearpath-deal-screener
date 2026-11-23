@@ -41,8 +41,9 @@ import {
 import {
   initAuthAndEntitlement, onAuthChange, syncEntitlement,
   sendOtpCode, verifyOtpCode, signOutAccount, redeemServerCode,
-  isSignedIn, getUserEmail,
+  isSignedIn, getUserEmail, entitlementStatus,
 } from './auth.js';
+import { initConnectivity, retryNow } from './connectivity.js';   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals } from './storage.js';
@@ -1834,6 +1835,9 @@ function updateAccountUI() {
   if (accountRow) accountRow.style.display = signedIn ? '' : 'none';
   const emailEl = document.getElementById('account-email');
   if (emailEl) emailEl.textContent = getUserEmail();
+  // Mobile Phase 0: the plan check could not reach the server — premium stays off (fail closed); say why.
+  const planNote = document.getElementById('account-plan-unverified');
+  if (planNote) planNote.hidden = !(signedIn && entitlementStatus() === 'unverified');
   // Reset the sign-in steps when signed out (back to the email step).
   if (!signedIn) {
     const codeStep = document.getElementById('signin-code-step');
@@ -2025,12 +2029,15 @@ async function renderGuideMarketIntel() {
   const tier  = getActiveTier();
   const slugs = getMarketSlots();   // every populated slot
 
-  const paint = (intelMap) => {
+  const paint = (intelMap, detailsUnavailable = false) => {
     let html;
     if (!slugs.length) {
       html = '<div class="guide-item"><div class="gi-note">Pick a market region on the Fix &amp; Flip or Rentals tab to see its benchmarks here.</div></div>';
     } else {
       html = slugs.map(s => buildRegionIntel(s, tier, intelMap && intelMap.get(s))).filter(Boolean).join('');
+      // Mobile Phase 0: say so when the paid details could not load — the numbers above are
+      // DealFit's built-in benchmarks, never a cached or "refreshed" copy of the details.
+      if (detailsUnavailable) html += '<div class="gi-offline" role="status">Premium market details couldn’t load — no connection to DealFit’s server. The benchmarks shown are DealFit’s built-in figures.</div>';
     }
     // Investor sees what Pro adds; the funding ladder is shown to everyone.
     if (tier === 'investor') html += buildInvestorUpgradeCTA();
@@ -2047,6 +2054,7 @@ async function renderGuideMarketIntel() {
     const intelMap = await fetchMarketIntel(slugs);
     if (token !== _guideRenderToken) return;
     if (intelMap.size) paint(intelMap);
+    else if (intelMap.unavailable) paint(null, true);
   }
 }
 
@@ -2065,6 +2073,8 @@ function initOnboarding() {
 Object.assign(window, {
   // nav
   showPage,
+  // Mobile Phase 0: read-only reconnect (plan check, saved deals, markets)
+  retryConnection: retryNow,
   // modals
   openModal,
   closeModal,
@@ -2208,6 +2218,7 @@ onAuthChange(syncMarketsOnAuth);   // UX wave finding 3: market slots follow the
 // boundary — it resolves only after the initial getSession() settled, the auth
 // subscription is wired, and the first entitlement sync + notify ran. Until
 // then the chip stays in its neutral init state; no timers, no guessing.
+initConnectivity();   // Mobile Phase 0: banner + online/visibility retry wiring, before the first server call settles
 initAuthAndEntitlement().then(() => {
   _authReady = true;
   renderAuthChip();

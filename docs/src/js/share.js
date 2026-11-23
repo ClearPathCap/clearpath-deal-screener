@@ -3,6 +3,7 @@
 import { fmt, pct } from './format.js';
 import { getDeals } from './storage.js';
 import { supabase } from './supabaseClient.js';
+import { noteServerResult, serverUnreachable } from './connectivity.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
 
 // NOTE: Phase 1 will hard-code APP_URL to the deployed domain.
@@ -89,9 +90,10 @@ export async function shareDeal(id) {
   // Mint (or re-fetch — idempotent) the deal's opaque share link.
   let url = null;
   try {
-    const { data, error } = await supabase.rpc('create_deal_share', { p_deal_id: id });
+    const { data, error, status } = await supabase.rpc('create_deal_share', { p_deal_id: id });
+    noteServerResult('share', { ok: !error, error, status });
     if (!error && data && data.ok && data.token) url = SHARE_VIEW_URL + '?d=' + data.token;
-  } catch { /* link unavailable — fall back to summary sharing below */ }
+  } catch (e) { noteServerResult('share', { error: e }); /* link unavailable — fall back to summary sharing below */ }
 
   // A. Native share sheet — the OS owns contact/app selection.
   if (canNativeShare() && url) {
@@ -105,7 +107,7 @@ export async function shareDeal(id) {
   const fullMsg = url
     ? buildShareMessage(deal, url)
     : buildDealSummaryText(deal) + '\n\nAnalyzed with DealFit: ' + APP_URL;
-  if (!url) window.showToast && window.showToast('Share link unavailable right now — sharing the summary instead.');
+  if (!url) window.showToast && window.showToast(serverUnreachable() ? 'No connection — a share link can’t be made right now, so this shares the summary text instead.' : 'Share link unavailable right now — sharing the summary instead.');
   const opts = [
     url ? {
       icon: shareIconSVG('copy'), name: 'Copy Share Link', desc: 'A read-only view of this deal',

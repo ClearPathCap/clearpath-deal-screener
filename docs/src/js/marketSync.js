@@ -29,6 +29,7 @@
 import { supabase } from './supabaseClient.js';
 import { isSignedIn } from './auth.js';
 import { getMarketForSlot, setMarketSlot, recordSlotChangeAt, clearSlotChange } from './tiers.js';
+import { noteServerResult } from './connectivity.js';
 
 // Hydrate on sign-in / session restore. Returns a summary for tests/telemetry;
 // callers re-render on 'synced'.
@@ -36,10 +37,12 @@ export async function hydrateMarketsOnAuth() {
   if (!isSignedIn()) return { status: 'signed-out', pulled: 0, pushed: 0 };
   let rows;
   try {
-    const { data, error } = await supabase.rpc('get_user_markets');
+    const { data, error, status } = await supabase.rpc('get_user_markets');
+    noteServerResult('market-sync', { ok: !error, error, status });
     if (error) return { status: 'error', pulled: 0, pushed: 0 };
     rows = Array.isArray(data) ? data : [];
-  } catch {
+  } catch (e) {
+    noteServerResult('market-sync', { error: e });
     return { status: 'error', pulled: 0, pushed: 0 };
   }
 
@@ -73,10 +76,12 @@ export async function hydrateMarketsOnAuth() {
 export async function pushMarketChange(slot, marketId) {
   if (!isSignedIn()) return { ok: true, local: true };
   try {
-    const { data, error } = await supabase.rpc('set_user_market', { p_slot: slot, p_market: marketId });
+    const { data, error, status } = await supabase.rpc('set_user_market', { p_slot: slot, p_market: marketId });
+    noteServerResult('market-sync', { ok: !error, error, status });
     if (error) return { ok: false, msg: 'Couldn\'t reach the server — try again.' };
     return data && typeof data.ok === 'boolean' ? data : { ok: false, msg: 'Unexpected server reply.' };
-  } catch {
+  } catch (e) {
+    noteServerResult('market-sync', { error: e });
     return { ok: false, msg: 'Couldn\'t reach the server — try again.' };
   }
 }

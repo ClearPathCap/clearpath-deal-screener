@@ -1,7 +1,13 @@
 // ─── Pipeline: saved deals, render, expand, filter, delete ───────────────────
 
 import { fmt, pct, escapeHtml, parseComma } from './format.js';
-import { getDeals, saveDeals, hydratePipeline, PIPELINE_ALLOWANCE } from './storage.js';
+import { getDeals, saveDeals, hydratePipeline, pipelineLoadState, PIPELINE_ALLOWANCE } from './storage.js';
+import { serverUnreachable } from './connectivity.js';
+
+// Mobile Phase 0: a failed mutation caused by no connection says so — and says
+// exactly what did NOT happen. The await-then-commit law is unchanged.
+const offlineNow = (res) => !!(res && res.offline) || serverUnreachable();
+const SAVE_OFFLINE = 'No connection — this deal was NOT saved. Your inputs are still on screen; save again once you’re back online.';
 import { isSignedIn } from './auth.js';
 import { getLastFlipResult, getFlipMarket } from './flip.js';
 import { repairEstimateSnapshotFor } from './repair.js';
@@ -181,11 +187,11 @@ export async function saveDeal(type) {
     // Silent-wipe guard fired: the server was never heard this session, so a
     // wholesale replace could have erased real deals. Honest + recoverable:
     // nothing changed, a fresh hydrate is kicked off, the user just retries.
-    window.showToast && window.showToast("Couldn't verify your saved pipeline with the server — nothing was changed. Retry in a moment.", 4200);
+    window.showToast && window.showToast(offlineNow(res) ? SAVE_OFFLINE : "Couldn't verify your saved pipeline with the server — nothing was changed. Retry in a moment.", 4200);
     hydratePipeline().then(() => renderPipeline()).catch(() => {});
     return { status: 'save-failed', failureClass: 'stale' };
   }
-  window.showToast && window.showToast("Couldn't save this deal — connection or server problem. Try again.", 4200);
+  window.showToast && window.showToast(offlineNow(res) ? SAVE_OFFLINE : "Couldn't save this deal — connection or server problem. Try again.", 4200);
   return { status: 'save-failed', failureClass: 'other' };
 }
 
@@ -245,11 +251,11 @@ export async function confirmDelete() {
     return { status: 'delete-failed', failureClass: 'auth' };
   }
   if (res.reason === 'stale') {
-    window.showToast && window.showToast("Couldn't verify your saved pipeline with the server — nothing was deleted. Retry in a moment.", 4200);
+    window.showToast && window.showToast(offlineNow(res) ? 'No connection — nothing was deleted. The deal is still in your pipeline.' : "Couldn't verify your saved pipeline with the server — nothing was deleted. Retry in a moment.", 4200);
     hydratePipeline().then(() => renderPipeline()).catch(() => {});
     return { status: 'delete-failed', failureClass: 'stale' };
   }
-  window.showToast && window.showToast("Couldn't delete this deal — connection or server problem. It's still in your pipeline.", 4200);
+  window.showToast && window.showToast(offlineNow(res) ? 'No connection — nothing was deleted. The deal is still in your pipeline.' : "Couldn't delete this deal — connection or server problem. It's still in your pipeline.", 4200);
   return { status: 'delete-failed', failureClass: 'other' };
 }
 
@@ -279,6 +285,17 @@ export function renderPipeline() {
   // not a deal list. Analyzing deals and Get Funding stay login-free elsewhere.
   if (!isSignedIn()) {
     list.innerHTML = `<div class="empty-state"><div class="ei">🔒</div><p>Your pipeline lives with your free account.<br>Sign in or create one to save deals and<br>track them across all your devices.</p><button class="btn-redeem" style="margin-top:14px" onclick="openUpgrade('save')">Sign in / Create free account</button></div>`;
+    return;
+  }
+
+  // Mobile Phase 0: an unloaded pipeline is never shown as an empty one.
+  const loadState = pipelineLoadState();
+  if (loadState === 'loading') {
+    list.innerHTML = '<div class="empty-state" role="status"><div class="ei">⏳</div><p>Loading your saved deals…</p></div>';
+    return;
+  }
+  if (loadState === 'failed') {
+    list.innerHTML = '<div class="empty-state" role="status"><div class="ei">📡</div><p>Couldn’t load your saved deals — no connection to DealFit’s server.<br>Nothing was changed; your deals stay with your account.</p><button class="btn-redeem" style="margin-top:14px" onclick="retryConnection()">Retry</button></div>';
     return;
   }
 
@@ -891,11 +908,11 @@ export async function saveDealEdits(id) {
   if (res.reason === 'busy') { say('Another pipeline update is in progress.'); return { status: 'refused-busy' }; }
   if (res.reason === 'auth') { say('Your session has expired — sign in again.'); return { status: 'save-failed', failureClass: 'auth' }; }
   if (res.reason === 'stale') {
-    say("Couldn't verify your saved pipeline with the server — nothing was changed. Retry in a moment.");
+    say(offlineNow(res) ? 'No connection — your changes were NOT saved. Try again once you’re back online.' : "Couldn't verify your saved pipeline with the server — nothing was changed. Retry in a moment.");
     hydratePipeline().then(() => renderPipeline()).catch(() => {});
     return { status: 'save-failed', failureClass: 'stale' };
   }
-  say("Couldn't save changes — connection or server problem. Try again.");
+  say(offlineNow(res) ? 'No connection — your changes were NOT saved. Try again once you’re back online.' : "Couldn't save changes — connection or server problem. Try again.");
   return { status: 'save-failed', failureClass: 'other' };
 }
 

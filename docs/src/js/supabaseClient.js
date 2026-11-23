@@ -8,10 +8,12 @@
 // publishable key may need swapping for the Legacy "anon" key (Supabase
 // dashboard → Settings → API Keys → "Legacy anon, service_role API keys").
 
-// EXACT-PINNED (R1 stabilization): the floating @2 range let esm.sh change the
-// shipped SDK bytes without a DealFit commit or deploy — production behavior
-// must never drift under the CDN's feet. Bump deliberately, never by float.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.3';
+// EXACT-PINNED (R1 stabilization) and VENDORED (Mobile Phase 0): the same
+// supabase-js 2.112.3 the app used to fetch from esm.sh, bundled into the repo
+// by tools/vendor/build.mjs, so the app loads no runtime code from a CDN and its
+// SDK bytes change only with a DealFit commit. Bump deliberately: change the
+// version in tools/vendor, run `npm run vendor`, and update this path.
+import { createClient } from '../../vendor/supabase-js-2.112.3.js';
 
 const SUPABASE_URL = 'https://qbddbblhduzwcfwslbac.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_-9yLyv7rA5tkjKv_HEPe8A_iCvRq-xf';

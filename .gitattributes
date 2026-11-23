@@ -1,0 +1,3 @@
+# Mobile Phase 0: generated vendor artifacts must keep their exact bytes (reproducibility check
+# in tools/vendor/build.mjs --verify compares SHA-256s); never line-ending-convert them.
+docs/vendor/** -text

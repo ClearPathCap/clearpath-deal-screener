@@ -47,10 +47,27 @@ const writeOwner = (id) => { try { localStorage.setItem(OWNER_KEY, id); } catch 
 // local-only pick, so it is never pushed into a DIFFERENT account (A → sign-out → B pulls
 // B's slots → sign-out → A must not receive B's). If the slot later changes on this device
 // (a signed-out pick), the record no longer matches the value and it counts as local again.
+// Lane-4 L4-3: a record that EXISTS but is unreadable or malformed fails CLOSED (the value
+// is treated as another account's — kept on the device, never pushed). Only a record that
+// is absent (a legacy device, or a pick never written to any account) counts as local.
 const FROM_PREFIX = 'marketSlotFrom_';
-const readFrom = (slot) => { try { const o = JSON.parse(localStorage.getItem(FROM_PREFIX + slot) || 'null'); return o && typeof o === 'object' ? o : null; } catch { return null; } };
+const CORRUPT = Object.freeze({ corrupt: true });
+const readFrom = (slot) => {
+  let raw;
+  try { raw = localStorage.getItem(FROM_PREFIX + slot); } catch { return CORRUPT; }
+  if (raw == null) return null;
+  try {
+    const o = JSON.parse(raw);
+    return o && typeof o === 'object' && typeof o.m === 'string' && typeof o.u === 'string' && o.m && o.u ? o : CORRUPT;
+  } catch { return CORRUPT; }
+};
 const writeFrom = (slot, m, u) => { if (!u || !m) return; try { localStorage.setItem(FROM_PREFIX + slot, JSON.stringify({ m, u })); } catch { /* best effort */ } };
-const fromOtherAccount = (slot, localId, uid) => { const f = readFrom(slot); return !!(f && f.m === localId && f.u && uid && f.u !== uid); };
+const fromOtherAccount = (slot, localId, uid) => {
+  const f = readFrom(slot);
+  if (f === CORRUPT) return true;
+  return !!(f && f.m === localId && uid && f.u !== uid);
+};
+const sameAccount = (uid) => isSignedIn() && getUserId() === uid;
 
 // Hydrate on sign-in / session restore. Returns a summary for tests/telemetry;
 // callers re-render on 'synced'. `push: false` (a connectivity reconnect, a token
@@ -75,12 +92,20 @@ export async function hydrateMarketsOnAuth({ push = true } = {}) {
   }
   // The account changed while the read was in flight: these rows belong to the previous
   // account — apply nothing, push nothing (the new account's own notify syncs it).
-  if (!isSignedIn() || getUserId() !== uid) return { status: 'stale', pulled: 0, pushed: 0 };
+  if (!sameAccount(uid)) return { status: 'stale', pulled: 0, pushed: 0 };
+
+  // Lane-4 L4-2: the owner is recorded BEFORE the first push await, so an account that
+  // signs in while this push is in flight is already a non-owner and cannot push the same
+  // local picks a second time.
+  if (mayPush && uid && !owner) writeOwner(uid);
 
   const serverBySlot = new Map(rows.map(r => [r.slot_index, r]));
   let pulled = 0, pushed = 0;
 
   for (let slot = 0; slot < 6; slot++) {
+    // Lane-4 L4-2: re-checked at the top of EVERY slot (a push below awaits): once the
+    // account has changed, nothing more of this account's rows is applied or pushed.
+    if (!sameAccount(uid)) return { status: 'stale', pulled, pushed };
     const row      = serverBySlot.get(slot);
     const serverId = (row && row.market_id) || '';
     const localId  = getMarketForSlot(slot);
@@ -95,26 +120,33 @@ export async function hydrateMarketsOnAuth({ push = true } = {}) {
       // Local-only slot — push up. A refusal (slot cap on this tier, cooldown)
       // leaves the local value exactly where it was. A value pulled from ANOTHER
       // account is never pushed here (N1); it stays on the device, untouched.
-      if (!isSignedIn() || getUserId() !== uid) break;   // account changed mid-sync: stop writing
       try {
         const { data, error } = await supabase.rpc('set_user_market', { p_slot: slot, p_market: localId });
+        // The write went to `uid`'s account (the token captured at the call), so the
+        // provenance names `uid` even if the account changed during the await.
         if (!error && data && data.ok) { pushed++; writeFrom(slot, localId, uid); }
       } catch { /* keep local — sync is best-effort, never destructive */ }
     }
   }
-  if (mayPush && uid && !owner && getUserId() === uid) writeOwner(uid);
   return { status: 'synced', pulled, pushed };
 }
 
 // Server-first slot write for signed-in users. Signed out resolves ok:true so
 // the caller's local commit path is identical in both modes.
+// Lane-4 L4-1: the account is captured BEFORE the request. If it changed while the request
+// was in flight (another tab signed out and in), the write belongs to the PREVIOUS account
+// (which now holds it server-side): no provenance is written and the caller is told not ok,
+// so the value is never committed on this device under the new account (no mislabel, no
+// later cross-account push).
 export async function pushMarketChange(slot, marketId) {
   if (!isSignedIn()) return { ok: true, local: true };
+  const uid = getUserId();
   try {
     const { data, error, status } = await supabase.rpc('set_user_market', { p_slot: slot, p_market: marketId });
     noteServerResult('market-sync', { ok: !error, error, status });
+    if (!sameAccount(uid)) return { ok: false, accountChanged: true, msg: 'Your account changed while saving — that change was not applied here.' };
     if (error) return { ok: false, msg: 'Couldn\'t reach the server — try again.' };
-    if (data && data.ok === true) writeFrom(slot, marketId, getUserId());   // N1: now this account's server data
+    if (data && data.ok === true) writeFrom(slot, marketId, uid);   // N1: now this account's server data
     return data && typeof data.ok === 'boolean' ? data : { ok: false, msg: 'Unexpected server reply.' };
   } catch (e) {
     noteServerResult('market-sync', { error: e });

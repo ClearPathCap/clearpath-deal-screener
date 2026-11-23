@@ -357,6 +357,66 @@ console.log('— §F market pushes only at boot / a genuine sign-in, for the own
   as(UA); await cb('SIGNED_IN', UA); await settle();
   ok(bEdit.ok && !writes().some(w => w.args.p_market === 'durham-nc'), 'F17 a slot B changed server-first is B’s server data: it is never pushed into A');
 
+  // Lane-4 review L4-1 / L4-2 / L4-3 — an account switch DURING an async write (another tab
+  // signs out and in; the SDK broadcasts it here), and unreadable provenance. Every write is
+  // logged with the account whose token it carried (the account current at the call).
+  const wlog = [];
+  let setDelay = 0;
+  const RPCW = { ...RPC, set_user_market: (args) => { wlog.push({ who: auth.getUserId(), slot: args.p_slot, m: args.p_market }); return later({ data: { ok: true }, error: null, status: 200 }, setDelay); } };
+  const asW = (session) => { st = S({ session, rpc: RPCW }); return st; };
+  const resetDevice = () => { for (let i = 0; i < 6; i++) { tiers.setMarketSlot(i, ''); localStorage.removeItem('marketSlotFrom_' + i); } localStorage.removeItem('marketSlotsOwner'); };
+  const switchTo = async (s) => { asW(null); await cb('SIGNED_OUT', null); asW(s); await cb('SIGNED_IN', s); };
+  const pushedTo = (who, m) => wlog.some(w => w.who === who && w.m === m);
+
+  // L4-1: B owns the device; A is signed in and picks a market; the account switches to B
+  // while A's server-first write is in flight.
+  asW(null); await cb('SIGNED_OUT', null); await settle();
+  resetDevice(); rowsFor['u-a'] = []; rowsFor['u-b'] = [];
+  asW(UB); await cb('SIGNED_IN', UB); await settle();                 // B = owner
+  asW(null); await cb('SIGNED_OUT', null); await settle();
+  asW(UA); await cb('SIGNED_IN', UA); await settle();
+  wlog.length = 0; setDelay = 25;
+  const inflight = msync.pushMarketChange(4, 'nashville-tn');
+  await settle(3); await switchTo(UB);
+  const res41 = await inflight; setDelay = 0; await settle(40);
+  if (res41.ok) tiers.setMarketSlot(4, 'nashville-tn');               // the picker's commit (main.js) runs only on ok
+  ok(pushedTo('u-a', 'nashville-tn') && res41.ok === false && res41.accountChanged === true && tiers.getMarketForSlot(4) !== 'nashville-tn',
+     'G1 L4-1: a write whose account changes in flight reached A only, and is NOT committed on this device under B (caller told not ok)');
+  ok(localStorage.getItem('marketSlotFrom_4') === null, 'G2 L4-1: …and no provenance is written for it (never mislabelled as the new account’s)');
+  asW(UB); await auth.initAuthAndEntitlement(); await settle();
+  ok(!pushedTo('u-b', 'nashville-tn'), 'G3 L4-1: B’s next boot never writes A’s selection into B');
+  // A later genuine selection by B syncs to B, and its provenance names B.
+  asW(UB); const g4 = await msync.pushMarketChange(4, 'memphis-tn'); if (g4.ok) tiers.setMarketSlot(4, 'memphis-tn');
+  ok(g4.ok && pushedTo('u-b', 'memphis-tn') && JSON.parse(localStorage.getItem('marketSlotFrom_4') || '{}').u === 'u-b',
+     'G4 a later genuine selection syncs to the current account, and its provenance names that account');
+
+  // L4-2: a fresh device (no owner) with a signed-out pick; A's genuine sign-in push is in
+  // flight when the account switches to B. A also holds a server row in a LATER slot.
+  asW(null); await cb('SIGNED_OUT', null); await settle();
+  resetDevice(); rowsFor['u-a'] = [{ slot_index: 3, market_id: 'reno-nv', changed_at: null }]; rowsFor['u-b'] = [];
+  tiers.setMarketSlot(0, 'tampa-fl');
+  wlog.length = 0; setDelay = 25;
+  asW(UA); await cb('SIGNED_IN', UA); await settle(5);               // A's hydration push of slot 0 is in flight
+  await switchTo(UB); await settle(60); setDelay = 0;
+  ok(pushedTo('u-a', 'tampa-fl') && !pushedTo('u-b', 'tampa-fl'), 'G5 L4-2: the signed-out pick goes to the first account only — never pushed a second time into the account that signed in mid-sync');
+  ok(tiers.getMarketForSlot(3) !== 'reno-nv' && localStorage.getItem('marketSlotsOwner') === 'u-a',
+     'G6 L4-2: the previous account’s later rows are not applied after the switch; the owner was recorded before the first push');
+
+  // L4-3: unreadable / malformed provenance fails closed; an ABSENT record (legacy) is still local.
+  asW(null); await cb('SIGNED_OUT', null); await settle();
+  resetDevice(); rowsFor['u-a'] = []; rowsFor['u-b'] = [];
+  localStorage.setItem('marketSlotsOwner', 'u-a');
+  tiers.setMarketSlot(1, 'boise-id'); localStorage.setItem('marketSlotFrom_1', '{not json');
+  tiers.setMarketSlot(2, 'reno-nv');  localStorage.setItem('marketSlotFrom_2', JSON.stringify({ m: 'reno-nv' }));
+  tiers.setMarketSlot(5, 'austin-tx');   // legacy: no record at all
+  wlog.length = 0;
+  asW(UA); await auth.initAuthAndEntitlement(); await settle();
+  ok(!pushedTo('u-a', 'boise-id') && !pushedTo('u-a', 'reno-nv') && tiers.getMarketForSlot(1) === 'boise-id' && tiers.getMarketForSlot(2) === 'reno-nv',
+     'G7 L4-3: corrupt or malformed provenance fails closed — never pushed, kept on the device');
+  ok(pushedTo('u-a', 'austin-tx'), 'G8 L4-3: a slot with NO provenance record (legacy / signed-out pick) is still pushed to the owner');
+  ok(/const uid = getUserId\(\);\s*try \{\s*const \{ data, error, status \} = await supabase\.rpc\('set_user_market'/.test(rd('docs/src/js/marketSync.js')),
+     'G9 source: pushMarketChange captures the account BEFORE its request');
+
   const T = auth.authEventAllowsMarketPush;
   ok(T('SIGNED_IN', null, UA) && T('INITIAL_SESSION', null, UA) && !T('SIGNED_IN', UA, UA) && !T('SIGNED_IN', UA, UB)
      && !T('TOKEN_REFRESHED', null, UA) && !T('TOKEN_REFRESHED', UA, UA) && !T('USER_UPDATED', UA, UA) && !T('SIGNED_OUT', UA, null) && !T('SIGNED_IN', null, null),

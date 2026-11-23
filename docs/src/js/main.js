@@ -25,7 +25,7 @@ import { propertyBand, BAND_RULES,
          computeNegotiationScenario, flipProfitClass, mosLabel,
          ltrGuidance }                                                from './finance.js';
 import { handlePipelineFundingClick, parseCityState }               from './clearpath.js';
-import { hydrateMarketsOnAuth, pushMarketChange }                   from './marketSync.js';
+import { hydrateMarketsOnAuth, pushMarketChange, purgeForeignMarketSlots } from './marketSync.js';
 import {
   getActiveTier,
   hasSelectedMarkets, getMarketSlots,
@@ -1823,6 +1823,7 @@ async function verifySignInCode() {
 
 async function doSignOut() {
   await signOutAccount();
+  purgeForeignMarketSlots('');   // E2: no account's server-held markets stay on a signed-out device
   updateAccountUI();
   location.reload();
 }
@@ -2237,15 +2238,17 @@ async function syncPipelineOnAuth() {
 
 // UX wave finding 3: pull the account's market slots down (and push local-only
 // slots up) whenever auth resolves, then re-render every slot surface. Sign-out
-// deliberately does NOT clear local slots — signed-out users keep the existing
-// local behavior, and hydrateMarketsOnAuth is a no-op for them. Runs after
+// keeps unattributed local-only slots (signed-out users keep the existing local
+// behavior), but E2: an account's server-held slots are cleared on sign-out or a
+// switch (hydrateMarketsOnAuth purges them first, signed in or out). Runs after
 // refreshTierUI in the onAuthChange chain, so the server-side tier caps that
 // set_user_market applies match the tier the UI just resolved.
 async function syncMarketsOnAuth(_session, ctx) {
   // F7: push local-only slots only when auth says THIS notify may (boot, or a genuine
   // sign-in); a tab-visible SIGNED_IN, token refresh or reconnect pulls only.
   const res = await hydrateMarketsOnAuth({ push: !!(ctx && ctx.marketPush) });
-  if (res.status === 'synced' && (res.pulled > 0 || res.pushed > 0)) {
+  // E2: a purge of another account's slots re-renders whatever the sync's outcome.
+  if (res.purged > 0 || (res.status === 'synced' && (res.pulled > 0 || res.pushed > 0))) {
     renderAllSlots();            // M-1 stays correct: the empty path resets ranges
     renderGuideMarketIntel();
   }

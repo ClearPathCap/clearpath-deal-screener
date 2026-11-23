@@ -127,11 +127,19 @@ ok(tiers.getMarketForSlot(1) === 'charlotte-nc', 'K9b …and B’s own server sl
 
 console.log('— the first account signs back in after the other (lane-3 review N1) ─');
 await auth.signOutAccount(); await settle();
+ok(tiers.getMarketForSlot(1) === '' && tiers.getMarketForSlot(0) === 'tampa-fl',
+   'K9c E2: B’s sign-out (the real SDK’s SIGNED_OUT) clears B’s server-held slot from the device; the unattributed local pick stays');
 reset(); pendingUser = 'u-a';
 const v3 = await auth.verifyOtpCode('u-a@local.test', '123456'); await settle();
+// Re-pinned for E2 (owner decision 2026-11-23): B's value used to stay on the device "untouched";
+// it is now cleared (it is B's server data, restored on B's next sign-in) — and still never pushed.
 ok(v3.ok && auth.getUserId() === 'u-a' && !writes().some(w => w.body?.p_market === 'charlotte-nc') && writes().some(w => w.body?.p_slot === 0 && w.body?.p_market === 'tampa-fl')
-   && tiers.getMarketForSlot(1) === 'charlotte-nc',
-   'K11 A’s genuine sign-in after B never pushes B’s pulled slot into A (A’s own local pick still is); B’s value stays local, untouched');
+   && tiers.getMarketForSlot(1) === '',
+   'K11 A’s genuine sign-in after B never pushes B’s pulled slot into A (A’s own local pick still is), and A is never shown B’s value');
+reset(); await auth.signOutAccount(); await settle(); pendingUser = 'u-b';
+const v4 = await auth.verifyOtpCode('u-b@local.test', '123456'); await settle();
+ok(v4.ok && tiers.getMarketForSlot(1) === 'charlotte-nc' && writes().length === 0,
+   'K12 E2: B signs in again — the server restores B’s own market (nothing written)');
 ok(calls.every(c => !/^https?:/.test(c.path)) && !calls.some(c => /supabase\.co/.test(c.path)), 'K10 every request went to the in-memory fake (no network)');
 
 console.log(`\nf7sdk: ${pass} passed, ${fail} failed`);

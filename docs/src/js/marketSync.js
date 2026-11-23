@@ -68,6 +68,33 @@ const fromOtherAccount = (slot, localId, uid) => {
   return !!(f && f.m === localId && uid && f.u !== uid);
 };
 const sameAccount = (uid) => isSignedIn() && getUserId() === uid;
+const removeFrom = (slot) => { try { localStorage.removeItem(FROM_PREFIX + slot); } catch { /* best effort */ } };
+const currentUid = () => (isSignedIn() ? getUserId() : '');
+
+// E2 (lane-4 finding; owner decision 2026-11-23): account isolation for what the device SHOWS.
+// A slot whose value is an account's server data (its provenance record matches the value)
+// is shown only while THAT account is signed in. On sign-out, an account switch (this tab,
+// another tab, an expired session) or boot as someone else, such a slot is cleared with its
+// record and its change date. Nothing is lost: it is server-held, and that account's next
+// sign-in pulls it back. Unattributed local-only picks (no record, or a record for an older
+// value) are NEVER cleared. An unreadable record fails closed (cleared), as in L4-3.
+// Synchronous and network-free, so it also runs offline and before any stale response lands.
+export function purgeForeignMarketSlots(keepUid = currentUid()) {
+  let purged = 0;
+  for (let slot = 0; slot < 6; slot++) {
+    const f = readFrom(slot);
+    if (!f) continue;
+    const value = getMarketForSlot(slot);
+    if (f === CORRUPT || (f.m === value && f.u !== keepUid)) {
+      if (value) { setMarketSlot(slot, ''); purged++; }
+      clearSlotChange(slot);
+      removeFrom(slot);
+    } else if (f.m !== value) {
+      removeFrom(slot);   // the record describes an older value: the current one is a local pick
+    }
+  }
+  return purged;
+}
 
 // Hydrate on sign-in / session restore. Returns a summary for tests/telemetry;
 // callers re-render on 'synced'. `push: false` (a connectivity reconnect, a token
@@ -76,7 +103,10 @@ const sameAccount = (uid) => isSignedIn() && getUserId() === uid;
 // sign-in pushes them (independent reviews F1, F7). A push also needs the slots to
 // belong to this account (OWNER_KEY) and the account not to change mid-sync.
 export async function hydrateMarketsOnAuth({ push = true } = {}) {
-  if (!isSignedIn()) return { status: 'signed-out', pulled: 0, pushed: 0 };
+  // E2: before any await — another account's server-held slots are never shown here, even
+  // when the read below fails, is offline, or returns stale.
+  let purged = purgeForeignMarketSlots(currentUid());
+  if (!isSignedIn()) return { status: 'signed-out', pulled: 0, pushed: 0, purged };
   const uid = getUserId();
   const owner = readOwner();
   const mayPush = push && (!owner || !uid || owner === uid);
@@ -84,15 +114,15 @@ export async function hydrateMarketsOnAuth({ push = true } = {}) {
   try {
     const { data, error, status } = await supabase.rpc('get_user_markets');
     noteServerResult('market-sync', { ok: !error, error, status });
-    if (error) return { status: 'error', pulled: 0, pushed: 0 };
+    if (error) return { status: 'error', pulled: 0, pushed: 0, purged };
     rows = Array.isArray(data) ? data : [];
   } catch (e) {
     noteServerResult('market-sync', { error: e });
-    return { status: 'error', pulled: 0, pushed: 0 };
+    return { status: 'error', pulled: 0, pushed: 0, purged };
   }
   // The account changed while the read was in flight: these rows belong to the previous
   // account — apply nothing, push nothing (the new account's own notify syncs it).
-  if (!sameAccount(uid)) return { status: 'stale', pulled: 0, pushed: 0 };
+  if (!sameAccount(uid)) return { status: 'stale', pulled: 0, pushed: 0, purged };
 
   // Lane-4 L4-2: the owner is recorded BEFORE the first push await, so an account that
   // signs in while this push is in flight is already a non-owner and cannot push the same
@@ -105,7 +135,7 @@ export async function hydrateMarketsOnAuth({ push = true } = {}) {
   for (let slot = 0; slot < 6; slot++) {
     // Lane-4 L4-2: re-checked at the top of EVERY slot (a push below awaits): once the
     // account has changed, nothing more of this account's rows is applied or pushed.
-    if (!sameAccount(uid)) return { status: 'stale', pulled, pushed };
+    if (!sameAccount(uid)) return { status: 'stale', pulled, pushed, purged };
     const row      = serverBySlot.get(slot);
     const serverId = (row && row.market_id) || '';
     const localId  = getMarketForSlot(slot);
@@ -126,9 +156,12 @@ export async function hydrateMarketsOnAuth({ push = true } = {}) {
         // provenance names `uid` even if the account changed during the await.
         if (!error && data && data.ok) { pushed++; writeFrom(slot, localId, uid); }
       } catch { /* keep local — sync is best-effort, never destructive */ }
+      // E2: the account changed during that push, so the value just became `uid`'s server
+      // data while someone else is current: stop showing it here.
+      if (!sameAccount(uid)) { purged += purgeForeignMarketSlots(currentUid()); return { status: 'stale', pulled, pushed, purged }; }
     }
   }
-  return { status: 'synced', pulled, pushed };
+  return { status: 'synced', pulled, pushed, purged };
 }
 
 // Server-first slot write for signed-in users. Signed out resolves ok:true so

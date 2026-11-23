@@ -339,8 +339,10 @@ console.log('— §F market pushes only at boot / a genuine sign-in, for the own
   ok(tiers.getMarketForSlot(1) === 'charlotte-nc' && writes().length === 0, 'F15a the other account (B) signs in: its server slot is pulled; nothing of A’s is pushed into B');
   as(null); await cb('SIGNED_OUT', null); await settle();
   as(UA); await cb('SIGNED_IN', UA); await settle();
-  ok(!writes().some(w => w.args.p_market === 'charlotte-nc') && writes().some(w => w.args.p_slot === 3 && w.args.p_market === 'tampa-fl') && tiers.getMarketForSlot(1) === 'charlotte-nc',
-     'F15 A signs back in: B’s pulled slot is NOT pushed into A (A’s own local pick still is); B’s value stays on the device, untouched');
+  // Re-pinned for E2 (owner decision 2026-11-23): B's value used to stay on the device "untouched";
+  // it is now cleared on B's sign-out (B's server data, restored on B's next sign-in) — still never pushed.
+  ok(!writes().some(w => w.args.p_market === 'charlotte-nc') && writes().some(w => w.args.p_slot === 3 && w.args.p_market === 'tampa-fl') && tiers.getMarketForSlot(1) === '',
+     'F15 A signs back in: B’s pulled slot is NOT pushed into A (A’s own local pick still is), and A is never shown B’s value');
   as(UA); await auth.initAuthAndEntitlement(); await settle();
   ok(!writes().some(w => w.args.p_market === 'charlotte-nc'), 'F15b …and a later boot as A never pushes B’s pulled slot either');
   as(null); await cb('SIGNED_OUT', null); await settle();
@@ -411,11 +413,64 @@ console.log('— §F market pushes only at boot / a genuine sign-in, for the own
   tiers.setMarketSlot(5, 'austin-tx');   // legacy: no record at all
   wlog.length = 0;
   asW(UA); await auth.initAuthAndEntitlement(); await settle();
-  ok(!pushedTo('u-a', 'boise-id') && !pushedTo('u-a', 'reno-nv') && tiers.getMarketForSlot(1) === 'boise-id' && tiers.getMarketForSlot(2) === 'reno-nv',
-     'G7 L4-3: corrupt or malformed provenance fails closed — never pushed, kept on the device');
+  // Re-pinned for E2: a corrupt / malformed record fails closed — never pushed, and (E2) no longer shown.
+  ok(!pushedTo('u-a', 'boise-id') && !pushedTo('u-a', 'reno-nv') && tiers.getMarketForSlot(1) === '' && tiers.getMarketForSlot(2) === '',
+     'G7 L4-3: corrupt or malformed provenance fails closed — never pushed, and not shown (E2)');
   ok(pushedTo('u-a', 'austin-tx'), 'G8 L4-3: a slot with NO provenance record (legacy / signed-out pick) is still pushed to the owner');
   ok(/const uid = getUserId\(\);\s*try \{\s*const \{ data, error, status \} = await supabase\.rpc\('set_user_market'/.test(rd('docs/src/js/marketSync.js')),
      'G9 source: pushMarketChange captures the account BEFORE its request');
+
+  // E2 (owner decision 2026-11-23) — another account's server-held markets and their change
+  // dates are never SHOWN after sign-out / an account switch; unattributed local picks are kept;
+  // the server restores each account's own markets.
+  const dates = () => { try { return JSON.parse(localStorage.getItem('slotChangeDates') || '{}'); } catch { return {}; } };
+  const rec = (s) => localStorage.getItem('marketSlotFrom_' + s);
+  asW(null); await cb('SIGNED_OUT', null); await settle();
+  resetDevice(); localStorage.removeItem('slotChangeDates');
+  rowsFor['u-a'] = [{ slot_index: 1, market_id: 'charlotte-nc', changed_at: '2026-11-20T12:00:00.000Z' }]; rowsFor['u-b'] = [{ slot_index: 2, market_id: 'durham-nc', changed_at: '2026-11-21T12:00:00.000Z' }];
+  tiers.setMarketSlot(4, 'austin-tx'); tiers.recordSlotChange(4);          // an unattributed signed-out pick + its local clock
+  setDelay = 0;
+  const RPCWR = { ...RPCW, set_user_market: (args) => { wlog.push({ who: auth.getUserId(), slot: args.p_slot, m: args.p_market }); return { data: { ok: false, reason: 'cap' }, error: null, status: 200 }; } };
+  const asR = (session) => { st = S({ session, rpc: RPCWR }); return st; };   // refuses: austin-tx stays unattributed
+  asR(UA); await cb('SIGNED_IN', UA); await settle();
+  ok(tiers.getMarketForSlot(1) === 'charlotte-nc' && dates()[1] && JSON.parse(rec(1) || '{}').u === 'u-a', 'H0 A signs in: A’s server market and change date are pulled, attributed to A');
+  asR(null); await cb('SIGNED_OUT', null); await settle();
+  ok(tiers.getMarketForSlot(1) === '' && !dates()[1] && rec(1) === null, 'H1 sign-out clears A’s server-held market, its change date and its record');
+  ok(tiers.getMarketForSlot(4) === 'austin-tx' && !!dates()[4], 'H2 …and keeps the unattributed local-only pick with its local clock');
+  asR(UA); await cb('SIGNED_IN', UA); await settle();
+  ok(tiers.getMarketForSlot(1) === 'charlotte-nc' && !!dates()[1], 'H3 the same account signs back in: the server restores its own market and change date');
+  // direct switch A → B (no sign-out), with B's read delayed: A's value is gone BEFORE B's read lands
+  rowsDelay = 30; asR(UB); const swB = cb('SIGNED_IN', UB); await settle(12);
+  const midSwitch = tiers.getMarketForSlot(1);
+  await swB; await settle(60); rowsDelay = 0;
+  ok(midSwitch === '' && tiers.getMarketForSlot(1) === '' && tiers.getMarketForSlot(2) === 'durham-nc' && !dates()[1],
+     'H4 a direct switch A → B hides A’s market and date at once (before B’s read returns); B gets its own');
+  // failed / offline read: the purge still happens
+  asR(null); await cb('SIGNED_OUT', null); await settle();
+  asR(UA); await cb('SIGNED_IN', UA); await settle();                                       // A's charlotte-nc back
+  st = S({ session: UB, rpc: { ...RPCWR, get_user_markets: () => NET_PG } }); await cb('SIGNED_IN', UB); await settle();
+  ok(tiers.getMarketForSlot(1) === '' && tiers.getMarketForSlot(4) === 'austin-tx', 'H5 B signs in while the server read fails (offline): A’s market is still hidden; the local pick stays');
+  st = S({ session: UB, rpc: { ...RPCWR, get_user_markets: () => ({ data: null, error: { message: 'internal', code: 'XX000' }, status: 500 }) } }); await auth.initAuthAndEntitlement(); await settle();
+  ok(tiers.getMarketForSlot(1) === '' && tiers.getMarketForSlot(2) === '', 'H6 boot as B with a server error: nothing of A’s is shown (B’s own returns when the read succeeds)');
+  // a record for an OLDER value: the current value is a local pick — kept, record dropped
+  asR(null); await cb('SIGNED_OUT', null); await settle();
+  tiers.setMarketSlot(3, 'boise-id'); localStorage.setItem('marketSlotFrom_3', JSON.stringify({ m: 'reno-nv', u: 'u-b' }));
+  asR(UA); await cb('SIGNED_IN', UA); await settle();
+  ok(tiers.getMarketForSlot(3) === 'boise-id' && rec(3) === null, 'H7 a record that names an older value never clears the newer local pick (only the stale record is dropped)');
+  // L4-2 + E2: a hydration push completes AFTER a switch — the value becomes A's server data and stops showing for B
+  asW(null); await cb('SIGNED_OUT', null); await settle();
+  resetDevice(); rowsFor['u-a'] = []; rowsFor['u-b'] = [];
+  tiers.setMarketSlot(0, 'tampa-fl'); setDelay = 25; wlog.length = 0;
+  asW(UA); await cb('SIGNED_IN', UA); await settle(5);
+  await switchTo(UB); await settle(60); setDelay = 0;
+  ok(pushedTo('u-a', 'tampa-fl') && !pushedTo('u-b', 'tampa-fl') && tiers.getMarketForSlot(0) === '',
+     'H8 a push that lands after a switch: written to A only, and A’s now server-held value is no longer shown to B');
+  asW(null); await cb('SIGNED_OUT', null); await settle(); asW(UA); rowsFor['u-a'] = [{ slot_index: 0, market_id: 'tampa-fl', changed_at: null }];
+  await cb('SIGNED_IN', UA); await settle();
+  ok(tiers.getMarketForSlot(0) === 'tampa-fl', 'H9 …and A gets it back from the server on A’s next sign-in');
+  const mj = rd('docs/src/js/main.js');
+  ok(/async function doSignOut\(\) \{\s*await signOutAccount\(\);\s*purgeForeignMarketSlots\(''\);/.test(mj) && /res\.purged > 0 \|\|/.test(mj),
+     'H10 source: doSignOut clears account-held markets before reload; main re-renders after any purge');
 
   const T = auth.authEventAllowsMarketPush;
   ok(T('SIGNED_IN', null, UA) && T('INITIAL_SESSION', null, UA) && !T('SIGNED_IN', UA, UA) && !T('SIGNED_IN', UA, UB)
@@ -434,6 +489,22 @@ ok(/else if \(intelMap\.unavailable\) paint\(null, true\);/.test(mainJ) && /Deal
 ok(/id="account-plan-unverified"[^>]*hidden/.test(idx) && /entitlementStatus\(\) === 'unverified'/.test(mainJ), 'S6 the account panel says when the plan could not be checked');
 ok(/isNetworkFailure\(error, status\)\) \{ offline\(\); return; \}/.test(sv3) && /id="shared-offline"/.test(sh) && /This shared deal isn't available/.test(sh), 'S7 a shared link that cannot load says "no connection", not "isn\u2019t available"');
 ok(!/startCheckout|functions\.invoke\('checkout'|functions\.invoke\('portal'/.test(rd('docs/src/js/connectivity.js')) && !/retry[^\n]*save_pipeline/.test(rd('docs/src/js/connectivity.js')), 'S8 connectivity never touches checkout/portal and never retries a write');
+
+// ── §P F3 (owner-approved wording 2026-11-23): privacy §5 matches what the app actually loads ─
+console.log('— §P privacy §5 matches the shipped resource loading ─');
+{
+  const pv = rd('docs/privacy.html');
+  const s5 = (pv.split('<h2>5. Hosting and Software Delivery</h2>')[1] || '').split('<h2>6.')[0];
+  ok(s5.includes("DealFit's static web application is hosted through GitHub Pages.")
+     && s5.includes("The software libraries and fonts DealFit uses are served from DealFit's own site; the app does not load them from third-party content-delivery services.")
+     && s5.includes("When your browser requests DealFit's pages and files, GitHub Pages may receive ordinary network information such as your IP address, browser details, and request metadata, which it handles under its own privacy practices."),
+     'P1 §5 keeps the GitHub Pages hosting paragraph and carries the two approved sentences');
+  ok(!/esm\.sh|Google Fonts/i.test(pv), 'P2 the policy no longer names services the app does not contact (esm.sh, Google Fonts)');
+  ok(/<h2>3\.[^<]*<\/h2>[\s\S]*Stripe/.test(pv) && /<h2>4\.[^<]*<\/h2>[\s\S]*Supabase/.test(pv) && /<h2>6\. Clear Path Capital Funding Requests<\/h2>/.test(pv),
+     'P3 the other service-provider disclosures (Stripe, Supabase, Clear Path Capital) are kept');
+  const servedRemote = pages.flatMap(p => [...rd('docs/' + p).matchAll(/<(?:script|link)\b[^>]*(?:src|href)="(https?:\/\/[^"]+)"/g)].map(m => m[1])).filter(u => !/rel="canonical"/.test(u));
+  ok(!servedRemote.some(u => /esm\.sh|fonts\.googleapis|fonts\.gstatic|cdn\./i.test(u)), 'P4 …and the pages indeed load no library or font from a third-party CDN');
+}
 
 console.log(`\nmobilep0: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

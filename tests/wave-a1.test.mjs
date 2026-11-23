@@ -119,6 +119,7 @@ globalThis.document = {
   createElement: t => makeEl('_' + t), body: makeEl('body'),
 };
 globalThis.window = globalThis;
+if (typeof globalThis.addEventListener !== 'function') globalThis.addEventListener = () => {};   // main.js wires a window 'storage' listener (lane-5 R1b)
 globalThis.alert = () => {};
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 let toasts = [];

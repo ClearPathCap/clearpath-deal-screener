@@ -80,7 +80,14 @@ export function renderNetStatus() {
   const e = el();
   if (!e) return;
   const show = serverUnreachable() || browserOffline();
-  if (!show) { e.hidden = true; return; }
+  if (!show) {
+    // Keyboard users: if focus is on the banner's Retry when it hides, hand focus to
+    // the active tab instead of dropping it to <body>.
+    const hadFocus = typeof document !== 'undefined' && e.contains && document.activeElement && e.contains(document.activeElement);
+    e.hidden = true;
+    if (hadFocus) { const tab = document.querySelector && document.querySelector('.nav-btn.active'); if (tab && tab.focus) tab.focus(); }
+    return;
+  }
   const msg = e.querySelector && e.querySelector('.net-status-msg');
   if (msg) msg.textContent = NET_MESSAGE;
   e.hidden = false;

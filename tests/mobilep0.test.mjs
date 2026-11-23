@@ -50,7 +50,7 @@ ok(/qbddbblhduzwcfwslbac\.supabase\.co/.test(client) && /sb_publishable_-9yLyv7r
 const manifest = JSON.parse(rd('docs/vendor/VENDOR_MANIFEST.json'));
 const sha = (p) => createHash('sha256').update(readFileSync(join(DOCS, 'vendor', p))).digest('hex');
 const mismatched = Object.entries(manifest.outputs).filter(([p, h]) => !existsSync(join(DOCS, 'vendor', p)) || sha(p) !== h).map(([p]) => p);
-ok(Object.keys(manifest.outputs).length >= 23 && mismatched.length === 0, 'V5 every vendored file matches its manifest SHA-256 (' + Object.keys(manifest.outputs).length + ' files; mismatched: ' + (mismatched.join(',') || 'none') + ')');
+ok(Object.keys(manifest.outputs).length >= 20 && mismatched.length === 0, 'V5 every vendored file matches its manifest SHA-256 (' + Object.keys(manifest.outputs).length + ' files; mismatched: ' + (mismatched.join(',') || 'none') + ')');
 const vendored = readdirSync(join(DOCS, 'vendor'));
 ok(vendored.sort().join(',') === ['LICENSES', 'VENDOR_MANIFEST.json', 'fonts', 'fonts.css', 'supabase-js-2.112.3.js'].join(','), 'V6 docs/vendor holds exactly the SDK, fonts.css, fonts/, LICENSES/ and the manifest — no node_modules copy');
 const pkgs = Object.fromEntries(manifest.packages.map(p => [p.name, p]));
@@ -60,14 +60,14 @@ const lic = readdirSync(join(DOCS, 'vendor', 'LICENSES'));
 ok(manifest.packages.every(p => lic.some(f => f.startsWith(p.name.replace('/', '__') + '__'))), 'V8 a license file ships for every vendored package (' + lic.length + ')');
 const fontsCss = rd('docs/vendor/fonts.css');
 const faces = [...fontsCss.matchAll(/@font-face\{font-family:'([^']+)';[^}]*font-weight:([^;]+);src:url\(\.\/fonts\/([^)]+)\)/g)].map(m => ({ fam: m[1], w: m[2], file: m[3] }));
-ok(faces.every(f => existsSync(join(DOCS, 'vendor', 'fonts', f.file))) && faces.length === 9, 'V9 every @font-face points at a shipped woff2 (' + faces.length + ' faces)');
-ok(faces.some(f => f.fam === 'Syne' && f.w === '400 800') && faces.some(f => f.fam === 'Outfit' && f.w === '400 800')
+ok(faces.every(f => existsSync(join(DOCS, 'vendor', 'fonts', f.file))) && faces.length === 7, 'V9 every @font-face points at a shipped woff2 (' + faces.length + ' faces)');
+ok(faces.some(f => f.fam === 'Syne' && f.w === '400 800') && !faces.some(f => f.fam === 'Outfit')
    && faces.some(f => f.fam === 'DM Mono' && f.w === '400') && faces.some(f => f.fam === 'DM Mono' && f.w === '500') && /display:swap|font-display:swap/.test(fontsCss),
-   'V10 the same families and weights as before: Syne 400–800, Outfit 400–800 (shared page), DM Mono 400/500, font-display swap');
+   'V10 the families the stylesheets use, same weights: Syne 400–800, DM Mono 400/500, font-display swap (Outfit, requested by shared.html but never used, is not shipped)');
 ok(/--font:'Syne',sans-serif;--mono:'DM Mono',monospace;/.test(rd('docs/src/css/styles.css')), 'V11 the stylesheet still names the same font families (typography unchanged)');
 ok(/^docs\/vendor\/\*\* -text$/m.test(rd('.gitattributes')), 'V12 vendored bytes are protected from line-ending conversion');
 const tool = rd('tools/vendor/package.json');
-ok(['"@supabase/supabase-js": "2.112.3"', '"esbuild": "0.28.2"', '"@fontsource-variable/syne": "5.3.0"', '"@fontsource-variable/outfit": "5.3.0"', '"@fontsource/dm-mono": "5.3.0"'].every(x => tool.includes(x))
+ok(['"@supabase/supabase-js": "2.112.3"', '"esbuild": "0.28.2"', '"@fontsource-variable/syne": "5.3.0"', '"@fontsource/dm-mono": "5.3.0"'].every(x => tool.includes(x))
    && existsSync(join(ROOT, 'tools/vendor/package-lock.json')) && /--verify/.test(rd('tools/vendor/build.mjs')), 'V13 the regeneration tool pins exact versions, has a lockfile and a byte-verify mode');
 
 // ── shims for the real modules ───────────────────────────────────────────────

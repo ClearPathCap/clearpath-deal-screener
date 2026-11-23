@@ -65,12 +65,6 @@
       "integrity": "sha512-GUNH65fUfWHQcX7bO0BGgScE465gawpTId45aDfhHcVj/upbb6b+2d++5keKP128vK8+LtE4dvLkKTsxoh7TwA=="
     },
     {
-      "name": "@fontsource-variable/outfit",
-      "version": "5.3.0",
-      "license": "OFL-1.1",
-      "integrity": "sha512-fPb5XnYK0k7SbR++HEmm4+ZqDszmLKQ+sPRUr8oQ/KNC0vy6r6hazJFe8iYozv4cqlHbvJ/JECkJWrfDodUMVQ=="
-    },
-    {
       "name": "@fontsource/dm-mono",
       "version": "5.3.0",
       "license": "OFL-1.1",
@@ -79,10 +73,9 @@
   ],
   "replaces": {
     "https://esm.sh/@supabase/supabase-js@2.112.3": "vendor/supabase-js-2.112.3.js",
-    "https://fonts.googleapis.com/css2 (Syne 400-800, DM Mono 400/500, Outfit 400-800)": "vendor/fonts.css"
+    "https://fonts.googleapis.com/css2 (Syne 400-800, DM Mono 400/500; Outfit was requested by shared.html but never used)": "vendor/fonts.css"
   },
   "outputs": {
-    "LICENSES/@fontsource-variable__outfit__LICENSE": "0e5fcef5d93bfcae273c11c00f0bb453d3b5491860e1ac8b658767b7577c938f",
     "LICENSES/@fontsource-variable__syne__LICENSE": "ea775d83f01ecd45fc622fa5db568fad99c9338192594c3719a52b78bab91e44",
     "LICENSES/@fontsource__dm-mono__LICENSE": "d2766c396a8534cba53340f8af2037749b6a0a1dd3587348c917a70e779d2e32",
     "LICENSES/@supabase__auth-js__LICENSE": "334dd6820e2eaeab2064e7c59001b810566728a28a41a7c1dbf69bbee17d0936",
@@ -98,12 +91,10 @@
     "fonts/dm-mono-latin-500-normal.woff2": "9964608a849396bd00c4bfd7034afe03486469dcf20b4f6b8cbdfdd310369951",
     "fonts/dm-mono-latin-ext-400-normal.woff2": "a52e19ebe0398c9c0f8fa28a0c5e9a6bc324f35d9f0881c9aa407d10af447175",
     "fonts/dm-mono-latin-ext-500-normal.woff2": "8711f938c3f04f91e35ae64ebc7f2eecd800d2ae1c3542f6c837c758a50422f5",
-    "fonts/outfit-latin-ext-wght-normal.woff2": "0f53d1c03b3918d744a843b5039001ee31695ca1e255e3914188df81beb461e9",
-    "fonts/outfit-latin-wght-normal.woff2": "6c18d579fd87c3776be068b762cbc83fde3acb543d49eabd3ade842eb987e887",
     "fonts/syne-greek-wght-normal.woff2": "b9ade823e28b34c3a9c038ae698e659f64b66dabeed6c979e0bc347bfcc891a7",
     "fonts/syne-latin-ext-wght-normal.woff2": "83885b130cf2a67bc2fd6175d6f3c2875833552c1762b5943b51335038ae01f2",
     "fonts/syne-latin-wght-normal.woff2": "68b623f0e45b905041b2edb9b2e4f563a505f13db1cd06b5f1946eb2e1f47048",
-    "fonts.css": "c26ae0cb438fdf644582260efedccc4edda18609548cd8ed189c917cfb7df138",
+    "fonts.css": "3780f3bab6e4baf271d6349f32bb25163febfacd79dfbf0d1b879b3c1b6a4441",
     "supabase-js-2.112.3.js": "077d6798d9f226bd9bcc17eda467ec7de735409bce38d22ea5457ee28f0bcb27"
   }
 }

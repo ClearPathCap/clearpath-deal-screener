@@ -32,8 +32,10 @@ import { getMarketForSlot, setMarketSlot, recordSlotChangeAt, clearSlotChange } 
 import { noteServerResult } from './connectivity.js';
 
 // Hydrate on sign-in / session restore. Returns a summary for tests/telemetry;
-// callers re-render on 'synced'.
-export async function hydrateMarketsOnAuth() {
+// callers re-render on 'synced'. `push: false` (a connectivity reconnect) pulls
+// server slots only and never writes — local-only slots stay local until the next
+// boot / sign-in pushes them, exactly as before (independent review F1).
+export async function hydrateMarketsOnAuth({ push = true } = {}) {
   if (!isSignedIn()) return { status: 'signed-out', pulled: 0, pushed: 0 };
   let rows;
   try {
@@ -59,7 +61,7 @@ export async function hydrateMarketsOnAuth() {
       // lock from another device shows here; a clock the server does not hold
       // (changed_at null) clears a stale device-local one.
       if (row.changed_at) recordSlotChangeAt(slot, row.changed_at); else clearSlotChange(slot);
-    } else if (localId) {
+    } else if (localId && push) {
       // Local-only slot — push up. A refusal (slot cap on this tier, cooldown)
       // leaves the local value exactly where it was.
       try {

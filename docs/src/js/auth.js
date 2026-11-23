@@ -22,6 +22,12 @@ export function isSignedIn()   { return !!_session; }
 // (fail closed, unchanged); the UI may say why. Never grants anything.
 let _entitlementStatus = 'signed-out';   // 'signed-out' | 'verified' | 'unverified'
 export function entitlementStatus() { return _entitlementStatus; }
+
+// Independent review F1: true only while a RECONNECT re-runs the auth chain. Subscribers
+// read it synchronously (notify() calls them in order) to skip anything that writes —
+// today that is the market-sync push of local-only slots, which stays for boot/sign-in.
+let _readOnlySync = false;
+export function readOnlySync() { return _readOnlySync; }
 export function getUserEmail() { return _session?.user?.email || ''; }
 
 // Called once at boot: restore any session, subscribe to changes, sync tier.
@@ -47,9 +53,15 @@ export async function initAuthAndEntitlement() {
   notify();
 
   // Mobile Phase 0: when connectivity returns after a failed request, re-run the
-  // same READ-ONLY chain a sign-in runs (plan check, then every onAuthChange
-  // subscriber: tier UI, saved-deal load, market sync). Signed-out: nothing.
-  onReconnect(async () => { if (!_session) return; await syncEntitlement(); notify(); });
+  // auth chain READ-ONLY (plan check, then every onAuthChange subscriber: tier UI,
+  // saved-deal load, market pull) with readOnlySync() true, so no subscriber writes.
+  // Signed-out: nothing.
+  onReconnect(async () => {
+    if (!_session) return;
+    await syncEntitlement();
+    _readOnlySync = true;
+    try { notify(); } finally { _readOnlySync = false; }
+  });
 }
 
 // Pull the server tier into the local cache (starter when signed out). Resolves

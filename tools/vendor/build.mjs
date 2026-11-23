@@ -2,7 +2,7 @@
 //
 // Regenerates docs/vendor/ so the served app loads NO runtime JavaScript or
 // font from a third-party CDN:
-//   • supabase-js-2.112.3.mjs — the exact pinned Supabase SDK (formerly
+//   • supabase-js-2.112.3.js — the exact pinned Supabase SDK (formerly
 //     https://esm.sh/@supabase/supabase-js@2.112.3) bundled with its transitive
 //     code into one browser ES module (esbuild, platform=browser).
 //   • fonts/*.woff2 + fonts.css — Syne (variable, 400–800) and DM Mono (400, 500):

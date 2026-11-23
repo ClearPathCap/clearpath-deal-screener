@@ -41,7 +41,7 @@ import {
 import {
   initAuthAndEntitlement, onAuthChange, syncEntitlement,
   sendOtpCode, verifyOtpCode, signOutAccount, redeemServerCode,
-  isSignedIn, getUserEmail, entitlementStatus,
+  isSignedIn, getUserEmail, entitlementStatus, readOnlySync,
 } from './auth.js';
 import { initConnectivity, retryNow } from './connectivity.js';   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
@@ -2242,7 +2242,7 @@ async function syncPipelineOnAuth() {
 // refreshTierUI in the onAuthChange chain, so the server-side tier caps that
 // set_user_market applies match the tier the UI just resolved.
 async function syncMarketsOnAuth() {
-  const res = await hydrateMarketsOnAuth();
+  const res = await hydrateMarketsOnAuth({ push: !readOnlySync() });   // reconnect = pull only (review F1)
   if (res.status === 'synced' && (res.pulled > 0 || res.pushed > 0)) {
     renderAllSlots();            // M-1 stays correct: the empty path resets ranges
     renderGuideMarketIntel();

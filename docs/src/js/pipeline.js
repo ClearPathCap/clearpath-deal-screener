@@ -1,7 +1,7 @@
 // ─── Pipeline: saved deals, render, expand, filter, delete ───────────────────
 
 import { fmt, pct, escapeHtml, parseComma } from './format.js';
-import { getDeals, saveDeals, hydratePipeline, pipelineLoadState, PIPELINE_ALLOWANCE } from './storage.js';
+import { getDeals, saveDeals, hydratePipeline, pipelineLoadState, pipelineLoadFailure, PIPELINE_ALLOWANCE } from './storage.js';
 import { serverUnreachable } from './connectivity.js';
 
 // Mobile Phase 0: a failed mutation caused by no connection says so — and says
@@ -295,7 +295,7 @@ export function renderPipeline() {
     return;
   }
   if (loadState === 'failed') {
-    list.innerHTML = '<div class="empty-state" role="status"><div class="ei">📡</div><p>Couldn’t load your saved deals — no connection to DealFit’s server.<br>Nothing was changed; your deals stay with your account.</p><button class="btn-redeem" style="margin-top:14px" onclick="retryConnection()">Retry</button></div>';
+    list.innerHTML = '<div class="empty-state" role="status"><div class="ei">📡</div><p>Couldn’t load your saved deals — ' + (pipelineLoadFailure() === 'server' ? 'DealFit’s server returned an error' : 'no connection to DealFit’s server') + '.<br>Nothing was changed; your deals stay with your account.</p><button class="btn-redeem" style="margin-top:14px" onclick="retryConnection()">Retry</button></div>';
     return;
   }
 

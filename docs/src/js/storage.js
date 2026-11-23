@@ -43,6 +43,10 @@ export function pipelineHydrationOk() { return _hydrated; }
 // account's pipeline then — never render it as "no deals saved").
 let _loadState = 'idle';   // 'idle' | 'loading' | 'ok' | 'failed'
 export function pipelineLoadState() { return _hydrated ? 'ok' : _loadState; }
+// Independent review F4: why the last load failed — 'offline' (no server answer) or
+// 'server' (the server answered with an error). Never call a server error "no connection".
+let _loadFailKind = null;
+export function pipelineLoadFailure() { return _loadState === 'failed' && !_hydrated ? _loadFailKind : null; }
 
 // Synchronous read for the UI. Returns a copy so callers can't mutate the cache.
 export function getDeals() { return _cache.slice(); }
@@ -96,7 +100,7 @@ export async function hydratePipeline() {
   try {
     const { data, error, status } = await supabase.rpc('get_pipeline');
     noteServerResult('pipeline', { ok: !error, error, status });
-    if (error) { console.warn('Pipeline load failed:', error); if (!_hydrated) _loadState = 'failed'; return _cache; }
+    if (error) { console.warn('Pipeline load failed:', error); if (!_hydrated) { _loadState = 'failed'; _loadFailKind = isNetworkFailure(error, status) ? 'offline' : 'server'; } return _cache; }
     // Success — including the server truthfully answering "empty". Only here
     // does the cache become a legitimate base for a wholesale replace.
     _cache = Array.isArray(data) ? data : [];
@@ -105,7 +109,7 @@ export async function hydratePipeline() {
   } catch (e) {
     console.warn('Pipeline load failed:', e);
     noteServerResult('pipeline', { error: e });
-    if (!_hydrated) _loadState = 'failed';
+    if (!_hydrated) { _loadState = 'failed'; _loadFailKind = isNetworkFailure(e) ? 'offline' : 'server'; }
     // _hydrated deliberately NOT set: an unheard server never authorizes a save.
   }
   return _cache;

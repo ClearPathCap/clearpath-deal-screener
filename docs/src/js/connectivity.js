@@ -74,7 +74,9 @@ const browserOffline = () => typeof navigator !== 'undefined' && navigator && na
 export const NET_MESSAGE = 'Offline, or DealFit’s server can’t be reached. Calculators keep working on this device. Sign-in, saved deals, plan checks and premium market details need a connection — nothing is saved to your account until it’s back.';
 
 function el() { return typeof document !== 'undefined' && document.getElementById ? document.getElementById('net-status') : null; }
-function setBusy(b) { const e = el(); const btn = e && e.querySelector && e.querySelector('button'); if (btn) { btn.disabled = !!b; btn.textContent = b ? 'Retrying…' : 'Retry'; } }
+// Independent review F2: never `disabled` — disabling the focused button drops focus to
+// <body> before the hide hand-off can run. aria-disabled + the _retrying guard instead.
+function setBusy(b) { const e = el(); const btn = e && e.querySelector && e.querySelector('button'); if (btn) { if (b) btn.setAttribute('aria-disabled', 'true'); else btn.removeAttribute('aria-disabled'); btn.textContent = b ? 'Retrying…' : 'Retry'; } }
 
 export function renderNetStatus() {
   const e = el();

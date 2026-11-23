@@ -74,7 +74,8 @@ ok(['"@supabase/supabase-js": "2.112.3"', '"esbuild": "0.28.2"', '"@fontsource-v
 const store = new Map();
 globalThis.localStorage = { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) };
 const els = new Map();
-const mkEl = (id) => { const L = {}; const e = { id, hidden: false, textContent: '', innerHTML: '', style: {}, dataset: {}, disabled: false, children: {},
+const mkEl = (id) => { const L = {}; const e = { id, hidden: false, textContent: '', innerHTML: '', style: {}, dataset: {}, disabled: false, children: {}, attrs: {}, everDisabled: false,
+  setAttribute(n, v) { e.attrs[n] = String(v); }, removeAttribute(n) { delete e.attrs[n]; },
   addEventListener(t, f) { (L[t] || (L[t] = [])).push(f); }, fire(t) { (L[t] || []).forEach(f => f({ type: t })); },
   querySelector(sel) { if (!e.children[sel]) e.children[sel] = mkEl(sel); return e.children[sel]; }, querySelectorAll: () => [] }; return e; };
 const el = (id) => { if (!els.has(id)) els.set(id, mkEl(id)); return els.get(id); };
@@ -200,6 +201,46 @@ ok(h.status === 'error' && tiers.getMarketForSlot(0) === 'charlotte-nc', 'M3 mar
 S({ session: SESSION, rpc: { set_user_market: () => NET_PG } });
 const pm = await msync.pushMarketChange(1, 'raleigh-nc');
 ok(!pm.ok && /Couldn't reach the server/.test(pm.msg) && tiers.getMarketForSlot(1) !== 'raleigh-nc', 'M4 a signed-in market change offline is refused and not committed (server-first law unchanged)');
+
+// ── §R independent-review corrections (F1 read-only reconnect, F2 focus, F4 reason) ─
+console.log('— §R reconnect never writes; busy Retry keeps focus; server errors are not "no connection" ─');
+{
+  const seen = [];
+  auth.onAuthChange(() => { seen.push(auth.readOnlySync()); });
+  S({ session: SESSION, rpc: { current_tier: () => ({ data: 'pro', error: null, status: 200 }) } });
+  if (globalThis.__stubAuthCallback) await globalThis.__stubAuthCallback('TOKEN_REFRESHED', SESSION);
+  const normal = seen.slice();
+  seen.length = 0;
+  C.noteServerResult('t', { error: NET_PG.error, status: 0 });
+  await C.retryNow();
+  ok(normal.length >= 1 && normal.every(v => v === false) && seen.length >= 1 && seen.every(v => v === true) && auth.readOnlySync() === false,
+     'R1 a reconnect notifies subscribers with readOnlySync()=true (and only then); sign-in / auth changes keep false (review F1)');
+  // the market-sync subscriber honours it: pull only, never set_user_market, local slot kept
+  tiers.setMarketSlot(2, 'raleigh-nc');
+  const calls = S({ session: SESSION, rpc: { get_user_markets: () => ({ data: [], error: null, status: 200 }), set_user_market: () => ({ data: { ok: true }, error: null, status: 200 }) } });
+  const ro = await msync.hydrateMarketsOnAuth({ push: false });
+  ok(ro.status === 'synced' && ro.pushed === 0 && !(calls.rpcCalls || []).some(c => c.name === 'set_user_market') && tiers.getMarketForSlot(2) === 'raleigh-nc',
+     'R2 hydrateMarketsOnAuth({push:false}) reads only: no set_user_market, the local-only slot stays local (review F1)');
+  const calls2 = S({ session: SESSION, rpc: { get_user_markets: () => ({ data: [], error: null, status: 200 }), set_user_market: () => ({ data: { ok: true }, error: null, status: 200 }) } });
+  const rw = await msync.hydrateMarketsOnAuth();
+  ok(rw.pushed >= 1 && (calls2.rpcCalls || []).some(c => c.name === 'set_user_market'), 'R3 boot / sign-in behaviour is unchanged: the default still pushes local-only slots');
+  ok(rd('docs/src/js/main.js').includes('hydrateMarketsOnAuth({ push: !readOnlySync() })')
+     && /_readOnlySync = true;\s*try \{ notify\(\); \} finally \{ _readOnlySync = false; \}/.test(rd('docs/src/js/auth.js')),
+     'R4 source: main passes push:false during a reconnect; auth sets the flag only around the reconnect notify');
+  const btn = banner.querySelector('button'); btn.disabled = false;
+  let disabledDuring = null; C.onReconnect(async () => { if (disabledDuring === null) disabledDuring = { disabled: btn.disabled, aria: btn.attrs['aria-disabled'] }; });
+  await C.retryNow();
+  ok(disabledDuring && disabledDuring.disabled === false && disabledDuring.aria === 'true' && btn.attrs['aria-disabled'] === undefined && !/\.disabled\s*=/.test(rd('docs/src/js/connectivity.js')),
+     'R5 a busy Retry is aria-disabled, never disabled (disabling the focused button dropped focus — review F2)');
+  storage.clearPipelineCache();
+  S({ session: SESSION, rpc: { get_pipeline: () => ({ data: null, error: { message: 'internal', code: 'XX000' }, status: 500 }) } });
+  await storage.hydratePipeline();
+  const serverKind = storage.pipelineLoadFailure();
+  S({ session: SESSION, rpc: { get_pipeline: () => NET_PG } });
+  await storage.hydratePipeline();
+  ok(serverKind === 'server' && storage.pipelineLoadFailure() === 'offline' && rd('docs/src/js/pipeline.js').includes("pipelineLoadFailure() === 'server' ? 'DealFit’s server returned an error'"),
+     'R6 a server error on load says the server returned an error; only a network failure says "no connection" (review F4)');
+}
 
 // ── §S source pins for the UI wiring ─────────────────────────────────────────
 console.log('— §S UI wiring (source pins; behaviour executed in the browser check) ─');

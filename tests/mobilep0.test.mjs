@@ -329,6 +329,34 @@ console.log('— §F market pushes only at boot / a genuine sign-in, for the own
      'F13 a sync whose account changes mid-read applies nothing from the previous account and writes nothing');
   rowsDelay = 0;
 
+  // Lane-3 review N1 — the reverse direction: values PULLED from another account are never
+  // pushed into the device's owner (A owns; B signs in and pulls B's slot; A signs back in).
+  as(null); await cb('SIGNED_OUT', null); await settle();
+  for (let i = 0; i < 6; i++) tiers.setMarketSlot(i, '');
+  tiers.setMarketSlot(3, 'tampa-fl');   // A's own signed-out pick (owner = u-a)
+  rowsFor['u-a'] = []; rowsFor['u-b'] = [{ slot_index: 1, market_id: 'charlotte-nc', changed_at: null }];
+  as(UB); await cb('SIGNED_IN', UB); await settle();
+  ok(tiers.getMarketForSlot(1) === 'charlotte-nc' && writes().length === 0, 'F15a the other account (B) signs in: its server slot is pulled; nothing of A’s is pushed into B');
+  as(null); await cb('SIGNED_OUT', null); await settle();
+  as(UA); await cb('SIGNED_IN', UA); await settle();
+  ok(!writes().some(w => w.args.p_market === 'charlotte-nc') && writes().some(w => w.args.p_slot === 3 && w.args.p_market === 'tampa-fl') && tiers.getMarketForSlot(1) === 'charlotte-nc',
+     'F15 A signs back in: B’s pulled slot is NOT pushed into A (A’s own local pick still is); B’s value stays on the device, untouched');
+  as(UA); await auth.initAuthAndEntitlement(); await settle();
+  ok(!writes().some(w => w.args.p_market === 'charlotte-nc'), 'F15b …and a later boot as A never pushes B’s pulled slot either');
+  as(null); await cb('SIGNED_OUT', null); await settle();
+  tiers.setMarketSlot(1, 'raleigh-nc');   // a new signed-out pick replaces B's value on this device
+  as(UA); await cb('SIGNED_IN', UA); await settle();
+  ok(writes().some(w => w.args.p_slot === 1 && w.args.p_market === 'raleigh-nc'), 'F16 provenance is bound to the value: a new local pick in that slot is local again and is pushed to the owner');
+  st = S({ session: UB, rpc: { ...RPC, set_user_market: () => ({ data: { ok: true }, error: null, status: 200 }) } });
+  as(null); await cb('SIGNED_OUT', null); await settle();
+  as(UB); await cb('SIGNED_IN', UB); await settle();
+  st = S({ session: UB, rpc: { ...RPC, set_user_market: () => ({ data: { ok: true }, error: null, status: 200 }) } });
+  const bEdit = await msync.pushMarketChange(2, 'durham-nc');
+  if (bEdit.ok) tiers.setMarketSlot(2, 'durham-nc');   // the caller's commit after a server ok (main.js picker)
+  as(null); await cb('SIGNED_OUT', null); await settle();
+  as(UA); await cb('SIGNED_IN', UA); await settle();
+  ok(bEdit.ok && !writes().some(w => w.args.p_market === 'durham-nc'), 'F17 a slot B changed server-first is B’s server data: it is never pushed into A');
+
   const T = auth.authEventAllowsMarketPush;
   ok(T('SIGNED_IN', null, UA) && T('INITIAL_SESSION', null, UA) && !T('SIGNED_IN', UA, UA) && !T('SIGNED_IN', UA, UB)
      && !T('TOKEN_REFRESHED', null, UA) && !T('TOKEN_REFRESHED', UA, UA) && !T('USER_UPDATED', UA, UA) && !T('SIGNED_OUT', UA, null) && !T('SIGNED_IN', null, null),

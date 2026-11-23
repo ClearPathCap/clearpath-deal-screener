@@ -42,6 +42,16 @@ const OWNER_KEY = 'marketSlotsOwner';
 const readOwner = () => { try { return localStorage.getItem(OWNER_KEY) || ''; } catch { return ''; } };
 const writeOwner = (id) => { try { localStorage.setItem(OWNER_KEY, id); } catch { /* best effort */ } };
 
+// Lane-3 review N1 — per-slot provenance, bound to the value itself: {m: marketId, u: userId}.
+// A value PULLED from an account (or written to it) is that account's server data, not a
+// local-only pick, so it is never pushed into a DIFFERENT account (A → sign-out → B pulls
+// B's slots → sign-out → A must not receive B's). If the slot later changes on this device
+// (a signed-out pick), the record no longer matches the value and it counts as local again.
+const FROM_PREFIX = 'marketSlotFrom_';
+const readFrom = (slot) => { try { const o = JSON.parse(localStorage.getItem(FROM_PREFIX + slot) || 'null'); return o && typeof o === 'object' ? o : null; } catch { return null; } };
+const writeFrom = (slot, m, u) => { if (!u || !m) return; try { localStorage.setItem(FROM_PREFIX + slot, JSON.stringify({ m, u })); } catch { /* best effort */ } };
+const fromOtherAccount = (slot, localId, uid) => { const f = readFrom(slot); return !!(f && f.m === localId && f.u && uid && f.u !== uid); };
+
 // Hydrate on sign-in / session restore. Returns a summary for tests/telemetry;
 // callers re-render on 'synced'. `push: false` (a connectivity reconnect, a token
 // refresh, the SDK's tab-visible SIGNED_IN for the same user) pulls server slots only
@@ -76,17 +86,19 @@ export async function hydrateMarketsOnAuth({ push = true } = {}) {
     const localId  = getMarketForSlot(slot);
     if (serverId) {
       if (serverId !== localId) { setMarketSlot(slot, serverId); pulled++; }
+      writeFrom(slot, serverId, uid);   // N1: this value is this account's server data
       // Wave A · A9: the server's cooldown clock wins for a server-held slot — a
       // lock from another device shows here; a clock the server does not hold
       // (changed_at null) clears a stale device-local one.
       if (row.changed_at) recordSlotChangeAt(slot, row.changed_at); else clearSlotChange(slot);
-    } else if (localId && mayPush) {
+    } else if (localId && mayPush && !fromOtherAccount(slot, localId, uid)) {
       // Local-only slot — push up. A refusal (slot cap on this tier, cooldown)
-      // leaves the local value exactly where it was.
+      // leaves the local value exactly where it was. A value pulled from ANOTHER
+      // account is never pushed here (N1); it stays on the device, untouched.
       if (!isSignedIn() || getUserId() !== uid) break;   // account changed mid-sync: stop writing
       try {
         const { data, error } = await supabase.rpc('set_user_market', { p_slot: slot, p_market: localId });
-        if (!error && data && data.ok) pushed++;
+        if (!error && data && data.ok) { pushed++; writeFrom(slot, localId, uid); }
       } catch { /* keep local — sync is best-effort, never destructive */ }
     }
   }
@@ -102,6 +114,7 @@ export async function pushMarketChange(slot, marketId) {
     const { data, error, status } = await supabase.rpc('set_user_market', { p_slot: slot, p_market: marketId });
     noteServerResult('market-sync', { ok: !error, error, status });
     if (error) return { ok: false, msg: 'Couldn\'t reach the server — try again.' };
+    if (data && data.ok === true) writeFrom(slot, marketId, getUserId());   // N1: now this account's server data
     return data && typeof data.ok === 'boolean' ? data : { ok: false, msg: 'Unexpected server reply.' };
   } catch (e) {
     noteServerResult('market-sync', { error: e });

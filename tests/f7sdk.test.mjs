@@ -54,7 +54,7 @@ globalThis.fetch = async (input, init = {}) => {
   const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json' } });
   switch (u.pathname) {
     case '/rest/v1/rpc/current_tier': return json('pro');
-    case '/rest/v1/rpc/get_user_markets': return json([]);
+    case '/rest/v1/rpc/get_user_markets': return json(authedAs === 'u-b' ? [{ slot_index: 1, market_id: 'charlotte-nc', changed_at: null }] : []);   // B holds one server slot
     case '/rest/v1/rpc/set_user_market': return json({ ok: false, reason: 'cooldown' });   // refused: the slot stays local-only (worst case)
     case '/rest/v1/rpc/get_pipeline': return json([]);
     case '/auth/v1/verify': authedAs = pendingUser; return json(sessionFor(pendingUser));
@@ -123,6 +123,15 @@ reset(); pendingUser = 'u-b';
 const v2 = await auth.verifyOtpCode('u-b@local.test', '123456'); await settle();
 ok(v2.ok && auth.getUserId() === 'u-b' && writes().length === 0 && tiers.getMarketForSlot(0) === 'tampa-fl',
    'K9 the other account’s genuine sign-in pushes none of the first account’s local slots; the slot stays local');
+ok(tiers.getMarketForSlot(1) === 'charlotte-nc', 'K9b …and B’s own server slot was pulled onto the device');
+
+console.log('— the first account signs back in after the other (lane-3 review N1) ─');
+await auth.signOutAccount(); await settle();
+reset(); pendingUser = 'u-a';
+const v3 = await auth.verifyOtpCode('u-a@local.test', '123456'); await settle();
+ok(v3.ok && auth.getUserId() === 'u-a' && !writes().some(w => w.body?.p_market === 'charlotte-nc') && writes().some(w => w.body?.p_slot === 0 && w.body?.p_market === 'tampa-fl')
+   && tiers.getMarketForSlot(1) === 'charlotte-nc',
+   'K11 A’s genuine sign-in after B never pushes B’s pulled slot into A (A’s own local pick still is); B’s value stays local, untouched');
 ok(calls.every(c => !/^https?:/.test(c.path)) && !calls.some(c => /supabase\.co/.test(c.path)), 'K10 every request went to the in-memory fake (no network)');
 
 console.log(`\nf7sdk: ${pass} passed, ${fail} failed`);

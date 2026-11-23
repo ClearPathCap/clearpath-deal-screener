@@ -1823,7 +1823,7 @@ async function verifySignInCode() {
 
 async function doSignOut() {
   await signOutAccount();
-  purgeForeignMarketSlots('');   // E2: no account's server-held markets stay on a signed-out device
+  try { purgeForeignMarketSlots(''); } catch (e) { console.warn(e); }   // E2: no account's server-held markets stay on a signed-out device (R3: never blocks the reload)
   updateAccountUI();
   location.reload();
 }
@@ -2215,6 +2215,15 @@ openInstallFromLink();      // business-card QR: open "Get the App" after load
 onAuthChange(refreshTierUI);
 onAuthChange(syncPipelineOnAuth);
 onAuthChange(syncMarketsOnAuth);   // UX wave finding 3: market slots follow the account
+// Lane-5 R1b: another tab may purge or pull the shared market slots (localStorage) while this
+// tab's own sync changes nothing; re-render from storage so this page never keeps showing a
+// value that storage no longer holds. Display only: no network write, no sync.
+let _slotStorageRender = 0;
+window.addEventListener('storage', (e) => {
+  if (e.key !== null && !/^(primaryMarket|market_\d|slotChangeDates|marketSlotFrom_\d)$/.test(e.key)) return;
+  clearTimeout(_slotStorageRender);
+  _slotStorageRender = setTimeout(() => { renderAllSlots(); renderGuideMarketIntel(); }, 50);
+});
 // Wave A1 (auth chip readiness): the boot promise is the proven completion
 // boundary — it resolves only after the initial getSession() settled, the auth
 // subscription is wired, and the first entitlement sync + notify ran. Until
@@ -2244,6 +2253,9 @@ async function syncPipelineOnAuth() {
 // refreshTierUI in the onAuthChange chain, so the server-side tier caps that
 // set_user_market applies match the tier the UI just resolved.
 async function syncMarketsOnAuth(_session, ctx) {
+  // Lane-5 R1a: hide another account's server-held slots in the PAGE at once — before the
+  // read below, which may be slow, hang or fail — not only when the sync settles.
+  if (purgeForeignMarketSlots() > 0) { renderAllSlots(); renderGuideMarketIntel(); }
   // F7: push local-only slots only when auth says THIS notify may (boot, or a genuine
   // sign-in); a tab-visible SIGNED_IN, token refresh or reconnect pulls only.
   const res = await hydrateMarketsOnAuth({ push: !!(ctx && ctx.marketPush) });

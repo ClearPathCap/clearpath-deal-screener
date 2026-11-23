@@ -253,8 +253,10 @@ console.log('— §F market pushes only at boot / a genuine sign-in, for the own
   const m = mainSrc.match(/async function syncMarketsOnAuth\(([^)]*)\) \{([\s\S]*?)\r?\n\}/);
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const params = m ? m[1].split(',').map(s => s.trim()).filter(Boolean) : [];
-  const compiled = m ? new AsyncFunction('hydrateMarketsOnAuth', 'readOnlySync', 'renderAllSlots', 'renderGuideMarketIntel', ...params, m[2]) : null;
-  const deps = [msync.hydrateMarketsOnAuth, auth.readOnlySync || (() => false), () => {}, () => {}];
+  const compiled = m ? new AsyncFunction('hydrateMarketsOnAuth', 'readOnlySync', 'renderAllSlots', 'renderGuideMarketIntel', 'purgeForeignMarketSlots', ...params, m[2]) : null;
+  const renders = [];   // lane-5 R1: each render records which markets storage held at that moment
+  const deps = [msync.hydrateMarketsOnAuth, auth.readOnlySync || (() => false), () => { renders.push([0, 1, 2, 3, 4, 5].map(i => tiers.getMarketForSlot(i))); }, () => {},
+                msync.purgeForeignMarketSlots || (() => 0)];
   auth.onAuthChange((s, ctx) => { if (compiled) compiled(...deps, s, ctx).catch(() => {}); });
   ok(!!compiled, 'F0 main.js syncMarketsOnAuth compiled from source for the tests');
 
@@ -469,8 +471,26 @@ console.log('— §F market pushes only at boot / a genuine sign-in, for the own
   await cb('SIGNED_IN', UA); await settle();
   ok(tiers.getMarketForSlot(0) === 'tampa-fl', 'H9 …and A gets it back from the server on A’s next sign-in');
   const mj = rd('docs/src/js/main.js');
-  ok(/async function doSignOut\(\) \{\s*await signOutAccount\(\);\s*purgeForeignMarketSlots\(''\);/.test(mj) && /res\.purged > 0 \|\|/.test(mj),
-     'H10 source: doSignOut clears account-held markets before reload; main re-renders after any purge');
+  ok(/async function doSignOut\(\) \{\s*await signOutAccount\(\);\s*try \{ purgeForeignMarketSlots\(''\); \} catch/.test(mj) && /res\.purged > 0 \|\|/.test(mj),
+     'H10 source: doSignOut clears account-held markets before reload (never blocking it); main re-renders after any purge');
+
+  // Lane-5 R1a: the PAGE drops another account's market at once on a switch — before a slow read returns.
+  asR(null); await cb('SIGNED_OUT', null); await settle();
+  resetDevice(); rowsFor['u-a'] = []; rowsFor['u-b'] = [{ slot_index: 2, market_id: 'durham-nc', changed_at: null }];
+  asR(UB); await cb('SIGNED_IN', UB); await settle();                                  // B's durham-nc on the page
+  rowsDelay = 40; renders.length = 0; asR(UA); const swA = cb('SIGNED_IN', UA); await settle(10);
+  const earlyRender = renders.find(r => r[2] === '');
+  await swA; await settle(80); rowsDelay = 0;
+  ok(!!earlyRender && renders.indexOf(earlyRender) === 0, 'R1a a direct switch re-renders the page WITHOUT the other account’s market before the slow read returns');
+  ok(/window\.addEventListener\('storage', \(e\) => \{[\s\S]{0,200}primaryMarket\|market_\\d\|slotChangeDates\|marketSlotFrom_\\d[\s\S]{0,200}renderAllSlots\(\); renderGuideMarketIntel\(\);/.test(mj),
+     'R1b source: a slot change made by ANOTHER tab (storage event) re-renders this page (executed in the browser re-verify)');
+  // Lane-5 R3: a storage exception during the purge never throws to the caller; the value is still cleared.
+  tiers.setMarketSlot(1, 'charlotte-nc'); localStorage.setItem('marketSlotFrom_1', JSON.stringify({ m: 'charlotte-nc', u: 'u-z' }));
+  const realSet = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = (k, v) => { if (k === 'slotChangeDates') throw new Error('QuotaExceededError'); return realSet(k, v); };
+  let threw = false, p3 = -1; try { p3 = msync.purgeForeignMarketSlots('u-a'); } catch { threw = true; }
+  localStorage.setItem = realSet;
+  ok(!threw && p3 === 1 && tiers.getMarketForSlot(1) === '', 'R3 a storage exception during the purge is contained; the other account’s value is still cleared');
 
   const T = auth.authEventAllowsMarketPush;
   ok(T('SIGNED_IN', null, UA) && T('INITIAL_SESSION', null, UA) && !T('SIGNED_IN', UA, UA) && !T('SIGNED_IN', UA, UB)

@@ -80,9 +80,9 @@ const msync = await import('../docs/src/js/marketSync.js');
 const mainSrc = readFileSync(join(ROOT, 'docs/src/js/main.js'), 'utf8');
 const m = mainSrc.match(/async function syncMarketsOnAuth\(([^)]*)\) \{([\s\S]*?)\r?\n\}/);
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-const compiled = new AsyncFunction('hydrateMarketsOnAuth', 'readOnlySync', 'renderAllSlots', 'renderGuideMarketIntel',
+const compiled = new AsyncFunction('hydrateMarketsOnAuth', 'readOnlySync', 'renderAllSlots', 'renderGuideMarketIntel', 'purgeForeignMarketSlots',
   ...(m ? m[1].split(',').map(s => s.trim()).filter(Boolean) : []), m ? m[2] : 'throw new Error("syncMarketsOnAuth not found")');
-auth.onAuthChange((s, ctx) => { compiled(msync.hydrateMarketsOnAuth, auth.readOnlySync || (() => false), () => {}, () => {}, s, ctx).catch(() => {}); });
+auth.onAuthChange((s, ctx) => { compiled(msync.hydrateMarketsOnAuth, auth.readOnlySync || (() => false), () => {}, () => {}, msync.purgeForeignMarketSlots || (() => 0), s, ctx).catch(() => {}); });
 
 for (let i = 0; i < 6; i++) tiers.setMarketSlot(i, '');
 tiers.setMarketSlot(0, 'tampa-fl');

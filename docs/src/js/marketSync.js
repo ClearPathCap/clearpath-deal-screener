@@ -82,16 +82,20 @@ const currentUid = () => (isSignedIn() ? getUserId() : '');
 export function purgeForeignMarketSlots(keepUid = currentUid()) {
   let purged = 0;
   for (let slot = 0; slot < 6; slot++) {
-    const f = readFrom(slot);
-    if (!f) continue;
-    const value = getMarketForSlot(slot);
-    if (f === CORRUPT || (f.m === value && f.u !== keepUid)) {
-      if (value) { setMarketSlot(slot, ''); purged++; }
-      clearSlotChange(slot);
-      removeFrom(slot);
-    } else if (f.m !== value) {
-      removeFrom(slot);   // the record describes an older value: the current one is a local pick
-    }
+    // Lane-5 R3: a storage exception (quota, blocked storage) on one slot never aborts the
+    // others or the caller; the value is cleared first, so a failure can only leave a date.
+    try {
+      const f = readFrom(slot);
+      if (!f) continue;
+      const value = getMarketForSlot(slot);
+      if (f === CORRUPT || (f.m === value && f.u !== keepUid)) {
+        if (value) { setMarketSlot(slot, ''); purged++; }
+        try { clearSlotChange(slot); } catch { /* best effort */ }
+        removeFrom(slot);
+      } else if (f.m !== value) {
+        removeFrom(slot);   // the record describes an older value: the current one is a local pick
+      }
+    } catch { /* best effort — the next purge retries */ }
   }
   return purged;
 }

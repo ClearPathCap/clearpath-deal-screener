@@ -1,0 +1,129 @@
+// ─── Lane-2 review F7 through the REAL vendored Supabase SDK (2026-11-23) ─────
+// The SDK itself emits the auth events: INITIAL_SESSION at boot, SIGNED_IN when the
+// tab becomes visible again (_onVisibilityChanged → _recoverAndRefresh), and
+// TOKEN_REFRESHED, SIGNED_OUT and a genuine SIGNED_IN from verifyOtp. The shipped
+// auth.js + marketSync.js + tiers.js run unmodified; the market subscriber is
+// main.js's own syncMarketsOnAuth, compiled from its source text. No network:
+// fetch is an in-memory fake, the URL is a dead loopback, data is synthetic.
+// Run: node --import ./tests/_hooks/register-stubs.mjs tests/f7sdk.test.mjs
+import { register } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+register(new URL('./_hooks/realsdk-loader.mjs', import.meta.url));
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+let pass = 0, fail = 0;
+const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL: ' + m); } };
+const settle = (ms = 120) => new Promise(r => setTimeout(r, ms));
+
+// ── browser-shaped globals (the SDK checks window + document) ────────────────
+const store = new Map();
+globalThis.localStorage = {
+  getItem: (k) => (store.has(k) ? store.get(k) : null),
+  setItem: (k, v) => store.set(k, String(v)),
+  removeItem: (k) => store.delete(k),
+  key: (i) => [...store.keys()][i] ?? null,
+  get length() { return store.size; },
+};
+const winT = new EventTarget();
+globalThis.window = globalThis;
+globalThis.addEventListener = winT.addEventListener.bind(winT);
+globalThis.removeEventListener = winT.removeEventListener.bind(winT);
+globalThis.dispatchEvent = winT.dispatchEvent.bind(winT);
+globalThis.document = { visibilityState: 'visible', addEventListener() {}, removeEventListener() {}, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
+globalThis.location = { href: 'http://127.0.0.1/', search: '', hash: '', pathname: '/', origin: 'http://127.0.0.1' };
+console.warn = () => {};
+
+// ── synthetic users + an in-memory fake backend ──────────────────────────────
+const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const userObj = (id) => ({ id, email: id + '@local.test', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: '2026-01-01T00:00:00Z' });
+let seq = 0;
+const sessionFor = (id) => {
+  const now = Math.floor(Date.now() / 1000);
+  return { access_token: b64u({ alg: 'none', typ: 'JWT' }) + '.' + b64u({ sub: id, exp: now + 3600, aud: 'authenticated', role: 'authenticated', session_id: 's-' + id }) + '.x',
+    refresh_token: 'r-' + id + '-' + (++seq), expires_in: 3600, expires_at: now + 3600, token_type: 'bearer', user: userObj(id) };
+};
+let authedAs = 'u-a';        // who the fake backend thinks the bearer is
+let pendingUser = 'u-a';     // who a verifyOtp signs in
+const calls = [];
+globalThis.fetch = async (input, init = {}) => {
+  const u = new URL(typeof input === 'string' ? input : input.url);
+  let body = null; try { body = init.body ? JSON.parse(init.body) : null; } catch { body = init.body; }
+  calls.push({ path: u.pathname, body });
+  const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json' } });
+  switch (u.pathname) {
+    case '/rest/v1/rpc/current_tier': return json('pro');
+    case '/rest/v1/rpc/get_user_markets': return json([]);
+    case '/rest/v1/rpc/set_user_market': return json({ ok: false, reason: 'cooldown' });   // refused: the slot stays local-only (worst case)
+    case '/rest/v1/rpc/get_pipeline': return json([]);
+    case '/auth/v1/verify': authedAs = pendingUser; return json(sessionFor(pendingUser));
+    case '/auth/v1/token': return json(sessionFor(authedAs));
+    case '/auth/v1/user': return json(userObj(authedAs));
+    case '/auth/v1/logout': return new Response(null, { status: 204 });
+    default: return json({ message: 'fake: unhandled ' + u.pathname }, 404);
+  }
+};
+const writes = () => calls.filter(c => c.path === '/rest/v1/rpc/set_user_market');
+const reads = () => calls.filter(c => c.path === '/rest/v1/rpc/get_user_markets');
+const reset = () => { calls.length = 0; events.length = 0; };
+
+// an existing signed-in user (u-a) with a stored session, and a local-only slot
+store.set('sb-127-auth-token', JSON.stringify(sessionFor('u-a')));
+
+const { supabase } = await import('../docs/src/js/supabaseClient.js');   // → the real vendored SDK client (loader)
+const events = [];
+supabase.auth.onAuthStateChange((e) => { events.push(e); });
+const auth = await import('../docs/src/js/auth.js');
+const tiers = await import('../docs/src/js/tiers.js');
+const msync = await import('../docs/src/js/marketSync.js');
+const mainSrc = readFileSync(join(ROOT, 'docs/src/js/main.js'), 'utf8');
+const m = mainSrc.match(/async function syncMarketsOnAuth\(([^)]*)\) \{([\s\S]*?)\r?\n\}/);
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const compiled = new AsyncFunction('hydrateMarketsOnAuth', 'readOnlySync', 'renderAllSlots', 'renderGuideMarketIntel',
+  ...(m ? m[1].split(',').map(s => s.trim()).filter(Boolean) : []), m ? m[2] : 'throw new Error("syncMarketsOnAuth not found")');
+auth.onAuthChange((s, ctx) => { compiled(msync.hydrateMarketsOnAuth, auth.readOnlySync || (() => false), () => {}, () => {}, s, ctx).catch(() => {}); });
+
+for (let i = 0; i < 6; i++) tiers.setMarketSlot(i, '');
+tiers.setMarketSlot(0, 'tampa-fl');
+const visible = async () => {
+  document.visibilityState = 'hidden'; dispatchEvent(new Event('visibilitychange')); await settle(40);
+  document.visibilityState = 'visible'; dispatchEvent(new Event('visibilitychange')); await settle();
+};
+
+console.log('— boot with a stored session (the real SDK) ─');
+await auth.initAuthAndEntitlement(); await settle();
+ok(events.includes('INITIAL_SESSION') && writes().length === 1 && writes()[0].body?.p_slot === 0,
+   'K1 boot: the SDK emits INITIAL_SESSION and the boot hydration pushes the local-only slot exactly once');
+
+console.log('— tab becomes visible: the SDK re-emits SIGNED_IN for the same user ─');
+reset(); await visible();
+ok(events.includes('SIGNED_IN'), 'K2 power: the real SDK emitted SIGNED_IN on visibilitychange → visible (got: ' + events.join(',') + ')');
+ok(writes().length === 0 && reads().length >= 1, 'K3 …and it pulled the market slots but sent NO set_user_market (F7)');
+reset(); await visible(); await visible();
+ok(writes().length === 0 && events.filter(e => e === 'SIGNED_IN').length >= 2, 'K4 repeated tab returns: still no write');
+ok(tiers.getMarketForSlot(0) === 'tampa-fl', 'K5 the refused local-only slot is kept');
+
+console.log('— token refresh (the real SDK) ─');
+reset(); await supabase.auth.refreshSession(); await settle();
+ok(events.includes('TOKEN_REFRESHED') && writes().length === 0, 'K6 TOKEN_REFRESHED from the SDK sends no set_user_market (got: ' + events.join(',') + ')');
+
+console.log('— sign out, then a genuine code sign-in through the SDK ─');
+await auth.signOutAccount(); await settle();
+reset(); pendingUser = 'u-a';
+const v = await auth.verifyOtpCode('u-a@local.test', '123456'); await settle();
+ok(v.ok && events.includes('SIGNED_IN') && writes().length === 1 && writes()[0].body?.p_slot === 0,
+   'K7 a genuine signed-out → signed-in transition keeps its hydration: exactly one push of the local-only slot');
+reset(); await visible();
+ok(writes().length === 0, 'K8 …and the next tab return after it writes nothing');
+
+console.log('— a different account signs in on this device ─');
+await auth.signOutAccount(); await settle();
+reset(); pendingUser = 'u-b';
+const v2 = await auth.verifyOtpCode('u-b@local.test', '123456'); await settle();
+ok(v2.ok && auth.getUserId() === 'u-b' && writes().length === 0 && tiers.getMarketForSlot(0) === 'tampa-fl',
+   'K9 the other account’s genuine sign-in pushes none of the first account’s local slots; the slot stays local');
+ok(calls.every(c => !/^https?:/.test(c.path)) && !calls.some(c => /supabase\.co/.test(c.path)), 'K10 every request went to the in-memory fake (no network)');
+
+console.log(`\nf7sdk: ${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

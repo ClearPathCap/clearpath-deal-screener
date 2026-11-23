@@ -11,7 +11,9 @@
 //   2. On sign-in hydration:
 //        - server row for a slot  → server wins that slot (pull down);
 //        - local-only slot        → pushed UP to the server (this is also the
-//          one-time migration path for existing users with local markets);
+//          one-time migration path for existing users with local markets) — only
+//          at boot or a genuine sign-in, and only to the account that owns this
+//          device's slots (F7: never on a token refresh, tab-visible or reconnect);
 //        - push refused (tier cap / cooldown) → the local value STAYS local —
 //          visible on this device, never destroyed, tried again next sign-in;
 //        - RPC error → change nothing anywhere (fail-safe, never fail-deed).
@@ -27,16 +29,30 @@
 // was underwritten against (stamped at save time in pipeline.js).
 
 import { supabase } from './supabaseClient.js';
-import { isSignedIn } from './auth.js';
+import { isSignedIn, getUserId } from './auth.js';
 import { getMarketForSlot, setMarketSlot, recordSlotChangeAt, clearSlotChange } from './tiers.js';
 import { noteServerResult } from './connectivity.js';
 
+// Lane-2 review F7 — whose local slots may be pushed. The first account that pushes
+// from this device becomes the slots' owner; a DIFFERENT account signed in later on the
+// same device pulls its own slots but never receives the earlier account's local-only
+// picks (they stay local, untouched). No owner yet = legacy/signed-out picks: pushed
+// once to the first account, exactly as before.
+const OWNER_KEY = 'marketSlotsOwner';
+const readOwner = () => { try { return localStorage.getItem(OWNER_KEY) || ''; } catch { return ''; } };
+const writeOwner = (id) => { try { localStorage.setItem(OWNER_KEY, id); } catch { /* best effort */ } };
+
 // Hydrate on sign-in / session restore. Returns a summary for tests/telemetry;
-// callers re-render on 'synced'. `push: false` (a connectivity reconnect) pulls
-// server slots only and never writes — local-only slots stay local until the next
-// boot / sign-in pushes them, exactly as before (independent review F1).
+// callers re-render on 'synced'. `push: false` (a connectivity reconnect, a token
+// refresh, the SDK's tab-visible SIGNED_IN for the same user) pulls server slots only
+// and never writes — local-only slots stay local until the next boot / genuine
+// sign-in pushes them (independent reviews F1, F7). A push also needs the slots to
+// belong to this account (OWNER_KEY) and the account not to change mid-sync.
 export async function hydrateMarketsOnAuth({ push = true } = {}) {
   if (!isSignedIn()) return { status: 'signed-out', pulled: 0, pushed: 0 };
+  const uid = getUserId();
+  const owner = readOwner();
+  const mayPush = push && (!owner || !uid || owner === uid);
   let rows;
   try {
     const { data, error, status } = await supabase.rpc('get_user_markets');
@@ -47,6 +63,9 @@ export async function hydrateMarketsOnAuth({ push = true } = {}) {
     noteServerResult('market-sync', { error: e });
     return { status: 'error', pulled: 0, pushed: 0 };
   }
+  // The account changed while the read was in flight: these rows belong to the previous
+  // account — apply nothing, push nothing (the new account's own notify syncs it).
+  if (!isSignedIn() || getUserId() !== uid) return { status: 'stale', pulled: 0, pushed: 0 };
 
   const serverBySlot = new Map(rows.map(r => [r.slot_index, r]));
   let pulled = 0, pushed = 0;
@@ -61,15 +80,17 @@ export async function hydrateMarketsOnAuth({ push = true } = {}) {
       // lock from another device shows here; a clock the server does not hold
       // (changed_at null) clears a stale device-local one.
       if (row.changed_at) recordSlotChangeAt(slot, row.changed_at); else clearSlotChange(slot);
-    } else if (localId && push) {
+    } else if (localId && mayPush) {
       // Local-only slot — push up. A refusal (slot cap on this tier, cooldown)
       // leaves the local value exactly where it was.
+      if (!isSignedIn() || getUserId() !== uid) break;   // account changed mid-sync: stop writing
       try {
         const { data, error } = await supabase.rpc('set_user_market', { p_slot: slot, p_market: localId });
         if (!error && data && data.ok) pushed++;
       } catch { /* keep local — sync is best-effort, never destructive */ }
     }
   }
+  if (mayPush && uid && !owner && getUserId() === uid) writeOwner(uid);
   return { status: 'synced', pulled, pushed };
 }
 

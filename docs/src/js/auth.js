@@ -13,7 +13,28 @@ let _session = null;
 const _listeners = [];
 
 export function onAuthChange(fn) { _listeners.push(fn); }
-function notify() { _listeners.forEach(fn => { try { fn(_session); } catch (e) { console.warn(e); } }); }
+
+// Lane-2 review F7: every subscriber call carries an explicit, frozen context, decided
+// from the auth EVENT and the user it was decided for — not a timing-sensitive global
+// flag. `marketPush` (may local-only market slots be pushed up?) is true ONLY for the
+// boot notify and a genuine signed-out → signed-in transition, and only while the user
+// it was decided for is still the signed-in user. Everything else is pull-only: the
+// SIGNED_IN the SDK re-emits for the SAME user when the tab becomes visible,
+// TOKEN_REFRESHED, USER_UPDATED, a direct switch to a DIFFERENT user, SIGNED_OUT, and
+// every connectivity reconnect.
+const userKey = (s) => (s && s.user && (s.user.id || s.user.email)) || '';
+export function getUserId() { return _session?.user?.id || ''; }
+function notify(reason, pushFor = null) {
+  const marketPush = !!(_session && pushFor && userKey(pushFor) === userKey(_session));
+  const ctx = Object.freeze({ reason, marketPush });
+  _listeners.forEach(fn => { try { fn(_session, ctx); } catch (e) { console.warn(e); } });
+}
+// Pure decision, exported for the tests: may this auth event push local-only slots?
+// Only when nobody was signed in before it and someone is now (first sign-in, or a
+// session that first becomes known through the SDK).
+export function authEventAllowsMarketPush(event, prevSession, nextSession) {
+  return !!nextSession && !prevSession && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION');
+}
 
 export function isSignedIn()   { return !!_session; }
 
@@ -23,11 +44,6 @@ export function isSignedIn()   { return !!_session; }
 let _entitlementStatus = 'signed-out';   // 'signed-out' | 'verified' | 'unverified'
 export function entitlementStatus() { return _entitlementStatus; }
 
-// Independent review F1: true only while a RECONNECT re-runs the auth chain. Subscribers
-// read it synchronously (notify() calls them in order) to skip anything that writes —
-// today that is the market-sync push of local-only slots, which stays for boot/sign-in.
-let _readOnlySync = false;
-export function readOnlySync() { return _readOnlySync; }
 export function getUserEmail() { return _session?.user?.email || ''; }
 
 // Called once at boot: restore any session, subscribe to changes, sync tier.
@@ -40,27 +56,30 @@ export async function initAuthAndEntitlement() {
     _session = null;
   }
 
-  supabase.auth.onAuthStateChange(async (_event, session) => {
-    _session = session || null;
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    // Decide BEFORE any await, from the state this event changes (F7).
+    const next = session || null;
+    const pushFor = authEventAllowsMarketPush(event, _session, next) ? next : null;
+    _session = next;
     await syncEntitlement();
-    notify();
+    notify('auth:' + event, pushFor);
   });
 
   // Wave 5 (SR-3): entitlement sync is UNCONDITIONAL — the dev-mode skip let any
   // visitor suppress server truth with ?dev=1. Server answer lands on every boot
   // and every auth change, always.
+  const bootSession = _session;
   await syncEntitlement();
-  notify();
+  notify('boot', bootSession);
 
   // Mobile Phase 0: when connectivity returns after a failed request, re-run the
   // auth chain READ-ONLY (plan check, then every onAuthChange subscriber: tier UI,
-  // saved-deal load, market pull) with readOnlySync() true, so no subscriber writes.
+  // saved-deal load, market pull) with marketPush false, so no subscriber writes.
   // Signed-out: nothing.
   onReconnect(async () => {
     if (!_session) return;
     await syncEntitlement();
-    _readOnlySync = true;
-    try { notify(); } finally { _readOnlySync = false; }
+    notify('reconnect');
   });
 }
 

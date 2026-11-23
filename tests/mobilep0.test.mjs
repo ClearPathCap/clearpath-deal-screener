@@ -206,15 +206,15 @@ ok(!pm.ok && /Couldn't reach the server/.test(pm.msg) && tiers.getMarketForSlot(
 console.log('— §R reconnect never writes; busy Retry keeps focus; server errors are not "no connection" ─');
 {
   const seen = [];
-  auth.onAuthChange(() => { seen.push(auth.readOnlySync()); });
+  auth.onAuthChange((_s, ctx) => { seen.push(ctx); });
   S({ session: SESSION, rpc: { current_tier: () => ({ data: 'pro', error: null, status: 200 }) } });
   if (globalThis.__stubAuthCallback) await globalThis.__stubAuthCallback('TOKEN_REFRESHED', SESSION);
   const normal = seen.slice();
   seen.length = 0;
   C.noteServerResult('t', { error: NET_PG.error, status: 0 });
   await C.retryNow();
-  ok(normal.length >= 1 && normal.every(v => v === false) && seen.length >= 1 && seen.every(v => v === true) && auth.readOnlySync() === false,
-     'R1 a reconnect notifies subscribers with readOnlySync()=true (and only then); sign-in / auth changes keep false (review F1)');
+  ok(normal.length >= 1 && normal.every(c => c && c.marketPush === false) && seen.length >= 1 && seen.every(c => c && c.reason === 'reconnect' && c.marketPush === false) && Object.isFrozen(seen[0]),
+     'R1 a reconnect and a token refresh notify subscribers with a frozen context, marketPush false (reviews F1, F7)');
   // the market-sync subscriber honours it: pull only, never set_user_market, local slot kept
   tiers.setMarketSlot(2, 'raleigh-nc');
   const calls = S({ session: SESSION, rpc: { get_user_markets: () => ({ data: [], error: null, status: 200 }), set_user_market: () => ({ data: { ok: true }, error: null, status: 200 }) } });
@@ -224,9 +224,10 @@ console.log('— §R reconnect never writes; busy Retry keeps focus; server erro
   const calls2 = S({ session: SESSION, rpc: { get_user_markets: () => ({ data: [], error: null, status: 200 }), set_user_market: () => ({ data: { ok: true }, error: null, status: 200 }) } });
   const rw = await msync.hydrateMarketsOnAuth();
   ok(rw.pushed >= 1 && (calls2.rpcCalls || []).some(c => c.name === 'set_user_market'), 'R3 boot / sign-in behaviour is unchanged: the default still pushes local-only slots');
-  ok(rd('docs/src/js/main.js').includes('hydrateMarketsOnAuth({ push: !readOnlySync() })')
-     && /_readOnlySync = true;\s*try \{ notify\(\); \} finally \{ _readOnlySync = false; \}/.test(rd('docs/src/js/auth.js')),
-     'R4 source: main passes push:false during a reconnect; auth sets the flag only around the reconnect notify');
+  ok(rd('docs/src/js/main.js').includes('hydrateMarketsOnAuth({ push: !!(ctx && ctx.marketPush) })')
+     && /onReconnect\(async \(\) => \{\s*if \(!_session\) return;\s*await syncEntitlement\(\);\s*notify\('reconnect'\);\s*\}\);/.test(rd('docs/src/js/auth.js'))
+     && !/readOnlySync/.test(rd('docs/src/js/auth.js') + rd('docs/src/js/main.js')),
+     'R4 source: main pushes only when the notify context allows it; the reconnect notify carries no push; the global flag is gone (F7)');
   const btn = banner.querySelector('button'); btn.disabled = false;
   let disabledDuring = null; C.onReconnect(async () => { if (disabledDuring === null) disabledDuring = { disabled: btn.disabled, aria: btn.attrs['aria-disabled'] }; });
   await C.retryNow();
@@ -240,6 +241,98 @@ console.log('— §R reconnect never writes; busy Retry keeps focus; server erro
   await storage.hydratePipeline();
   ok(serverKind === 'server' && storage.pipelineLoadFailure() === 'offline' && rd('docs/src/js/pipeline.js').includes("pipelineLoadFailure() === 'server' ? 'DealFit’s server returned an error'"),
      'R6 a server error on load says the server returned an error; only a network failure says "no connection" (review F4)');
+}
+
+// ── §F lane-2 review F7: market pushes are decided by the auth event + identity ─
+// The subscriber under test is main.js's OWN syncMarketsOnAuth, compiled from its
+// source text (main.js cannot load in Node), so these assertions fail on fedc2ce,
+// whose subscriber pushed on every non-reconnect notify.
+console.log('— §F market pushes only at boot / a genuine sign-in, for the owning account ─');
+{
+  const mainSrc = rd('docs/src/js/main.js');
+  const m = mainSrc.match(/async function syncMarketsOnAuth\(([^)]*)\) \{([\s\S]*?)\r?\n\}/);
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const params = m ? m[1].split(',').map(s => s.trim()).filter(Boolean) : [];
+  const compiled = m ? new AsyncFunction('hydrateMarketsOnAuth', 'readOnlySync', 'renderAllSlots', 'renderGuideMarketIntel', ...params, m[2]) : null;
+  const deps = [msync.hydrateMarketsOnAuth, auth.readOnlySync || (() => false), () => {}, () => {}];
+  auth.onAuthChange((s, ctx) => { if (compiled) compiled(...deps, s, ctx).catch(() => {}); });
+  ok(!!compiled, 'F0 main.js syncMarketsOnAuth compiled from source for the tests');
+
+  const cb = (ev, s) => globalThis.__stubAuthCallback(ev, s);
+  const settle = (ms = 15) => new Promise(r => setTimeout(r, ms));
+  const UA = { user: { id: 'u-a', email: 'a@local.test' }, access_token: 'a' };
+  const UB = { user: { id: 'u-b', email: 'b@local.test' }, access_token: 'b' };
+  const PRO = { data: 'pro', error: null, status: 200 };
+  const rowsFor = { 'u-a': [], 'u-b': [] };
+  let tierDelay = 0, rowsDelay = 0;
+  const later = (v, ms) => ms ? new Promise(r => setTimeout(() => r(v), ms)) : v;
+  const RPC = {
+    current_tier: () => later(PRO, tierDelay),
+    get_user_markets: () => later({ data: rowsFor[auth.getUserId ? auth.getUserId() : ""] || [], error: null, status: 200 }, rowsDelay),
+    set_user_market: () => ({ data: { ok: false, reason: 'cooldown' }, error: null, status: 200 }),   // refused: worst case, the slot stays local-only
+  };
+  let st;
+  const as = (session) => { st = S({ session, rpc: RPC }); return st; };
+  const writes = () => (st.rpcCalls || []).filter(c => c.name === 'set_user_market');
+  const reads = () => (st.rpcCalls || []).filter(c => c.name === 'get_user_markets');
+
+  for (let i = 0; i < 6; i++) tiers.setMarketSlot(i, '');
+  localStorage.removeItem('marketSlotsOwner');
+  as(null); await cb('SIGNED_OUT', null); await settle();
+  tiers.setMarketSlot(3, 'tampa-fl');   // a local-only (signed-out) pick
+
+  as(UA); await cb('SIGNED_IN', UA); await settle();
+  ok(writes().length === 1 && writes()[0].args.p_slot === 3 && writes()[0].args.p_market === 'tampa-fl' && localStorage.getItem('marketSlotsOwner') === 'u-a',
+     'F1 a genuine signed-out → signed-in transition pushes the local-only slot once, and the account becomes the slots’ owner');
+  as(UA); await cb('SIGNED_IN', UA); await settle();
+  ok(writes().length === 0 && reads().length >= 1, 'F2 SIGNED_IN for the SAME user (what the SDK emits when the tab becomes visible) pulls but never writes');
+  as(UA); await cb('TOKEN_REFRESHED', UA); await settle();
+  ok(writes().length === 0 && reads().length >= 1, 'F3 TOKEN_REFRESHED pulls but never writes');
+  as(UA); await cb('INITIAL_SESSION', UA); await cb('USER_UPDATED', UA); await settle();
+  ok(writes().length === 0, 'F4 INITIAL_SESSION / USER_UPDATED for the signed-in user never write');
+  as(UA); C.noteServerResult('t', { error: NET_PG.error, status: 0 }); await C.retryNow(); await settle();
+  ok(writes().length === 0 && reads().length >= 1, 'F5 a connectivity Retry / reconnect pulls but never writes');
+  ok(tiers.getMarketForSlot(3) === 'tampa-fl', 'F6 the refused local-only slot is kept through every one of those events (never discarded)');
+  as(UA); await auth.initAuthAndEntitlement(); await settle();
+  ok(writes().length === 1 && writes()[0].args.p_slot === 3, 'F7 boot keeps its hydration: one push of the local-only slot (the SDK’s same-user INITIAL_SESSION adds none)');
+
+  as(UB); await cb('SIGNED_IN', UB); await settle();
+  ok(writes().length === 0 && localStorage.getItem('marketSlotsOwner') === 'u-a' && tiers.getMarketForSlot(3) === 'tampa-fl',
+     'F8 a direct switch to a different account pulls its slots but pushes nothing of the previous account’s');
+  as(UB); await auth.initAuthAndEntitlement(); await settle();
+  ok(writes().length === 0 && tiers.getMarketForSlot(3) === 'tampa-fl', 'F9 …and a later boot as that account still never pushes the other account’s local slots');
+  st = S({ session: UB, rpc: { ...RPC, set_user_market: () => ({ data: { ok: true }, error: null, status: 200 }) } });
+  const edit = await msync.pushMarketChange(4, 'raleigh-nc');
+  ok(edit.ok === true && writes().length === 1 && writes()[0].args.p_slot === 4, 'F10 a user-initiated slot change is unchanged: server-first set_user_market, whoever owns the device slots');
+  st = S({ session: UB, rpc: { ...RPC, set_user_market: () => NET_PG } });
+  const editOff = await msync.pushMarketChange(4, 'columbia-sc');
+  ok(!editOff.ok && writes().length === 1, 'F10b …and an offline user change is still refused, sent once, never retried');
+
+  // asynchronous ordering
+  as(null); await cb('SIGNED_OUT', null); await settle();
+  tierDelay = 20; as(UA);
+  await Promise.all([cb('SIGNED_IN', UA), cb('SIGNED_IN', UA), cb('TOKEN_REFRESHED', UA)]); await settle(40);
+  ok(writes().length === 1, 'F11 a genuine sign-in overlapped by the SDK’s same-user SIGNED_IN and a token refresh pushes exactly once');
+  as(null); await cb('SIGNED_OUT', null); await settle(40);
+  as(UA);
+  const pA = cb('SIGNED_IN', UA); as(UB); const pB = cb('SIGNED_IN', UB);
+  await Promise.all([pA, pB]); await settle(40);
+  ok(writes().length === 0 && (auth.getUserId ? auth.getUserId() : "") === "u-b", 'F12 a sign-in superseded by another account before its plan check settles pushes nothing for either');
+  tierDelay = 0;
+  tiers.setMarketSlot(5, ''); rowsFor['u-a'] = [{ slot_index: 5, market_id: 'columbia-sc', changed_at: null }];
+  as(UA); await cb('SIGNED_IN', UA); await settle();
+  as(UA); rowsDelay = 20; tiers.setMarketSlot(5, '');
+  const hP = msync.hydrateMarketsOnAuth({ push: true });
+  await settle(2); as(UB); await cb('SIGNED_IN', UB);
+  const hR = await hP; await settle(40);
+  ok(hR.status === 'stale' && tiers.getMarketForSlot(5) !== 'columbia-sc' && writes().length === 0,
+     'F13 a sync whose account changes mid-read applies nothing from the previous account and writes nothing');
+  rowsDelay = 0;
+
+  const T = auth.authEventAllowsMarketPush;
+  ok(T('SIGNED_IN', null, UA) && T('INITIAL_SESSION', null, UA) && !T('SIGNED_IN', UA, UA) && !T('SIGNED_IN', UA, UB)
+     && !T('TOKEN_REFRESHED', null, UA) && !T('TOKEN_REFRESHED', UA, UA) && !T('USER_UPDATED', UA, UA) && !T('SIGNED_OUT', UA, null) && !T('SIGNED_IN', null, null),
+     'F14 decision table: only SIGNED_IN / INITIAL_SESSION from signed-out may push');
 }
 
 // ── §S source pins for the UI wiring ─────────────────────────────────────────

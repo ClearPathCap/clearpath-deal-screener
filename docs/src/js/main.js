@@ -41,7 +41,7 @@ import {
 import {
   initAuthAndEntitlement, onAuthChange, syncEntitlement,
   sendOtpCode, verifyOtpCode, signOutAccount, redeemServerCode,
-  isSignedIn, getUserEmail, entitlementStatus, readOnlySync,
+  isSignedIn, getUserEmail, entitlementStatus,
 } from './auth.js';
 import { initConnectivity, retryNow } from './connectivity.js';   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
@@ -2241,8 +2241,10 @@ async function syncPipelineOnAuth() {
 // local behavior, and hydrateMarketsOnAuth is a no-op for them. Runs after
 // refreshTierUI in the onAuthChange chain, so the server-side tier caps that
 // set_user_market applies match the tier the UI just resolved.
-async function syncMarketsOnAuth() {
-  const res = await hydrateMarketsOnAuth({ push: !readOnlySync() });   // reconnect = pull only (review F1)
+async function syncMarketsOnAuth(_session, ctx) {
+  // F7: push local-only slots only when auth says THIS notify may (boot, or a genuine
+  // sign-in); a tab-visible SIGNED_IN, token refresh or reconnect pulls only.
+  const res = await hydrateMarketsOnAuth({ push: !!(ctx && ctx.marketPush) });
   if (res.status === 'synced' && (res.pulled > 0 || res.pushed > 0)) {
     renderAllSlots();            // M-1 stays correct: the empty path resets ranges
     renderGuideMarketIntel();

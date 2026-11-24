@@ -153,7 +153,13 @@ S({ session: SESSION, rpc: { current_tier: () => ({ data: 'investor', error: nul
 C.noteServerResult('t', { error: NET_PG.error, status: 0 });
 await C.retryNow();
 ok(tiers.getActiveTier() === 'investor' && auth.entitlementStatus() === 'verified' && !C.serverUnreachable(), 'E4 Retry after reconnect re-verifies from the server (investor) — the only path to a paid tier');
-ok(!/setCachedTier\((?!tier\)|'starter'\))/.test(rd('docs/src/js/auth.js')) && /verified = !error;/.test(rd('docs/src/js/auth.js')), 'E5 source: the cache is only ever set to the server tier or starter; "verified" needs an error-free answer');
+// Re-pinned 2026-11-24 (overnight Workstream A, bounded plan check): the tier now comes from readServerTier's
+// result (res.tier / late.tier), which is the server's paid tier only on an error-free answer; same rule.
+{ const a = rd('docs/src/js/auth.js');
+  ok(!/setCachedTier\((?!tier\)|'starter'\)|res\.tier\)|late\.tier\))/.test(a)
+     && /if \(error\) return \{ tier: 'starter', verified: false \};\s*return \{ tier: \(typeof data === 'string' && \['investor', 'pro'\]\.includes\(data\)\) \? data : 'starter', verified: true \};/.test(a)
+     && /if \(late && late\.verified && seq === _entitlementSeq && _session && userKey\(_session\) === forUser\)/.test(a),
+     'E5 source: the cache is only ever set to a verified server tier or starter; "verified" needs an error-free answer (a late answer too, same user only)'); }
 
 // ── §P pipeline storage ──────────────────────────────────────────────────────
 console.log('— §P saved deals: never "empty" when unloaded; a failed save commits nothing ─');
@@ -184,7 +190,9 @@ const a2 = await auth.verifyOtpCode('qa@local.test', '123456');
 ok(!a2.ok && /wasn\u2019t checked/.test(a2.msg) && !/invalid/i.test(a2.msg), 'A2 code check offline: not ok, "your code wasn\u2019t checked" — never "invalid"');
 S({ verifyResult: { data: { session: null }, error: { name: 'AuthApiError', status: 403, message: 'Token has expired or is invalid' } } });
 const a3 = await auth.verifyOtpCode('qa@local.test', '123456');
-ok(!a3.ok && a3.msg === 'Token has expired or is invalid', 'A3 a real server refusal keeps its own message (unchanged)');
+// Re-pinned 2026-11-24 (overnight Workstream A, owner: consistent expired-code behaviour): a real refusal reads as an
+// actionable expired / replaced-code message, still never as "offline".
+ok(!a3.ok && /didn\u2019t work/.test(a3.msg) && /send a new code/.test(a3.msg) && !/wasn\u2019t checked|offline|reach/i.test(a3.msg), 'A3 a real server refusal says the code didn\u2019t work and how to get a new one — never "offline"');
 
 // ── §M market data ───────────────────────────────────────────────────────────
 console.log('— §M market details and market sync fail safe ─');

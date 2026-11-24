@@ -8,6 +8,7 @@
 import { supabase } from './supabaseClient.js';
 import { setCachedTier } from './tiers.js';
 import { noteServerResult, isNetworkFailure, onReconnect } from './connectivity.js';
+import { normalizeOtp, looksComplete, friendlyAuthError } from './signinCode.js';
 
 let _session = null;
 const _listeners = [];
@@ -96,24 +97,52 @@ export async function initAuthAndEntitlement() {
 // through the current_tier() function so an EXPIRED comp (e.g. a time-boxed
 // Aspire grant past its end date) correctly reads as starter — the server is the
 // single source of truth, never the client.
-export async function syncEntitlement() {
-  if (!_session) { _entitlementStatus = 'signed-out'; setCachedTier('starter'); return 'starter'; }
-  let tier = 'starter';
-  let verified = false;   // true ONLY when the server answered without error
+//
+// Overnight wave 2026-11-24 (Workstream A; lane-6 O3): the plan check is bounded. If the server
+// does not answer within ENTITLEMENT_TIMEOUT_MS the tier stays 'starter' and the status
+// 'unverified' (fail closed, exactly as for an error) and the auth chain continues: sign-in no
+// longer waits on a hanging current_tier. If that same request answers later, still for the same
+// signed-in user and with no newer check started, its verified tier is applied and subscribers are
+// notified read-only (reason 'entitlement-late', no market push).
+let ENTITLEMENT_TIMEOUT_MS = 8000;
+export function setEntitlementTimeout(ms) { ENTITLEMENT_TIMEOUT_MS = ms; }   // tests
+let _entitlementSeq = 0;
+async function readServerTier() {
   try {
     const { data, error, status } = await supabase.rpc('current_tier');
     noteServerResult('entitlement', { ok: !error, error, status });
-    verified = !error;
-    if (!error && typeof data === 'string' && ['investor', 'pro'].includes(data)) {
-      tier = data;
-    }
+    if (error) return { tier: 'starter', verified: false };
+    return { tier: (typeof data === 'string' && ['investor', 'pro'].includes(data)) ? data : 'starter', verified: true };
   } catch (e) {
     console.warn('Entitlement fetch failed:', e);
     noteServerResult('entitlement', { error: e });
+    return { tier: 'starter', verified: false };
   }
-  _entitlementStatus = verified ? 'verified' : 'unverified';
-  setCachedTier(tier);
-  return tier;
+}
+export async function syncEntitlement() {
+  if (!_session) { _entitlementStatus = 'signed-out'; setCachedTier('starter'); return 'starter'; }
+  const seq = ++_entitlementSeq;
+  const forUser = userKey(_session);
+  const call = readServerTier();
+  let timer = null;
+  const res = await Promise.race([call, new Promise(r => { timer = setTimeout(() => r(null), ENTITLEMENT_TIMEOUT_MS); })]);
+  clearTimeout(timer);
+  if (res === null) {   // timed out: fail closed now; accept the same request's answer later
+    _entitlementStatus = 'unverified';
+    setCachedTier('starter');
+    call.then((late) => {
+      if (late && late.verified && seq === _entitlementSeq && _session && userKey(_session) === forUser) {
+        _entitlementStatus = 'verified';
+        setCachedTier(late.tier);
+        notify('entitlement-late');
+      }
+    });
+    return 'starter';
+  }
+  if (seq !== _entitlementSeq) return res.tier;   // a newer check started meanwhile; it owns the cache
+  _entitlementStatus = res.verified ? 'verified' : 'unverified';
+  setCachedTier(res.tier);
+  return res.tier;
 }
 
 // Network failures say so plainly — never "invalid code", never a success.
@@ -130,30 +159,45 @@ export async function sendOtpCode(email) {
       options: { shouldCreateUser: true },   // code flow — no redirect link
     });
     noteServerResult('sign-in', { ok: !error, error });
-    if (error) return { ok: false, msg: isNetworkFailure(error) ? SIGNIN_OFFLINE : (error.message || 'Could not send the code — try again.') };
+    if (error) return { ok: false, msg: isNetworkFailure(error) ? SIGNIN_OFFLINE : friendlyAuthError(error, 'send') };
     return { ok: true, msg: 'Enter the code we just emailed you.' };
   } catch (e) {
     console.warn(e);
     noteServerResult('sign-in', { error: e });
-    return { ok: false, msg: isNetworkFailure(e) ? SIGNIN_OFFLINE : 'Could not send the code — try again.' };
+    return { ok: false, msg: isNetworkFailure(e) ? SIGNIN_OFFLINE : friendlyAuthError(e, 'send') };
   }
 }
 
-// Verify the 6-digit code. On success the session is established (onAuthStateChange
-// fires and the UI flips to signed-in). Returns { ok, msg }.
-export async function verifyOtpCode(email, code) {
+// Verify the emailed code: its digits only (pasted text, spaces and dashes are stripped by
+// normalizeOtp; the length is the project's setting, 6 to 10). On success the session is
+// established (onAuthStateChange fires and the UI flips to signed-in).
+// opts.tokenHash: finish a sign-in from the emailed LINK instead (prepared; see signinCode.js
+// readAuthLink); the token is spent only when the person taps "Finish signing in".
+// Returns { ok, msg }.
+export async function verifyOtpCode(email, code, opts = {}) {
   const clean = (email || '').trim();
-  const token = (code || '').trim();
-  if (!token) return { ok: false, msg: 'Enter the code from your email.' };
+  const viaLink = !!(opts && opts.tokenHash);
+  const token = viaLink ? '' : normalizeOtp(code);
+  if (!viaLink) {
+    if (!token) return { ok: false, msg: 'Enter the code from your email.' };
+    if (!looksComplete(token)) return { ok: false, msg: 'That looks incomplete. Enter every digit of the code from your email.' };
+  }
   try {
-    const { error } = await supabase.auth.verifyOtp({ email: clean, token, type: 'email' });
+    const { error } = viaLink
+      ? await supabase.auth.verifyOtp({ token_hash: opts.tokenHash, type: opts.type || 'email' })
+      : await supabase.auth.verifyOtp({ email: clean, token, type: 'email' });
     noteServerResult('sign-in', { ok: !error, error });
-    if (error) return { ok: false, msg: isNetworkFailure(error) ? VERIFY_OFFLINE : (error.message || 'That code is invalid or expired.') };
+    if (error) {
+      const msg = isNetworkFailure(error) ? VERIFY_OFFLINE
+        : viaLink ? 'That sign-in link has expired or was already used. Request a new code to sign in.'
+        : friendlyAuthError(error, 'verify');
+      return { ok: false, msg };
+    }
     return { ok: true, msg: 'Signed in.' };
   } catch (e) {
     console.warn(e);
     noteServerResult('sign-in', { error: e });
-    return { ok: false, msg: isNetworkFailure(e) ? VERIFY_OFFLINE : 'That code is invalid or expired.' };
+    return { ok: false, msg: isNetworkFailure(e) ? VERIFY_OFFLINE : friendlyAuthError(e, 'verify') };
   }
 }
 

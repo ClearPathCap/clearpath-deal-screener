@@ -1270,10 +1270,13 @@
           <button class="btn-redeem btn-redeem-fixed" onclick="sendSignInCode()">Send code</button>
         </div>
         <div class="redeem-row" id="signin-code-step" style="display:none;margin-top:8px">
-          <input type="text" id="signin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="Enter your code" spellcheck="false" onkeydown="if(event.key==='Enter')verifySignInCode()">
-          <button class="btn-redeem btn-redeem-fixed" onclick="verifySignInCode()">Verify</button>
+          <label for="signin-code" class="sr-only">Sign-in code from your email</label>
+          <input type="text" id="signin-code" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" autocapitalize="off" autocorrect="off" enterkeyhint="go" maxlength="64" placeholder="Enter your code" spellcheck="false" aria-describedby="signin-msg" onkeydown="if(event.key==='Enter')verifySignInCode()">
+          <button class="btn-redeem btn-redeem-fixed" id="signin-verify-btn" onclick="verifySignInCode()">Verify</button>
         </div>
-        <div id="signin-msg" class="redeem-msg"></div>
+        <div id="signin-code-help" class="signin-help" style="display:none">Sent to <strong id="signin-sent-to"></strong> · <button type="button" class="signin-link" id="signin-resend" onclick="resendSignInCode()">Send a new code</button> · <button type="button" class="signin-link" onclick="changeSignInEmail()">Use a different email</button></div>
+        <div id="signin-link-step" class="signin-help" style="display:none"><button type="button" class="btn-redeem" id="signin-link-btn" onclick="finishLinkSignIn()">Finish signing in</button> <span>to DealFit with the link from your email.</span></div>
+        <div id="signin-msg" class="redeem-msg" role="status" aria-live="polite"></div>
       </div>
       <div id="account-row" style="display:none">
         <div class="redeem-label">Signed in as <strong id="account-email"></strong> · <a href="#" class="sign-out-link" onclick="signOutAccount();return false;" style="color:var(--accent);text-decoration:underline">Sign out</a></div>

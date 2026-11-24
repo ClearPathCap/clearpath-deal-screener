@@ -43,7 +43,9 @@ import {
   sendOtpCode, verifyOtpCode, signOutAccount, redeemServerCode,
   isSignedIn, getUserEmail, getUserId, entitlementStatus,
 } from './auth.js';
-import { initConnectivity, retryNow } from './connectivity.js';   // Mobile Phase 0: truthful offline states
+import { initConnectivity, retryNow } from './connectivity.js';
+import { normalizeOtp, looksComplete, shouldAutoVerify, readAuthLink, stripAuthLink,
+         readPending, writePending, clearPending, resendWaitSeconds } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline } from './storage.js';
@@ -399,8 +401,8 @@ function reviewDeal(id) {
     if (reviewSetField(fid, data[key], kind, statusKey ? data[statusKey] : undefined)) filled.push(fid);
     else reviewResetField(fid, kind);
   }
-  reviewPrefilledIds[type] = filled;
   analyzerOwner[type] = isSignedIn() ? (getUserId() || '') : '';   // B: this form now holds this account's saved deal
+  reviewPrefilledIds[type] = filled;
   // A6: the rows wiped above were describedby targets — release the marks AFTER
   // the prefill, so the value-based mask rule judges the saved values rather
   // than the malformed text the user abandoned (verification corrective, pass 4).
@@ -1816,27 +1818,167 @@ async function redeemTierCode() {
 
 // ─── Account: magic-link sign-in / sign-out ──────────────────────────────────
 
-async function sendSignInCode() {
-  const email = document.getElementById('signin-email')?.value;
-  const msgEl = document.getElementById('signin-msg');
-  showRedeemMsg(msgEl, { ok: true, msg: 'Sending…' });
-  const result = await sendOtpCode(email);
-  showRedeemMsg(msgEl, result);
-  if (result.ok) {
-    const codeStep = document.getElementById('signin-code-step');
-    if (codeStep) codeStep.style.display = '';
-    document.getElementById('signin-code')?.focus();
+// Overnight wave 2026-11-24, Workstream A — the emailed-code step, made usable on the phone
+// that receives the email (owner-observed: switching apps and typing ~3 digits at a time):
+//   • a pasted or autofilled code is cleaned to its digits and verified on arrival (once);
+//   • typing waits for Enter / Verify (the code length is a provider setting);
+//   • the step survives the phone unloading the page while the person reads their email
+//     (sessionStorage, this tab only, email + time only, 15 minutes);
+//   • "Send a new code" (with the provider's cooldown) and "Use a different email";
+//   • one verification at a time; the same failed code is never re-sent automatically;
+//   • actionable messages (signinCode.js friendlyAuthError) in a polite live region.
+const _signinStore = (() => { try { return window.sessionStorage; } catch { return null; } })();
+let _verifyInFlight = false, _sendInFlight = false, _lastTriedCode = '', _codePrevLen = 0, _resendTick = 0, _codeSentAt = 0;
+let _pendingAuthLink = null;
+
+function showCodeStep(email, sentAt) {
+  const codeStep = document.getElementById('signin-code-step');
+  if (codeStep) codeStep.style.display = '';
+  const help = document.getElementById('signin-code-help');
+  if (help) help.style.display = '';
+  const to = document.getElementById('signin-sent-to');
+  if (to) to.textContent = email || '';
+  _codeSentAt = sentAt || Date.now();
+  renderResendState();
+  clearInterval(_resendTick);
+  _resendTick = setInterval(() => { if (renderResendState() === 0) clearInterval(_resendTick); }, 1000);
+}
+function renderResendState() {
+  const btn = document.getElementById('signin-resend');
+  const wait = resendWaitSeconds(_codeSentAt);
+  if (btn) {
+    btn.textContent = wait > 0 ? 'Send a new code (' + wait + 's)' : 'Send a new code';
+    if (wait > 0) btn.setAttribute('aria-disabled', 'true'); else btn.removeAttribute('aria-disabled');
   }
+  return wait;
 }
 
-async function verifySignInCode() {
-  const email = document.getElementById('signin-email')?.value;
-  const code  = document.getElementById('signin-code')?.value;
+async function sendSignInCode() {
+  if (_sendInFlight) return;
+  const email = (document.getElementById('signin-email')?.value || '').trim();
   const msgEl = document.getElementById('signin-msg');
+  _sendInFlight = true;
+  showRedeemMsg(msgEl, { ok: true, msg: 'Sending…' });
+  let result;
+  try { result = await sendOtpCode(email); } finally { _sendInFlight = false; }
+  showRedeemMsg(msgEl, result.ok ? { ok: true, msg: 'Code sent to ' + email + '. Paste it here, or tap the code suggested above your keyboard.' } : result);
+  if (result.ok) {
+    const now = Date.now();
+    writePending(_signinStore, email, now);
+    _lastTriedCode = '';
+    const input = document.getElementById('signin-code');
+    if (input) { input.value = ''; _codePrevLen = 0; }
+    showCodeStep(email, now);
+    input?.focus();
+  }
+}
+async function resendSignInCode() {
+  if (resendWaitSeconds(_codeSentAt) > 0) return;
+  await sendSignInCode();
+}
+function changeSignInEmail() {
+  clearPending(_signinStore);
+  clearInterval(_resendTick);
+  const codeStep = document.getElementById('signin-code-step'); if (codeStep) codeStep.style.display = 'none';
+  const help = document.getElementById('signin-code-help'); if (help) help.style.display = 'none';
+  const input = document.getElementById('signin-code'); if (input) input.value = '';
+  _lastTriedCode = ''; _codePrevLen = 0;
+  showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: '' });
+  const em = document.getElementById('signin-email'); if (em) { em.focus(); em.select?.(); }
+}
+
+async function verifySignInCode(opts = {}) {
+  if (_verifyInFlight) return { status: 'busy' };
+  const email = document.getElementById('signin-email')?.value;
+  const input = document.getElementById('signin-code');
+  const code  = normalizeOtp(input?.value);
+  if (input && input.value !== code) input.value = code;
+  if (opts.auto && (code === _lastTriedCode || !looksComplete(code))) return { status: 'skipped' };
+  const msgEl = document.getElementById('signin-msg');
+  const btn = document.getElementById('signin-verify-btn');
+  _verifyInFlight = true; _lastTriedCode = code;
+  if (btn) btn.setAttribute('aria-disabled', 'true');
   showRedeemMsg(msgEl, { ok: true, msg: 'Verifying…' });
-  const result = await verifyOtpCode(email, code);
+  let result;
+  try { result = await verifyOtpCode(email, code); }
+  finally { _verifyInFlight = false; if (btn) btn.removeAttribute('aria-disabled'); }
   showRedeemMsg(msgEl, result);
-  // On success, onAuthChange → refreshTierUI → updateAccountUI flips to signed-in.
+  if (result.ok) {   // onAuthChange → refreshTierUI → updateAccountUI flips to signed-in
+    clearPending(_signinStore); clearInterval(_resendTick);
+    if (input) input.value = '';
+    _lastTriedCode = ''; _codePrevLen = 0;
+  } else if (input) { input.focus(); try { input.select(); } catch {} }
+  return { status: result.ok ? 'signed-in' : 'failed' };
+}
+
+// A complete code that arrives in one step (paste, the keyboard / OS suggestion, a drop)
+// verifies by itself; anything else is cleaned to digits and waits for Enter / Verify.
+function wireSigninCodeField() {
+  const input = document.getElementById('signin-code');
+  if (!input || input.dataset.wired) return;
+  input.dataset.wired = '1';
+  input.addEventListener('paste', (e) => {
+    const text = e.clipboardData && e.clipboardData.getData('text');
+    if (text == null) return;
+    const code = normalizeOtp(text);
+    if (!code) return;
+    e.preventDefault();
+    input.value = code; _codePrevLen = code.length;
+    if (looksComplete(code)) verifySignInCode({ auto: true });
+  });
+  input.addEventListener('input', (e) => {
+    const before = _codePrevLen;
+    const code = normalizeOtp(input.value);
+    if (code !== input.value) input.value = code;
+    _codePrevLen = code.length;
+    if (shouldAutoVerify({ inputType: e.inputType, prevLength: before, value: code })) verifySignInCode({ auto: true });
+  });
+}
+
+// The page came back (the phone unloaded it while the person read the email): reopen the
+// code step for the email the code went to.
+function resumePendingSignIn() {
+  if (isSignedIn()) { clearPending(_signinStore); return false; }
+  const p = readPending(_signinStore);
+  if (!p) return false;
+  const em = document.getElementById('signin-email'); if (em) em.value = p.email;
+  showCodeStep(p.email, p.sentAt);
+  openUpgrade('general');
+  showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: 'Enter the code we emailed to ' + p.email + '.' });
+  document.getElementById('signin-code')?.focus();
+  return true;
+}
+
+// Emailed sign-in LINK (prepared; inert until the Supabase template links to /?auth_th=…).
+// The token leaves the address bar at once; it is spent only when the person taps the button,
+// never on load (mail-system link scanners open links).
+function takeAuthLinkFromUrl() {
+  const href = (typeof location !== 'undefined' && location && location.href) || '';
+  const link = href ? readAuthLink(href) : null;
+  if (!link) return;
+  try { history.replaceState(history.state, '', stripAuthLink(href)); } catch {}
+  _pendingAuthLink = link;
+}
+function showPendingAuthLink() {
+  if (!_pendingAuthLink) return false;
+  const step = document.getElementById('signin-link-step');
+  if (step) step.style.display = '';
+  openUpgrade('general');
+  document.getElementById('signin-link-btn')?.focus();
+  return true;
+}
+async function finishLinkSignIn() {
+  if (!_pendingAuthLink || _verifyInFlight) return { status: 'none' };
+  const link = _pendingAuthLink; _pendingAuthLink = null;   // single attempt: the token is single-use
+  const step = document.getElementById('signin-link-step'); if (step) step.style.display = 'none';
+  const msgEl = document.getElementById('signin-msg');
+  _verifyInFlight = true;
+  showRedeemMsg(msgEl, { ok: true, msg: 'Signing you in…' });
+  let result;
+  try { result = await verifyOtpCode('', '', { tokenHash: link.tokenHash, type: link.type }); } finally { _verifyInFlight = false; }
+  showRedeemMsg(msgEl, result);
+  if (result.ok) clearPending(_signinStore);
+  return { status: result.ok ? 'signed-in' : 'failed' };
 }
 
 async function doSignOut() {
@@ -2173,6 +2315,9 @@ Object.assign(window, {
   redeemTierCode,
   sendSignInCode,
   verifySignInCode,
+  resendSignInCode,
+  changeSignInEmail,
+  finishLinkSignIn,
   signOutAccount: doSignOut,
   openUpgrade,
   // auth chip (Wave A1) — pure mappers exposed for the executable test suite
@@ -2268,9 +2413,12 @@ window.addEventListener('storage', (e) => {
 // subscription is wired, and the first entitlement sync + notify ran. Until
 // then the chip stays in its neutral init state; no timers, no guessing.
 initConnectivity();   // Mobile Phase 0: banner + online/visibility retry wiring, before the first server call settles
+takeAuthLinkFromUrl();   // overnight A: an emailed sign-in token never lingers in the address bar
+wireSigninCodeField();
 initAuthAndEntitlement().then(() => {
   _authReady = true;
   renderAuthChip();
+  if (!showPendingAuthLink()) resumePendingSignIn();   // overnight A
 });
 
 // Keep the (account-scoped) pipeline in step with auth: pull it from the server on

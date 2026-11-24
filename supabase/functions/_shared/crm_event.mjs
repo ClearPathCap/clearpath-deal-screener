@@ -51,10 +51,10 @@ export async function verifySignature(secret, timestamp, rawBody, header, nowS =
   return diff === 0;
 }
 
-// What to do with a response. 2xx (created / linked / duplicate) and 409 (already have it)
-// = delivered. 400 / 413 / 422 = our payload is wrong → dead (retrying cannot help).
-// 401 / 403 = secret or clock problem → retry (an operator fixes config). Everything else,
-// including network errors and timeouts, retries with backoff until MAX_ATTEMPTS.
+// What to do with a response. 2xx (created / duplicate) and 409 (already have it) = delivered.
+// 400 / 413 / 422 = our payload is wrong → dead (retrying cannot help). 3xx (N24 F9: redirects are
+// never followed — a signed event goes only to the pinned endpoint), 401 / 403 (secret or clock)
+// and everything else, including network errors and timeouts, retry with backoff.
 export function classify(status) {
   if (status >= 200 && status < 300) return 'delivered';
   if (status === 409) return 'delivered';
@@ -70,8 +70,10 @@ export function nextAttemptAt(attempts, now = Date.now()) {
 // markRetry(row, status, error, nextAt); markDead(row, status, error). Errors are recorded
 // without response bodies or personal data (status code + a short reason only).
 export async function drain({ outbox, fetchImpl = fetch, endpoint, secret, limit = 25, now = () => Date.now(), timeoutMs = 10000 }) {
+  // N24 F10: a configuration error never consumes rows' attempts — it fails before anything is claimed.
   if (!endpoint || !/^https:\/\//.test(endpoint) && !/^http:\/\/127\.0\.0\.1[:/]/.test(endpoint)) throw new Error('endpoint must be https');
-  const rows = await outbox.claim(limit);
+  if (!secret || String(secret).length < 32) throw new Error('relay secret missing or too short');
+  const rows = await outbox.claim(Math.min(Math.max(1, limit), 25));
   const result = { claimed: rows.length, delivered: 0, retried: 0, dead: 0 };
   for (const row of rows) {
     const attempts = (row.attempts || 0) + 1;
@@ -84,10 +86,11 @@ export async function drain({ outbox, fetchImpl = fetch, endpoint, secret, limit
       const signature = await sign(secret, ts, body);
       const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), timeoutMs);
       try {
-        const res = await fetchImpl(endpoint, { method: 'POST', body, signal: ctrl.signal, headers: {
+        const res = await fetchImpl(endpoint, { method: 'POST', body, signal: ctrl.signal, redirect: 'manual', headers: {
           'Content-Type': 'application/json', 'X-DealFit-Event-Id': row.idempotency_key,
           'X-DealFit-Timestamp': String(ts), 'X-DealFit-Signature': signature } });
         status = res.status; reason = 'http ' + status;
+        if (res.type === 'opaqueredirect' || (status >= 300 && status < 400)) { status = status || 302; reason = 'redirect not followed'; }
       } finally { clearTimeout(t); }
     } catch (e) { reason = (e && e.name === 'AbortError') ? 'timeout' : ('network: ' + String(e && e.message || e).slice(0, 80)); }
     const verdict = status ? classify(status) : 'retry';

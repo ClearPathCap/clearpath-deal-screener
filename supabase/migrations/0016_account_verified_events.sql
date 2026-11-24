@@ -8,10 +8,15 @@
 -- person appears in CPC's custom CRM with a source identifying DealFit.
 --
 -- Design: a trusted, server-side event. The browser never writes it and cannot read it.
---   • An AFTER trigger on auth.users records ONE 'account_verified' event the first time a
---     user's email becomes confirmed (email OTP: the row is created unconfirmed when the code
---     is sent and confirmed when it is verified). A returning user signing in again changes
---     nothing → no event. An account created already confirmed (admin invite) records it once.
+--   • An AFTER trigger on auth.users records ONE 'account_verified' event the first time a user
+--     with a CONFIRMED email actually SIGNS IN (last_sign_in_at null → set). N24 review F7: keying
+--     on the first sign-in, not on email_confirmed_at alone, means an address is never recorded
+--     merely because a code was sent — even if the project auto-confirms emails. A returning user
+--     signing in again changes nothing → no event.
+--   • N24 F6: the trigger can NEVER block sign-up or sign-in — any failure to record is caught and
+--     raised as a WARNING only (auth proceeds; the account simply has no event).
+--   • N24 F8: deleting the auth user deletes its outbox row (ON DELETE CASCADE). APPLYING THIS
+--     MIGRATION STARTS CAPTURE (the flag only gates sending), so applying it is activation.
 --   • Idempotent by construction: one row per (user, event type), unique idempotency key
 --     'dealfit:account_verified:<user id>'; ON CONFLICT DO NOTHING.
 --   • Minimal data: the account id, the email (lower-cased) and the verification time. No deal
@@ -26,7 +31,7 @@
 create table if not exists public.account_event_outbox (
   id               bigint generated always as identity primary key,
   event_type       text        not null,
-  user_id          uuid        not null,
+  user_id          uuid        not null references auth.users(id) on delete cascade,
   email            text        not null,
   occurred_at      timestamptz not null,
   idempotency_key  text        not null,
@@ -57,13 +62,18 @@ security definer
 set search_path = public
 as $$
 begin
-  if new.email_confirmed_at is not null
-     and new.email is not null
-     and (tg_op = 'INSERT' or old.email_confirmed_at is null) then
-    insert into public.account_event_outbox (event_type, user_id, email, occurred_at, idempotency_key)
-    values ('account_verified', new.id, lower(new.email), new.email_confirmed_at,
-            'dealfit:account_verified:' || new.id::text)
-    on conflict do nothing;
+  if new.email is not null
+     and new.email_confirmed_at is not null
+     and new.last_sign_in_at is not null
+     and (tg_op = 'INSERT' or old.last_sign_in_at is null or old.email_confirmed_at is null) then
+    begin
+      insert into public.account_event_outbox (event_type, user_id, email, occurred_at, idempotency_key)
+      values ('account_verified', new.id, lower(new.email), new.email_confirmed_at,
+              'dealfit:account_verified:' || new.id::text)
+      on conflict do nothing;
+    exception when others then
+      raise warning 'dealfit account event not recorded for %: %', new.id, sqlstate;   -- never blocks auth
+    end;
   end if;
   return new;
 end;
@@ -72,7 +82,7 @@ revoke all on function public.record_account_verified() from public, anon, authe
 
 drop trigger if exists dealfit_account_verified on auth.users;
 create trigger dealfit_account_verified
-  after insert or update of email_confirmed_at on auth.users
+  after insert or update of email_confirmed_at, last_sign_in_at on auth.users
   for each row execute function public.record_account_verified();
 
 -- Relay claim: the due rows, locked so two overlapping relay runs never send the same row.
@@ -88,7 +98,7 @@ as $$
                    where status = 'pending' and next_attempt_at <= now()
                    order by id
                    for update skip locked
-                   limit greatest(1, least(p_limit, 100)))
+                   limit greatest(1, least(p_limit, 25)))   -- N24 F12: 25 × 10 s timeout < the 5-minute lease
   returning o.*;
 $$;
 revoke all on function public.claim_account_events(integer) from public, anon, authenticated;

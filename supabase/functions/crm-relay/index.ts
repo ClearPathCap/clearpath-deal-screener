@@ -14,7 +14,10 @@ import { drain } from '../_shared/crm_event.mjs';
 Deno.serve(async (req) => {
   const auth = req.headers.get('Authorization') || '';
   const want = Deno.env.get('CRM_RELAY_INVOKE_SECRET') || '';
-  if (!want || auth !== `Bearer ${want}`) return new Response('forbidden', { status: 403 });
+  const expected = `Bearer ${want}`;
+  let diff = auth.length ^ expected.length;   // N24 F11: constant-time compare
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ (auth.charCodeAt(i) || 0);
+  if (!want || want.length < 32 || diff !== 0) return new Response('forbidden', { status: 403 });
   if (Deno.env.get('DEALFIT_CRM_EVENTS_ENABLED') !== 'true') {
     return Response.json({ enabled: false, claimed: 0 });
   }

@@ -11,18 +11,30 @@
 //   • raw provider error text, no resend, no way to change the email.
 // These helpers keep the rules testable. The UI wiring lives in main.js.
 
-// The digits of whatever the user pasted, typed or the OS autofilled. Supabase email
+// The code inside whatever the user pasted, typed or the OS autofilled. Supabase email
 // one-time codes are numeric; their length is a project setting (6 by default, up to 10),
 // so nothing here assumes a fixed length.
-export function normalizeOtp(raw) {
+// N24 review F3: a pasted sentence can hold other numbers (a date, a phone number). Only
+// code-like groups are joined ("123 456", "1234-5678": two groups of 3–4 digits, one space or
+// hyphen), never date-like ones ("2026-11-24", "11/24/2026"). With one 6–10 digit candidate,
+// or one right after the word "code", the result is CONFIDENT; otherwise it is a best guess
+// that must not be verified automatically.
+export function extractOtp(raw) {
   const s = String(raw == null ? '' : raw);
-  // A pasted sentence: take the longest run of 6–10 digits (the code), ignoring
-  // separators inside it ("123 456", "123-456"). Otherwise keep every digit.
-  const grouped = s.replace(/(\d)[\s \-–.]+(?=\d)/g, '$1');
-  const runs = grouped.match(/\d{6,10}/g);
-  if (runs && runs.length) return runs.sort((a, b) => b.length - a.length)[0];
-  return s.replace(/\D+/g, '').slice(0, 10);
+  const joined = s.replace(/(?<!\d)(\d{3,4})[ \u00a0-](\d{3,4})(?!\d)/g, '$1$2');
+  // A date or number separator (/ . -) counts only when a digit follows it: '482913.' ends a sentence.
+  const runs = [...joined.matchAll(/(?<!\d|\d[/.-])\d{6,10}(?!\d|[/.-]\d)/g)].map(m => ({ v: m[0], i: m.index }));
+  if (!runs.length) {
+    // No code-like number: keep the digits (typing; a stray letter is just dropped). found=false tells
+    // the paste handler that text with words held no code, so it never glues a sentence's digits together.
+    return { code: s.replace(/\D+/g, '').slice(0, 10), confident: !/[A-Za-z]/.test(s), found: false };
+  }
+  if (runs.length === 1) return { code: runs[0].v, confident: true, found: true };
+  const near = runs.filter(r => /(code|passcode|verification|otp)\W{0,20}$/i.test(joined.slice(Math.max(0, r.i - 30), r.i)));
+  if (near.length === 1) return { code: near[0].v, confident: true, found: true };
+  return { code: runs[0].v, confident: false, found: true };
 }
+export function normalizeOtp(raw) { return extractOtp(raw).code; }
 
 // A code long enough to try (provider minimum length is 6).
 export function looksComplete(code) { return /^\d{6,10}$/.test(code || ''); }
@@ -54,25 +66,39 @@ export function friendlyAuthError(err, phase) {
   return phase === 'send' ? 'Couldn’t send the code — try again.' : 'Couldn’t check that code — try again.';
 }
 
-// Email sign-in LINK (prepared; inert until the Supabase email template links here).
-// The template would link to  <site>/?auth_th={{ .TokenHash }}&auth_type=email . Nothing is
-// verified on page load: link scanners in mail systems open (GET) links, and a single-use
-// token consumed by a scanner would leave the person with a dead link. The app only shows a
-// "Finish signing in" button; the token is spent on that tap (verifyOtp with token_hash).
+// Email sign-in LINK — PREPARED, SWITCHED OFF (N24 review F1). While AUTH_LINK_ENABLED is
+// false the app never offers or spends a link token: any auth_th in the address is only
+// removed. Switching it on is an owner decision bundled with the email-template change, and
+// needs the account named before the tap (see the overnight record), because a link that
+// signs a visitor in to an unnamed account is a login-CSRF risk.
+// Format (N24 F13): a FRAGMENT, <site>/#auth_th={{ .TokenHash }}&auth_type=email, so the
+// token never reaches the static host's request logs. A legacy ?query form is also stripped.
+// Nothing is verified on page load (mail link scanners open links); the token is spent only by
+// a "Finish signing in" tap (verifyOtp with token_hash), once.
+export const AUTH_LINK_ENABLED = false;
 export const AUTH_LINK_PARAMS = ['auth_th', 'auth_type'];
 export function readAuthLink(href) {
   let u; try { u = new URL(href); } catch { return null; }
-  const th = u.searchParams.get('auth_th');
-  const type = u.searchParams.get('auth_type') || 'email';
+  const h = new URLSearchParams(u.hash.replace(/^#/, ''));
+  const th = h.get('auth_th') || u.searchParams.get('auth_th');
+  const type = h.get('auth_type') || u.searchParams.get('auth_type') || 'email';
   if (!th || !/^[A-Za-z0-9_\-.]{8,200}$/.test(th)) return null;
   if (!['email', 'magiclink', 'signup'].includes(type)) return null;
   return { tokenHash: th, type: type === 'email' ? 'email' : type };
+}
+export function hasAuthLinkParams(href) {
+  let u; try { u = new URL(href); } catch { return false; }
+  const h = new URLSearchParams(u.hash.replace(/^#/, ''));
+  return AUTH_LINK_PARAMS.some(k => u.searchParams.has(k) || h.has(k));
 }
 // The same URL without the token (so it never lingers in history, a bookmark or a share).
 export function stripAuthLink(href) {
   let u; try { u = new URL(href); } catch { return href; }
   for (const k of AUTH_LINK_PARAMS) u.searchParams.delete(k);
-  return u.pathname + (u.search ? u.search : '') + u.hash;
+  const h = new URLSearchParams(u.hash.replace(/^#/, ''));
+  let hash = u.hash;
+  if (AUTH_LINK_PARAMS.some(k => h.has(k))) { for (const k of AUTH_LINK_PARAMS) h.delete(k); hash = h.toString() ? '#' + h.toString() : ''; }
+  return u.pathname + (u.search ? u.search : '') + hash;
 }
 
 // "Code sent" memory for ONE browser tab (sessionStorage), so a page the phone unloaded

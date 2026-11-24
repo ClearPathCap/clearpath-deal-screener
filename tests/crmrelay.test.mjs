@@ -111,12 +111,31 @@ mode = 'ok';
 ok(ob4.rows.concat(ob5.rows, ob3.rows, ob2.rows).every(r => !/@/.test(r.last_error || '')), 'R7 recorded errors never contain the email');
 threw = 0; try { await E.drain({ outbox: mkOutbox([]), endpoint: 'http://example.test/x', secret: SECRET }); } catch { threw = 1; }
 ok(threw === 1, 'R8 a non-https endpoint (other than local 127.0.0.1 tests) is refused');
+// N24 F9: a redirect is never followed; the signed event goes only to the pinned endpoint.
+let redirectedHits = 0;
+const target = http.createServer((q, s) => { redirectedHits++; s.writeHead(201); s.end('{}'); });
+await new Promise(r => target.listen(0, '127.0.0.1', r));
+const redir = http.createServer((q, s) => { s.writeHead(307, { location: `http://127.0.0.1:${target.address().port}/elsewhere` }); s.end(); });
+await new Promise(r => redir.listen(0, '127.0.0.1', r));
+const ob6 = mkOutbox([row({ id: 7, user_id: '77777777-7777-4777-8777-777777777777' })]);
+res = await E.drain({ outbox: ob6, endpoint: `http://127.0.0.1:${redir.address().port}/x`, secret: SECRET });
+ok(res.retried === 1 && redirectedHits === 0 && ob6.rows[0].last_status === 307 && /redirect/.test(ob6.rows[0].last_error), 'R9 a 307 is not followed (the redirect target receives nothing); the row retries');
+target.close(); redir.close();
+// N24 F10: a configuration error fails before anything is claimed (no attempts consumed).
+let claimed = 0; const spy = { ...mkOutbox([row({ id: 8 })]), claim: async () => { claimed++; return []; } };
+threw = 0; try { await E.drain({ outbox: spy, endpoint, secret: '' }); } catch { threw = 1; }
+ok(threw === 1 && claimed === 0, 'R10 a missing secret fails before any row is claimed');
+let askedLimit = 0; await E.drain({ outbox: { ...mkOutbox([]), claim: async (l) => { askedLimit = l; return []; } }, endpoint, secret: SECRET, limit: 500 });
+ok(askedLimit === 25, 'R11 a run claims at most 25 rows (within the lease) — N24 F12');
 server.close();
 
 console.log('— §M outbox migration 0016 (static; executed against PGlite separately) ─');
 const sql = readFileSync(join(ROOT, 'supabase/migrations/0016_account_verified_events.sql'), 'utf8');
-ok(/if new\.email_confirmed_at is not null\s+and new\.email is not null\s+and \(tg_op = 'INSERT' or old\.email_confirmed_at is null\) then/.test(sql)
-   && /after insert or update of email_confirmed_at on auth\.users/.test(sql), 'M1 the event fires only on the first verification (insert-confirmed, or null → confirmed)');
+// Re-pinned after N24 review F7: the event keys on the first SIGN-IN of a confirmed address (not on confirmation alone).
+ok(/if new\.email is not null\s+and new\.email_confirmed_at is not null\s+and new\.last_sign_in_at is not null\s+and \(tg_op = 'INSERT' or old\.last_sign_in_at is null or old\.email_confirmed_at is null\) then/.test(sql)
+   && /after insert or update of email_confirmed_at, last_sign_in_at on auth\.users/.test(sql), 'M1 the event fires once, on the first sign-in of a confirmed address (never merely because a code was sent, even with auto-confirm)');
+ok(/exception when others then\s+raise warning/.test(sql), 'M5 a failure to record never blocks sign-up or sign-in (caught, WARNING only) — N24 F6');
+ok(/user_id\s+uuid\s+not null references auth\.users\(id\) on delete cascade/.test(sql) && /least\(p_limit, 25\)/.test(sql), 'M6 deleting the account deletes its event (F8); a claim takes at most 25 rows (F12)');
 ok(/on conflict do nothing/.test(sql) && /unique index if not exists account_event_outbox_user_type_uniq on public\.account_event_outbox \(user_id, event_type\)/.test(sql),
    'M2 one event per account, idempotently');
 ok(/enable row level security/.test(sql) && /revoke all on table public\.account_event_outbox from public, anon, authenticated/.test(sql)
@@ -128,7 +147,9 @@ ok(/enable row level security/.test(sql) && /revoke all on table public\.account
      'M4 overlapping relays never claim the same row; the outbox holds only these columns (no deal, property, token or IP data): ' + cols.join(',')); }
 
 const fn = readFileSync(join(ROOT, 'supabase/functions/crm-relay/index.ts'), 'utf8');
-ok(/auth !== `Bearer \$\{want\}`/.test(fn) && /DEALFIT_CRM_EVENTS_ENABLED'\) !== 'true'/.test(fn), 'F1 the relay refuses unauthenticated calls and sends nothing unless explicitly enabled');
+ok(/const expected = `Bearer \$\{want\}`;/.test(fn) && /diff \|= expected\.charCodeAt\(i\)/.test(fn) && /if \(!want \|\| want\.length < 32 \|\| diff !== 0\) return new Response\('forbidden', \{ status: 403 \}\);/.test(fn)
+   && /DEALFIT_CRM_EVENTS_ENABLED'\) !== 'true'/.test(fn), 'F1 the relay refuses unauthenticated calls (constant-time bearer compare, N24 F11) and sends nothing unless explicitly enabled');
+ok(/\[functions\.crm-relay\]\s+verify_jwt = false/.test(readFileSync(join(ROOT, 'supabase/config.toml'), 'utf8')), 'F2 the gateway passes the scheduler bearer through to the function (verify_jwt=false; the function checks it) — N24 F11');
 
 console.log(`\ncrmrelay: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

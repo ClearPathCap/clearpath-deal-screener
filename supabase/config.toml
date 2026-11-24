@@ -11,3 +11,8 @@ verify_jwt = true
 
 [functions.portal]
 verify_jwt = true
+
+# Overnight 2026-11-24 (N24 F11): the relay is called by a scheduler with its own bearer secret
+# (checked in constant time inside the function), not a user JWT. LOCAL DRAFT — not deployed.
+[functions.crm-relay]
+verify_jwt = false

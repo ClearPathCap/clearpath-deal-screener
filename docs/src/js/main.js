@@ -44,8 +44,8 @@ import {
   isSignedIn, getUserEmail, getUserId, entitlementStatus,
 } from './auth.js';
 import { initConnectivity, retryNow } from './connectivity.js';
-import { normalizeOtp, looksComplete, shouldAutoVerify, readAuthLink, stripAuthLink,
-         readPending, writePending, clearPending, resendWaitSeconds } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
+import { normalizeOtp, extractOtp, looksComplete, shouldAutoVerify, readAuthLink, stripAuthLink, hasAuthLinkParams,
+         AUTH_LINK_ENABLED, readPending, writePending, clearPending, resendWaitSeconds } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline } from './storage.js';
@@ -1857,6 +1857,10 @@ async function sendSignInCode() {
   if (_sendInFlight) return;
   const email = (document.getElementById('signin-email')?.value || '').trim();
   const msgEl = document.getElementById('signin-msg');
+  // N24 review F4: the resend cooldown applies to "Send code" too, for the address a code was just sent to.
+  const pend = readPending(_signinStore);
+  const wait = pend && pend.email.toLowerCase() === email.toLowerCase() ? resendWaitSeconds(pend.sentAt) : 0;
+  if (wait > 0) { showRedeemMsg(msgEl, { ok: false, msg: 'A code was just sent to ' + email + '. You can send a new one in ' + wait + 's.' }); return; }
   _sendInFlight = true;
   showRedeemMsg(msgEl, { ok: true, msg: 'Sending…' });
   let result;
@@ -1920,11 +1924,24 @@ function wireSigninCodeField() {
   input.addEventListener('paste', (e) => {
     const text = e.clipboardData && e.clipboardData.getData('text');
     if (text == null) return;
-    const code = normalizeOtp(text);
-    if (!code) return;
-    e.preventDefault();
-    input.value = code; _codePrevLen = code.length;
-    if (looksComplete(code)) verifySignInCode({ auto: true });
+    const { code, confident, found } = extractOtp(text);
+    e.preventDefault();   // the field only ever receives digits
+    if (!code || (!found && /[A-Za-z]/.test(text))) { showRedeemMsg(document.getElementById('signin-msg'), { ok: false, msg: 'No code found in what you pasted. Copy just the code from the email, or type it.' }); return; }
+    // N24 review F2: a complete code replaces the field; a PARTIAL paste goes in at the caret
+    // (digits already typed are kept), then the whole field is cleaned.
+    let next;
+    if (looksComplete(code)) next = code;
+    else {
+      const v = input.value || '';
+      const s = input.selectionStart ?? v.length, en = input.selectionEnd ?? v.length;
+      next = normalizeOtp(v.slice(0, s) + code + v.slice(en));
+    }
+    input.value = next; _codePrevLen = next.length;
+    try { input.setSelectionRange(next.length, next.length); } catch {}
+    if (!looksComplete(next)) return;
+    // N24 review F3: verify by itself only when the paste was unambiguous.
+    if (confident || !looksComplete(code)) verifySignInCode({ auto: true });
+    else showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: 'The pasted text had more than one number. Check this is the code from your email, then tap Verify.' });
   });
   input.addEventListener('input', (e) => {
     const before = _codePrevLen;
@@ -1954,10 +1971,11 @@ function resumePendingSignIn() {
 // never on load (mail-system link scanners open links).
 function takeAuthLinkFromUrl() {
   const href = (typeof location !== 'undefined' && location && location.href) || '';
-  const link = href ? readAuthLink(href) : null;
-  if (!link) return;
-  try { history.replaceState(history.state, '', stripAuthLink(href)); } catch {}
-  _pendingAuthLink = link;
+  if (!href || !hasAuthLinkParams(href)) return;
+  try { history.replaceState(history.state, '', stripAuthLink(href)); } catch {}   // always removed
+  if (!AUTH_LINK_ENABLED) return;   // N24 review F1: switched off until the owner activates it
+  const link = readAuthLink(href);
+  if (link) _pendingAuthLink = link;
 }
 function showPendingAuthLink() {
   if (!_pendingAuthLink) return false;

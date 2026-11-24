@@ -120,7 +120,8 @@ async function readServerTier() {
   }
 }
 export async function syncEntitlement() {
-  if (!_session) { _entitlementStatus = 'signed-out'; setCachedTier('starter'); return 'starter'; }
+  // N24 review F5: signing out also invalidates any plan check still in flight for the old session.
+  if (!_session) { _entitlementSeq++; _entitlementStatus = 'signed-out'; setCachedTier('starter'); return 'starter'; }
   const seq = ++_entitlementSeq;
   const forUser = userKey(_session);
   const call = readServerTier();
@@ -139,7 +140,8 @@ export async function syncEntitlement() {
     });
     return 'starter';
   }
-  if (seq !== _entitlementSeq) return res.tier;   // a newer check started meanwhile; it owns the cache
+  // A newer check started meanwhile (it owns the cache), or the session ended or changed (N24 F5).
+  if (seq !== _entitlementSeq || !_session || userKey(_session) !== forUser) return res.tier;
   _entitlementStatus = res.verified ? 'verified' : 'unverified';
   setCachedTier(res.tier);
   return res.tier;

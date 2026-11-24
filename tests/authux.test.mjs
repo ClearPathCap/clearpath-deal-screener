@@ -125,5 +125,30 @@ ok(/#signin-email\{text-transform:none\}/.test(rd('docs/src/css/styles.css')), '
 ok(/writePending\(_signinStore, email, now\)/.test(mj) && /if \(!showPendingAuthLink\(\)\) resumePendingSignIn\(\);/.test(mj) && /clearPending\(_signinStore\)/.test(mj),
    'U4 a sent code is remembered for this tab; a reloaded page reopens the code step; success forgets it');
 
+console.log('— §N24 corrections (independent review findings) ─');
+{ const X = S.extractOtp;
+  ok(X('On 11/24/2026 your DealFit code is 482913').code === '482913' && X('Your code is 482 913. Sent 2026-11-24.').code === '482913' && X('Your code is 482 913. Sent 2026-11-24.').confident
+     && X('Call 555-0101. Your code: 482913').code === '482913' && X('Meeting 11.24.2026 code 482913.').code === '482913',
+     'Z1 F3: dates and phone numbers in a pasted sentence are never taken for the code; a code at the end of a sentence is found');
+  ok(X('123456 or 654321').confident === false && X('Ref 20261124 code 482913').code === '482913' && X('Ref 20261124 code 482913').confident,
+     'Z2 F3: two candidates and no "code" keyword is ambiguous (never auto-verified); the one after "code" wins');
+  ok(X('Sent 2026-11-24.').found === false && X('12a3').code === '123' && X('111').code === '111', 'Z3 F3: text with no code yields found=false (the paste is refused); typing keeps digits (a stray letter is dropped)');
+}
+ok(S.AUTH_LINK_ENABLED === false && S.readAuthLink('https://x.test/#auth_th=abcdefgh12345678&auth_type=email').tokenHash === 'abcdefgh12345678'
+   && S.stripAuthLink('https://x.test/?tool=flip#auth_th=abcdefgh12345678&auth_type=email') === '/?tool=flip' && S.stripAuthLink('https://x.test/?auth_th=abcdefgh12345678#keep=1') === '/#keep=1'
+   && S.hasAuthLinkParams('https://x.test/#auth_th=abcdefgh123'), 'Z4 F1/F13: the link path is SWITCHED OFF; the fragment form is read and stripped (query form too)');
+ok(/if \(!AUTH_LINK_ENABLED\) return;/.test(mj) && mj.indexOf("history.replaceState(history.state, '', stripAuthLink(href));") < mj.indexOf('if (!AUTH_LINK_ENABLED) return;'),
+   'Z5 F1: a link token is always removed from the address, and never offered or spent while switched off');
+ok(/next = normalizeOtp\(v\.slice\(0, s\) \+ code \+ v\.slice\(en\)\);/.test(mj) && /if \(looksComplete\(code\)\) next = code;/.test(mj) && /if \(confident \|\| !looksComplete\(code\)\) verifySignInCode\(\{ auto: true \}\);/.test(mj),
+   'Z6 F2/F3: a partial paste goes in at the caret (digits already typed are kept); only a complete code replaces the field; an ambiguous paste never auto-verifies');
+ok(/const wait = pend && pend\.email\.toLowerCase\(\) === email\.toLowerCase\(\) \? resendWaitSeconds\(pend\.sentAt\) : 0;\s*if \(wait > 0\)/.test(mj), 'Z7 F4: "Send code" honours the resend cooldown for the address a code was just sent to');
+// F5: a fast plan answer that lands after a sign-out is never applied to the signed-out page.
+auth.setEntitlementTimeout(5000);
+globalThis.__stubSupabase = { session: SESSION_A, rpc: { current_tier: () => new Promise(r => setTimeout(() => r({ data: 'pro', error: null, status: 200 }), 40)) } };
+const inflight = cb('SIGNED_IN', SESSION_A); await sleep(5);
+globalThis.__stubSupabase = { session: null, rpc: {} };
+await cb('SIGNED_OUT', null); await inflight; await sleep(60);
+ok(tiers.getActiveTier() === 'starter' && auth.entitlementStatus() === 'signed-out', 'Z8 F5: a plan answer arriving after a sign-out never applies a paid tier to the signed-out page');
+
 console.log(`\nauthux: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

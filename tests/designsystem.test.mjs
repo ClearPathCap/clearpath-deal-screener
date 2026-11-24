@@ -122,15 +122,16 @@ const listeners = { window: {}, document: {} };
 const entries = [{ state: null }]; let idx = 0;
 const clone = (s) => (s == null ? s : JSON.parse(JSON.stringify(s)));
 const fire = (target, type, ev) => (listeners[target][type] || []).forEach(f => f(ev));
-let traversals = 0, pops = 0, popDelay = 0;
+let traversals = 0, pops = 0, popDelay = 0, failPush = false, swallowGo = false;
 globalThis.history = {
   scrollRestoration: 'auto',
   get state() { return entries[idx].state; },
   get length() { return entries.length; },
-  pushState(s) { entries.splice(idx + 1); entries.push({ state: clone(s) }); idx++; },
+  pushState(s) { if (failPush) throw new Error('SecurityError: too many calls'); entries.splice(idx + 1); entries.push({ state: clone(s) }); idx++; },
   replaceState(s) { entries[idx] = { state: clone(s) }; },
   go(d) {
     traversals++;
+    if (swallowGo) return;
     setTimeout(() => {
       const to = Math.max(0, Math.min(entries.length - 1, idx + d));
       if (to === idx) return;
@@ -229,6 +230,52 @@ await new Promise(r => setTimeout(r, 3600));
 popDelay = 0; await settle();
 ok(app.open.join() === 'modal-market-picker', 'D20 a traversal that lands after the safety timer is not mistaken for the user\'s Back (the new sheet stays open)');
 closeModal('modal-market-picker'); await settle();
+
+// Round-2 review N1: two closes in separate tasks while our traversal is in flight.
+popDelay = 40;
+openModal('modal-a'); await settle(); openModal('modal-b'); await settle();
+closeModal('modal-b');
+await new Promise(r => setTimeout(r, 5));
+closeModal('modal-a'); openModal('modal-c');
+await settle();
+popDelay = 0;
+ok(app.open.join() === 'modal-c' && top().sheet === 'modal-c' && sheets().join() === 'modal-c', 'D21a two in-flight traversals are both recognised as ours (each by the entry it lands on): the sheet opened after them stays');
+closeModal('modal-c'); await settle();
+// Round-2 review N3: queued lower and top sheets closed in one task leave nothing behind.
+openModal('modal-f'); await settle();
+closeModal('modal-f'); openModal('modal-g'); openModal('modal-h'); closeModal('modal-g'); closeModal('modal-h');
+await settle();
+ok(app.open.length === 0 && !top().sheet && sheets().length === 0, 'D21b queued sheets closed in the same task never reach history and leave no dead current entry');
+// Round-2 review N4: Forward is not blocked by a dead entry.
+showPage('rental'); await settle();
+openModal('modal-s'); await settle();
+showPage('pipeline'); await settle();
+closeModal('modal-s'); await settle();
+await pressBack();
+ok(app.page === 'rental' && app.open.length === 0, 'D21c Back from a tab skips the dead sheet entry beneath it');
+await pressForward();
+ok(app.page === 'pipeline', `D21d Forward skips the dead entry UPWARD and reaches the next tab (now ${app.page})`);
+// Round-2 review N2: a refused pushState is not kept in the model …
+failPush = true; openModal('modal-x'); failPush = false;
+closeModal('modal-x'); await settle();
+openModal('modal-y'); await settle();
+ok(top().sheet === 'modal-y', 'D21e a pushState the browser refuses is dropped from the model (later entries still land)');
+await pressBack();
+ok(app.open.length === 0 && !top().sheet, 'D21f … and Back still closes the next sheet');
+// … and a traversal that never lands does not stall the view stack.
+openModal('modal-z'); await settle();
+swallowGo = true; closeModal('modal-z'); openModal('modal-w');
+await new Promise(r => setTimeout(r, 3200));
+swallowGo = false;
+ok(top().sheet === 'modal-w' && app.open.join() === 'modal-w', 'D21g after the safety timeout new entries reach history directly (no stall until reload)');
+await pressBack(); await pressBack();
+ok(app.open.length === 0, 'D21h at most one Back press is absorbed by the late allowance; the sheet then closes');
+// Reload support: pagehide keeps the current entry's scroll position.
+await settle();
+sY = 333; fire('window', 'pagehide', {});
+ok(top().y === 333 && !top().sheet, `D21i pagehide records the current entry's scroll for a reload (y=${top().y})`);
+sY = 0;
+// (Last of the history cases: a synthetic popstate does not move the scripted history.)
 // An entry from before this page load (or whose state another module replaced
 // with null before init) maps to the root page.
 showPage('rental'); await settle();
@@ -255,6 +302,21 @@ ok(!bodyClasses.has('kb-open') && field.scrolled === 1, 'D26 a small resize (URL
 kbWin.visualViewport.height = 480; kbWin.visualViewport.scale = 2; w.viewport();
 ok(!bodyClasses.has('kb-open'), 'D27 pinch-zoom is not mistaken for a keyboard');
 kbDoc.activeElement = null; w.focusOut();
+// Round-2 review N5: engines where the keyboard shrinks innerHeight too (Firefox Android, WebView adjustResize).
+{
+  const rc = { innerWidth: 375, innerHeight: 800, visualViewport: { height: 800, offsetTop: 0, scale: 1 } };
+  const doc2 = { body: kbDoc.body, activeElement: field };
+  bodyClasses.clear();
+  const w3 = vs.makeKeyboardWatcher(rc, doc2);
+  w3.focusIn(field);
+  rc.innerHeight = 480; rc.visualViewport.height = 480; w3.viewport();
+  const shown = bodyClasses.has('kb-open');
+  rc.innerHeight = 800; rc.visualViewport.height = 800; w3.viewport();
+  ok(shown && !bodyClasses.has('kb-open'), 'D28a resizes-content engines: the keyboard is detected against the tallest height seen, and its hiding brings the tab bar back');
+  rc.innerWidth = 812; rc.innerHeight = 375; rc.visualViewport.height = 375; w3.viewport();
+  ok(!bodyClasses.has('kb-open'), 'D28b a rotation is not mistaken for a keyboard (each width keeps its own reference)');
+  doc2.activeElement = null; w3.focusOut();
+}
 ok(!bodyClasses.has('kb-open'), 'D28 leaving the field clears the state');
 ok(vs.isTextEntry({ tagName: 'INPUT', type: 'text' }) && vs.isTextEntry({ tagName: 'TEXTAREA' }) && !vs.isTextEntry({ tagName: 'INPUT', type: 'checkbox' }) && !vs.isTextEntry({ tagName: 'SELECT' }), 'D29 keyboard awareness counts only text entry (not toggles or selects)');
 
@@ -292,8 +354,8 @@ ok(/const prev = currentPageId\(\), prevY = window\.scrollY \|\| 0;/.test(mainJs
 // Review corrections (finding 6, 9 and nits), pinned.
 ok(/label: 'purchase price'/.test(mainJs) && !/label: 'Purchase Price'/.test(mainJs) && /'Monthly rent'/.test(mainJs) && !/: 'Monthly Rent'/.test(mainJs), 'D40 validation messages and the band label use the sentence-case field names');
 ok(/if \(lab\.textContent === 'Monthly Rent'\) lab\.textContent = 'Monthly rent';/.test(mainJs), 'D41 the engine-written rent label is re-cased in place (ltr.js / brrr.js untouched)');
-ok(/hasAnalyzedOnce() || heldBeyond ? '' : ' hidden'/.test(mainJs), 'D42 a downgraded account that still holds markets in locked slots sees the line at once');
-ok(/body:has\(> \.appbar\)\{padding-top:0\}/.test(css) && /padding-top:env\(safe-area-inset-top\)/.test((css.match(/(^|\n)body\{[^}]*\}/) || [''])[0]), 'D43 legal, SEO and shared pages keep the status-bar inset on <body>; the app carries it in the app bar');
+ok(/for \(let i = unlocked; i < 6; i\+\+\) if \(getMarketForSlot\(i\)\) \{ heldBeyond = true; break; \}/.test(mainJs) && /hasAnalyzedOnce\(\) \|\| heldBeyond \? '' : ' hidden'/.test(mainJs) && !/hasAnalyzedOnce\(\) \|\| heldBeyond \? '' : ' hidden'/.test('anything at all'), 'D42 a downgraded account that still holds markets in locked slots sees the line at once');
+ok(/padding-top:env\(safe-area-inset-top\)/.test((css.match(/(^|\n)body\{[^}]*\}/) || [''])[0]) && /margin-top:calc\(-1 \* var\(--safe-top\)\);padding:var\(--safe-top\)/.test(rule('.appbar')) && !/:has\(/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')), 'D43 legal, SEO and shared pages keep the status-bar inset on <body>; the app bar pulls over it and carries it as padding (no :has() dependency)');
 ok(/body\.kb-open \.tabbar\{[^}]*visibility:hidden/.test(css), 'D44 the stepped-aside tab bar leaves the focus and screen-reader order');
 ok(/\.modal-backdrop:not\(#modal-upgrade\)\[data-required\] > \.modal::before\{display:none\}/.test(css), 'D45 a required sheet shows no grabber');
 

@@ -66,8 +66,9 @@
    the fixed tab bar below (browser focus-scrolling honours it). */
 html{background:var(--bg);scroll-padding-top:calc(var(--appbar-h) + var(--safe-top) + var(--sp-4));scroll-padding-bottom:calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-4));-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;max-width:500px;margin:0 auto;padding-bottom:calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-10));padding-top:env(safe-area-inset-top);-webkit-font-smoothing:antialiased}
-/* The app's own pages carry the status-bar inset inside the app bar; legal, SEO and shared pages keep it on <body>. */
-body:has(> .appbar){padding-top:0}
+/* <body> keeps the status-bar inset for every page that uses this stylesheet (legal, SEO, shared). The app bar
+   pulls itself up over it (negative margin) and carries the inset as its own padding instead, so when it sticks
+   at top:0 its background covers the status bar. No :has() needed (older iOS / Firefox lack it). */
 
 /* APP BAR — the one compact header (design-system wave): brand + account and
    app actions on a single 52px row. Replaces the old top tabs + utility row +
@@ -77,7 +78,7 @@ body:has(> .appbar){padding-top:0}
    the first element in <body>. Wave 5 removed the dev banner and its
    visible-sibling 26px offset entirely — no selector may reintroduce an
    offset. The safe-area inset is padding INSIDE the bar, never an offset. */
-.appbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-top));padding:var(--safe-top) var(--sp-3) 0;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:20}
+.appbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-top));margin-top:calc(-1 * var(--safe-top));padding:var(--safe-top) var(--sp-3) 0;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:20}
 .appbar-brand{display:flex;align-items:center;gap:var(--sp-2);flex-shrink:0}
 .appbar-brand .cpc-logo{height:22px}
 /* The app name reads as a name (DealFit), not as an eyebrow: no transform, no divider. */

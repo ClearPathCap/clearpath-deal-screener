@@ -1200,7 +1200,7 @@ function setRentalPresetWithHint(type, el) {
 
 function validateRequiredFields(type) {
   const fields = type === 'flip'
-    ? [{ id: 'f-ask', label: 'purchase price' }, { id: 'f-arv', label: 'ARV' }, { id: 'f-rep', label: 'repair costs' }]
+    ? [{ id: 'f-ask', label: 'asking price' }, { id: 'f-arv', label: 'ARV' }, { id: 'f-rep', label: 'repair costs' }]
     : type === 'ltr'
     ? [{ id: 'l-price', label: 'purchase price' }, { id: 'l-rent', label: 'monthly rent' }]
     : type === 'brrr'

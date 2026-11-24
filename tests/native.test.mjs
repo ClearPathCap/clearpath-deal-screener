@@ -500,7 +500,8 @@ ok(controls.length > 80 && unnamed.length === 0, 'F1 every analyzer field, selec
 const dialogs = [...html.matchAll(/<div class="modal[^"]*"[^>]*role="dialog"[^>]*>/g)].map(m => m[0]);
 const dlgOk = dialogs.filter(d => /aria-modal="true"/.test(d) && (/aria-label="[^"]+"/.test(d) || (() => { const id = (d.match(/aria-labelledby="([^"]+)"/) || [])[1]; return id && html.includes(`id="${id}"`); })()));
 ok(dialogs.length === 8 && dlgOk.length === 8, 'F2 eight sheets are announced as modal dialogs with a title (' + dlgOk.length + '/' + dialogs.length + ')');
-ok(/class="modal modal-picker" role="dialog" aria-modal="true" aria-label="Choose a market"/.test(html), 'F2 the market picker keeps a stable name (its header text changes to "← Back NC")');
+ok(/class="modal modal-picker" role="dialog" aria-modal="true" aria-labelledby="picker-headline"/.test(html) && /id="picker-headline"/.test(html) && /class="picker-title" id="picker-headline"/.test(mainJs),
+  'F2 the market picker is named by its title (#picker-headline, kept by the design wave when the title becomes a state code)');
 ok(!/class="modal modal-upgrade"[^>]*role=/.test(html), 'F2 the sign-in / plans sheet is left as it is (sign-in is closed to speculative change)');
 ok((html.match(/<div class="tier( active)?" role="button" tabindex="0" onclick="setRepairTier\(/g) || []).length === 3, 'F3 the three repair tiers are keyboard buttons');
 ok((mainJs.match(/class="picker-item[^"]*" role="button" tabindex="0" onclick="pickerSelect/g) || []).length === 3 && /initA11y\(\);/.test(mainJs), 'F3 market-picker rows are keyboard buttons; main.js starts the key handler');

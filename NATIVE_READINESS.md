@@ -176,8 +176,10 @@ Audited in a local browser at 375 × 812 against the stacked candidate.
 - 98 analyzer fields, selects, toggles and the market search had no programmatic name (screen readers read only the
   placeholder). Adjacent `<label>`s now name their control (`for=`); the rest carry `aria-label`. Sign-in fields are
   untouched.
-- Eight sheets are now announced as modal dialogs with their title (`role="dialog"`, `aria-modal`, and
-  `aria-labelledby`, or a fixed `aria-label` on the market picker, whose header text changes). The sign-in / plans sheet is unchanged (sign-in is closed to speculative change).
+- Eight sheets are now announced in the markup as modal dialogs named by their title (`role="dialog"`, `aria-modal`,
+  `aria-labelledby`; the market picker points at `#picker-headline`, which follows its "Choose a State" / state-code
+  title). The design wave's `sheetfocus.js` respects these attributes and adds the same ones to any sheet opened without
+  them. The sign-in / plans sheet is unchanged (sign-in is closed to speculative change).
 - The repair tiers and the market-picker rows were click-only `<div>`s. They are now `role="button"` + `tabindex="0"`, and
   `a11y.js` gives them native-button behaviour:
   - Enter acts on key-down; Space acts on key-up, never scrolls the page, and does not repeat when held;
@@ -189,12 +191,13 @@ Audited in a local browser at 375 × 812 against the stacked candidate.
   **2.71 MB to 1.19 MB** (decoded bytes: 30 module scripts, 0.91 MB, of which the vendored SDK is 0.22 MB; no third-party
   request). DOMContentLoaded was about 0.1 s locally.
 
-**Routed to the design-system owner (tokens / components, not changed here):**
-- **Contrast:** the muted grey `#6b6b6b` gives 3.2–3.7:1 for small text on the dark surfaces, below WCAG AA 4.5:1; the
-  footer separator `#444` gives 2.0:1.
-- **Tap targets under 44 px:** the app-bar controls (34 px high), market slots (34), the square-footage field (38) and
-  the footer links (24).
-- **Focus:** focus does not move into an opened sheet or return when it closes, and is not contained inside it.
+**Fixed by the design-system wave (`07a7a4a`, from this audit's findings):**
+- **Contrast:** `--muted` is now `#8e8e8e` (about 5.2:1; it was `#6b6b6b` at 3.2–3.7:1); `#444` is used for borders only.
+- **Tap targets:** the app-bar controls keep their 34 px look with a 44 px hit area; the market slots, the
+  square-footage field and the Terms / Privacy links are 44 px.
+- **Focus:** `sheetfocus.js` moves focus into an opened sheet, keeps Tab inside it and returns focus on close.
+- **Remaining limits:** the page behind an open sheet is not made inert (banked by the design owner); the sign-in / plans
+  sheet is excluded from the focus handling; the 24 px Sign-out floor is unchanged.
 
 **Present already:** a `prefers-reduced-motion` rule, `lang="en"`, no duplicate ids, no positive `tabindex`, and alt text
 on every image.

@@ -72,13 +72,16 @@ A 4px grid: `--sp-1` 4 · `--sp-2` 8 · `--sp-3` 12 · `--sp-4` 16 · `--sp-5` 2
   never an offset. Below 360px the name yields to the mark.
 - **Tab bar** (`.tabbar`): the four primary destinations (Fix & Flip, Rentals, Pipeline, Guide) at the bottom, each with
   an icon and a label; the current tab has `aria-current="page"`. Fixed inside the 500px app column with the home-indicator
-  safe area inside it. It steps aside while the keyboard is up on a touch device.
+  safe area inside it. On a touch device it steps aside while the on-screen keyboard is up (detected from the visual
+  viewport, so it returns when the keyboard is hidden without leaving the field) and leaves the focus order meanwhile.
 - **Page title row** (`.header`): the large page title, then the plan badge and the Guide switch.
 - **Segmented controls** (`.sub-tabs`) switch views inside a page and do not create History entries.
 - **History** (`viewstack.js`): every tab switch and every sheet is a History entry, so Back (browser button, iOS edge
   swipe, Android back) closes the top sheet first, then returns to the previous tab at the scroll position it was left
-  at. Escape closes the top sheet. A required sheet (`data-required`) is never dismissed by Back or Escape. The URL never
-  changes.
+  at. Escape closes the top sheet. A required sheet (`data-required`) is not dismissed by Back or Escape from inside the
+  app (a browser may still skip an entry pushed without a user gesture — e.g. Chrome's back-button intervention for a
+  sheet opened at load; not verified on a device). Closing a sheet that sits under another, or moving Forward into a
+  sheet that is closed, never leaves a Back press that does nothing. The URL never changes.
 
 ## Buttons
 
@@ -105,9 +108,9 @@ Press feedback is a 2% scale (`--dur-instant`); focus is a 2px accent ring.
   placeholder repeats its default value (`value="5" placeholder="5"`) is a default, not an example, and has no "e.g.".
 - **Labels** sit above the field: `--fs-label`, semibold, `--text-2`, sentence case. Qualifiers ("(optional)",
   "(annual)") are regular weight at `--placeholder`.
-- **Keyboard**: analyzer fields carry `enterkeyhint="next"`; Enter moves to the next field and the last one dismisses the
-  keyboard. The focused field is kept clear of the keyboard, the app bar and the tab bar (scroll padding plus a
-  visual-viewport check).
+- **Keyboard**: an analyzer field gets `enterkeyhint="next"` when focused (`"done"` on the last one); Enter moves to the
+  next field and the last one dismisses the keyboard. The focused field is kept clear of the keyboard, the app bar and
+  the tab bar (scroll padding, plus one re-centre when the keyboard comes up — never on ordinary scrolling).
 
 ## Cards
 
@@ -127,7 +130,8 @@ with Investor" (or Pro) — opens the region plans. There are no locked tiles.
 
 On a phone (≤ 600px) every modal presents as a **bottom sheet**: full width, `--r-xl` top corners, a grabber, the
 home-indicator safe area inside it, height = content up to 92% of the visible viewport (`dvh`), and it slides up on
-`--ease-sheet` over `--dur-sheet`. The page behind is locked; the sheet is the one scrolling surface; a sticky action row
+`--ease-sheet` over `--dur-sheet`. The grabber marks a dismissible sheet (Back, Escape, the backdrop or its own
+button); a required sheet shows none. Drag-to-dismiss is not implemented yet (banked). The page behind is locked; the sheet is the one scrolling surface; a sticky action row
 stays reachable. On wider screens the same modal is a centered dialog that fades and scales in.
 
 Exception this wave: the sign-in / plans sheet (`#modal-upgrade`) keeps its centered presentation — sign-in is being

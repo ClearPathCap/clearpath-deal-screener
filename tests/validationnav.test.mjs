@@ -116,9 +116,11 @@ globalThis.analyzeRental();
   ok(p.focusCalls.length === 1 && p.focusCalls[0] && p.focusCalls[0].preventScroll === true, 'A3 focused without a second scroll');
   ok(p.attrs['aria-invalid'] === 'true', 'A4 aria-invalid exposed');
   ok(p.attrs['aria-describedby'] === 'v-price-error', `A5 aria-describedby points at the visible message (got ${p.attrs['aria-describedby']})`);
+  // RE-PINNED in the design-system wave (review finding 6): field names inside messages follow the
+  // sentence-case label rule — "Required — enter purchase price". Same message, same id, same announcement.
   const msg = createdById.get('v-price-error');
-  ok(msg && msg.textContent === 'Required — enter Purchase Price', 'A6 the visible message is retained with the id the field references');
-  ok(/Required — enter Purchase Price/.test(live()), `A7 announced through the polite live region (got "${live()}")`);
+  ok(msg && msg.textContent === 'Required — enter purchase price', 'A6 the visible message is retained with the id the field references');
+  ok(/Required — enter purchase price/.test(live()), `A7 announced through the polite live region (got "${live()}")`);
   ok(el('v-rent').value === '90,000' && el('v-occ').value === '65' && el('v-maint').value === '3,000', 'A8 every other entered value preserved');
   ok(el('rental-results').style.display !== 'block', 'A9 no analysis ran');
   ok([...elements.values()].filter(e => e.scrollCalls.length).length === 1, 'A10 no other element was scrolled');
@@ -227,7 +229,7 @@ console.log('— §F the same behaviour on the LTR analyzer (shared helper) —'
 el('l-price').value = ''; typed('l-rent', '2,100'); resetSpies();
 globalThis.analyzeLtr();
 ok(el('l-price').focusCalls.length === 1 && el('l-price').scrollCalls.length === 1 && el('l-price').attrs['aria-invalid'] === 'true', 'F1 LTR required path reveals l-price');
-ok(live('ltr') === 'Required — enter Purchase Price', `F2 LTR has its own live region (got "${live('ltr')}")`);
+ok(live('ltr') === 'Required — enter purchase price', `F2 LTR has its own live region (got "${live('ltr')}")`);
 
 console.log('— §G malformed currency is a blocking field too —');
 typed('l-price', '12abc'); resetSpies();

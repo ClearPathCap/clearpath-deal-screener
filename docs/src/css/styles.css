@@ -65,7 +65,9 @@
 /* Scroll padding keeps a focused field clear of the sticky app bar above and
    the fixed tab bar below (browser focus-scrolling honours it). */
 html{background:var(--bg);scroll-padding-top:calc(var(--appbar-h) + var(--safe-top) + var(--sp-4));scroll-padding-bottom:calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-4));-webkit-text-size-adjust:100%;text-size-adjust:100%}
-body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;max-width:500px;margin:0 auto;padding-bottom:calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-10));-webkit-font-smoothing:antialiased}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;max-width:500px;margin:0 auto;padding-bottom:calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-10));padding-top:env(safe-area-inset-top);-webkit-font-smoothing:antialiased}
+/* The app's own pages carry the status-bar inset inside the app bar; legal, SEO and shared pages keep it on <body>. */
+body:has(> .appbar){padding-top:0}
 
 /* APP BAR — the one compact header (design-system wave): brand + account and
    app actions on a single 52px row. Replaces the old top tabs + utility row +
@@ -95,7 +97,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .nav-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-4px;border-radius:var(--r-md)}
 /* The keyboard owns the bottom of the screen while a field is being edited
    (native convention); viewstack.js sets body.kb-open on touch devices. */
-body.kb-open .tabbar{transform:translate(-50%,100%)}
+body.kb-open .tabbar{transform:translate(-50%,100%);visibility:hidden;transition:transform var(--dur-base) var(--ease-standard),visibility 0s linear var(--dur-base)}
 
 /* UTILITY ROW — auth chip, share and install: now the app bar's action group */
 .util-bar{display:flex;justify-content:flex-end;align-items:center;gap:6px;min-width:0}
@@ -954,6 +956,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{box-shadow:0 0 0
 .filter-pill:focus-visible,.preset:focus-visible,.market-chip:focus-visible,.market-slot:focus-visible,.sub-tab:focus-visible,.tier:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* Upsell timing (banked UX item 3): only the slots a plan unlocks are drawn;
    after a first analysis, one quiet line says more regions exist. */
+.market-slot.slot-empty{color:var(--text-2);border-color:var(--border-strong)}   /* 'Pick Market' is an action: legible, still dashed */
 .slot-more{grid-column:1/-1;justify-self:start;min-height:var(--tap);padding:0 2px;background:none;border:none;color:var(--text-2);font-family:var(--font);font-size:var(--fs-footnote);font-weight:var(--fw-semibold);cursor:pointer;text-align:left}
 .slot-more[hidden]{display:none}
 .slot-more:hover{color:var(--accent)}
@@ -997,6 +1000,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{box-shadow:0 0 0
   .modal-backdrop:not(#modal-upgrade).active > .modal{animation:df-sheet-in var(--dur-sheet) var(--ease-sheet)}
   .modal-backdrop:not(#modal-upgrade) > .modal::before{content:'';display:block;width:36px;height:5px;border-radius:3px;background:var(--border-strong);margin:-10px auto 14px}
   .modal-backdrop:not(#modal-upgrade) > .modal-picker::before{margin:8px auto 0}
+  .modal-backdrop:not(#modal-upgrade)[data-required] > .modal::before{display:none}   /* a required sheet cannot be dismissed: no grabber */
   #modal-maxoffer .modal-actions{bottom:calc(-22px - var(--safe-bottom));padding-bottom:calc(14px + var(--safe-bottom))}
 }
 @supports (height:1dvh){

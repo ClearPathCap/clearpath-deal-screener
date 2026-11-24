@@ -805,8 +805,12 @@ function renderMarketSlots(containerId, tabType) {
   }
   // One quiet line instead, and only after the visitor has run a first analysis.
   // It opens the same region upgrade path the locked tiles did (handleLockedSlot).
+  // Review finding 9: an account whose plan no longer unlocks a slot that still
+  // holds a market (a downgrade) sees the line at once — the markets are not lost.
   if (unlocked < 6) {
-    html.push(`<button type="button" class="slot-more" onclick="handleLockedSlot(${unlocked + 1})"${hasAnalyzedOnce() ? '' : ' hidden'}>More regions with ${getActiveTier() === 'investor' ? 'Pro' : 'Investor'}</button>`);
+    let heldBeyond = false;
+    for (let i = unlocked; i < 6; i++) if (getMarketForSlot(i)) { heldBeyond = true; break; }
+    html.push(`<button type="button" class="slot-more" onclick="handleLockedSlot(${unlocked + 1})"${hasAnalyzedOnce() || heldBeyond ? '' : ' hidden'}>More regions with ${getActiveTier() === 'investor' ? 'Pro' : 'Investor'}</button>`);
   }
 
   container.innerHTML = html.join('');
@@ -1196,12 +1200,12 @@ function setRentalPresetWithHint(type, el) {
 
 function validateRequiredFields(type) {
   const fields = type === 'flip'
-    ? [{ id: 'f-ask', label: 'Purchase Price' }, { id: 'f-arv', label: 'ARV' }, { id: 'f-rep', label: 'Repair Costs' }]
+    ? [{ id: 'f-ask', label: 'purchase price' }, { id: 'f-arv', label: 'ARV' }, { id: 'f-rep', label: 'repair costs' }]
     : type === 'ltr'
-    ? [{ id: 'l-price', label: 'Purchase Price' }, { id: 'l-rent', label: 'Monthly Rent' }]
+    ? [{ id: 'l-price', label: 'purchase price' }, { id: 'l-rent', label: 'monthly rent' }]
     : type === 'brrr'
-    ? [{ id: 'b-price', label: 'Purchase Price' }, { id: 'b-rehab', label: 'Rehab Budget' }, { id: 'b-arv', label: 'ARV' }, { id: 'b-rent', label: 'Monthly Rent' }]
-    : [{ id: 'v-price', label: 'Purchase Price' }, { id: 'v-rent', label: 'Potential Annual Revenue' }];
+    ? [{ id: 'b-price', label: 'purchase price' }, { id: 'b-rehab', label: 'rehab budget' }, { id: 'b-arv', label: 'ARV' }, { id: 'b-rent', label: 'monthly rent' }]
+    : [{ id: 'v-price', label: 'purchase price' }, { id: 'v-rent', label: 'potential annual revenue' }];
 
   let valid = true;
   // A6: the FIRST blocking field in document order gets revealed (scroll, focus,
@@ -2542,6 +2546,19 @@ initViewStack({
   currentPage: currentPageId,
   isRequired: (id) => { const m = document.getElementById(id); return !!(m && m.dataset && m.dataset.required); },
 });
+// Design-system wave (review finding 6): ltr.js and brrr.js (protected engine
+// files, unchanged this wave) still write the Title Case 'Monthly Rent' into the
+// rent label on every analysis. Keep the label sentence case without touching
+// them: when that exact legacy string appears, it is re-cased in place. Display
+// copy only — no value, band or calculation is read or written.
+if (typeof MutationObserver !== 'undefined') {
+  ['l-rent-label', 'b-rent-label'].forEach(id => {
+    const lab = document.getElementById(id);
+    if (!lab) return;
+    new MutationObserver(() => { if (lab.textContent === 'Monthly Rent') lab.textContent = 'Monthly rent'; })
+      .observe(lab, { childList: true, characterData: true, subtree: true });
+  });
+}
 initOnboarding();
 openInstallFromLink();      // business-card QR: open "Get the App" after load
 
@@ -2677,7 +2694,7 @@ function syncBandDefaults(prefix) {
   if (unitsEl && unitsEl.validity && unitsEl.validity.badInput) return null;
   const band = propertyBand(unitsEl ? parseNumOpt(unitsEl.value) : undefined);
   const rentLabel = document.getElementById(prefix + '-rent-label');
-  if (rentLabel) rentLabel.textContent = band === '5-8' ? 'Total gross monthly rent (all units)' : 'Monthly Rent';
+  if (rentLabel) rentLabel.textContent = band === '5-8' ? 'Total gross monthly rent (all units)' : 'Monthly rent';
 
   // (a) Property-type auto-sync — a 5+ unit deal can never honestly sit on SFR / 2–4.
   // 5–8 → "5–8 Unit", 9+ → "9+ Unit" (re-asserted on every units change). For 1–4,

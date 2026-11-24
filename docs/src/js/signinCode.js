@@ -86,10 +86,14 @@ export function readAuthLink(href) {
   if (!['email', 'magiclink', 'signup'].includes(type)) return null;
   return { tokenHash: th, type: type === 'email' ? 'email' : type };
 }
+// Session tokens a Supabase redirect (implicit flow) puts in the address fragment. DealFit never
+// takes a session from the address (supabaseClient.js detectSessionInUrl: false); they are removed.
+export const SESSION_URL_PARAMS = ['access_token', 'refresh_token', 'expires_in', 'expires_at', 'token_type', 'provider_token', 'provider_refresh_token'];
+function hasSessionFragment(h) { return SESSION_URL_PARAMS.some(k => h.has(k)) || h.has('error_code') || h.has('error_description'); }
 export function hasAuthLinkParams(href) {
   let u; try { u = new URL(href); } catch { return false; }
   const h = new URLSearchParams(u.hash.replace(/^#/, ''));
-  return AUTH_LINK_PARAMS.some(k => u.searchParams.has(k) || h.has(k));
+  return AUTH_LINK_PARAMS.some(k => u.searchParams.has(k) || h.has(k)) || hasSessionFragment(h);
 }
 // The same URL without the token (so it never lingers in history, a bookmark or a share).
 export function stripAuthLink(href) {
@@ -97,7 +101,12 @@ export function stripAuthLink(href) {
   for (const k of AUTH_LINK_PARAMS) u.searchParams.delete(k);
   const h = new URLSearchParams(u.hash.replace(/^#/, ''));
   let hash = u.hash;
-  if (AUTH_LINK_PARAMS.some(k => h.has(k))) { for (const k of AUTH_LINK_PARAMS) h.delete(k); hash = h.toString() ? '#' + h.toString() : ''; }
+  if (AUTH_LINK_PARAMS.some(k => h.has(k)) || hasSessionFragment(h)) {
+    const session = hasSessionFragment(h);
+    for (const k of AUTH_LINK_PARAMS) h.delete(k);
+    if (session) for (const k of [...SESSION_URL_PARAMS, 'type', 'error', 'error_code', 'error_description']) h.delete(k);
+    hash = h.toString() ? '#' + h.toString() : '';
+  }
   return u.pathname + (u.search ? u.search : '') + hash;
 }
 

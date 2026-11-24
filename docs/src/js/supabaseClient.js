@@ -22,6 +22,12 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,   // completes the magic-link redirect automatically
+    // OFF (iPhone UAT follow-up, 2026-11-24). DealFit signs in with the emailed CODE (verifyOtp) only.
+    // With this on, the SDK's default implicit flow took a session from ANY page address carrying
+    // #access_token=… — e.g. a Supabase confirmation link, or a crafted link carrying someone else's
+    // session (login CSRF: the visitor would work inside another person's account). Emailed-link
+    // sign-in stays an owner decision (signinCode.js AUTH_LINK_ENABLED); such tokens are only removed
+    // from the address (main.js takeAuthLinkFromUrl), never used.
+    detectSessionInUrl: false,
   },
 });

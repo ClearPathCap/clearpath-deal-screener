@@ -73,5 +73,15 @@ console.log('— §H the sheet after sign-in ─');
      'H1 a completed sign-in re-titles the open sheet for the signed-in state (no "Sign in or create" heading above "Signed in as")');
 }
 
+console.log('— §L no session from the page address (login CSRF) ─');
+{ const sc = rd('docs/src/js/supabaseClient.js');
+  ok(/detectSessionInUrl: false,/.test(sc) && !/detectSessionInUrl: true/.test(sc), 'L1 the SDK never takes a session from the page address (implicit-flow #access_token links are not honoured)');
+  const crafted = 'https://x.test/?tool=flip#access_token=aaa.bbb.ccc&refresh_token=rt&expires_in=3600&token_type=bearer&type=magiclink';
+  ok(S.hasAuthLinkParams(crafted) && S.stripAuthLink(crafted) === '/?tool=flip' && S.stripAuthLink('https://x.test/#error=access_denied&error_code=otp_expired&error_description=x') === '/'
+     && S.stripAuthLink('https://x.test/#keep=1&access_token=a.b.c') === '/#keep=1' && !S.hasAuthLinkParams('https://x.test/#type=flip') && S.stripAuthLink('https://x.test/#type=flip') === '/#type=flip',
+     'L2 session tokens (and a provider error) are removed from the address without being used; unrelated fragments are kept');
+  ok(S.AUTH_LINK_ENABLED === false, 'L3 the emailed-link path stays switched off');
+}
+
 console.log(`otpfocus: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

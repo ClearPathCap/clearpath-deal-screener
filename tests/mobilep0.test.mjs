@@ -45,8 +45,10 @@ ok(pages.every(p => /<link rel="stylesheet" href="(\/|)vendor\/fonts\.css">/.tes
 const client = rd('docs/src/js/supabaseClient.js');
 ok(/import \{ createClient \} from '\.\.\/\.\.\/vendor\/supabase-js-2\.112\.3\.js';/.test(client) && !/esm\.sh\/@supabase|from ['"]https?:/.test(client.replace(/^\s*\/\/.*$/gm, '')),
    'V3 the client imports the vendored SDK 2.112.3 — no CDN import');
-ok(/qbddbblhduzwcfwslbac\.supabase\.co/.test(client) && /sb_publishable_-9yLyv7rA5tkjKv_HEPe8A_iCvRq-xf/.test(client) && /persistSession: true/.test(client) && /autoRefreshToken: true/.test(client) && /detectSessionInUrl: true/.test(client),
+ok(/qbddbblhduzwcfwslbac\.supabase\.co/.test(client) && /sb_publishable_-9yLyv7rA5tkjKv_HEPe8A_iCvRq-xf/.test(client) && /persistSession: true/.test(client) && /autoRefreshToken: true/.test(client) && /detectSessionInUrl: false/.test(client),
    'V4 Supabase URL, publishable key and auth options are unchanged');
+// Re-pinned 2026-11-24 (login-CSRF fix): detectSessionInUrl true -> false on purpose — with the SDK's implicit flow it took a
+// session from any #access_token=… address. V4 guards the vendoring change, not that option; otpfocus L1 now owns it.
 const manifest = JSON.parse(rd('docs/vendor/VENDOR_MANIFEST.json'));
 const sha = (p) => createHash('sha256').update(readFileSync(join(DOCS, 'vendor', p))).digest('hex');
 const mismatched = Object.entries(manifest.outputs).filter(([p, h]) => !existsSync(join(DOCS, 'vendor', p)) || sha(p) !== h).map(([p]) => p);

@@ -22,8 +22,10 @@
 --   • Minimal data: the account id, the email (lower-cased) and the verification time. No deal
 --     data, property data, codes, tokens or IP addresses.
 --   • The crm-relay Edge Function (service role) drains the outbox to CPC with an HMAC-signed
---     request and records delivery / retry / dead-letter. Rows are kept for audit; an operator
---     can re-queue a dead row by setting status 'pending'.
+--     request and records delivery / retry / dead-letter. Rows are kept for audit. N24 F10: an
+--     operator re-queues a dead row ONLY with  select public.requeue_account_event(<id>);  which
+--     resets attempts to 0 and makes it due now (setting status alone would leave attempts at 8,
+--     so the row would die on its first failure).
 --   • Users who registered BEFORE activation get no event (a backfill is an owner decision).
 -- Default-deny: RLS on with no policies; nothing granted to anon / authenticated.
 -- ───────────────────────────────────────────────────────────────────────────
@@ -103,3 +105,21 @@ as $$
 $$;
 revoke all on function public.claim_account_events(integer) from public, anon, authenticated;
 grant execute on function public.claim_account_events(integer) to service_role;
+
+-- Operator re-queue (N24 F10): a dead (or stuck pending) row back to a fresh retry budget. Never
+-- touches a delivered row. Returns true when a row was re-queued.
+create or replace function public.requeue_account_event(p_id bigint)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  with r as (
+    update public.account_event_outbox
+       set status = 'pending', attempts = 0, next_attempt_at = now(), last_error = null
+     where id = p_id and status <> 'delivered'
+    returning 1)
+  select exists (select 1 from r);
+$$;
+revoke all on function public.requeue_account_event(bigint) from public, anon, authenticated;
+grant execute on function public.requeue_account_event(bigint) to service_role;

@@ -136,6 +136,10 @@ ok(/if new\.email is not null\s+and new\.email_confirmed_at is not null\s+and ne
    && /after insert or update of email_confirmed_at, last_sign_in_at on auth\.users/.test(sql), 'M1 the event fires once, on the first sign-in of a confirmed address (never merely because a code was sent, even with auto-confirm)');
 ok(/exception when others then\s+raise warning/.test(sql), 'M5 a failure to record never blocks sign-up or sign-in (caught, WARNING only) — N24 F6');
 ok(/user_id\s+uuid\s+not null references auth\.users\(id\) on delete cascade/.test(sql) && /least\(p_limit, 25\)/.test(sql), 'M6 deleting the account deletes its event (F8); a claim takes at most 25 rows (F12)');
+ok(/set status = 'pending', attempts = 0, next_attempt_at = now\(\), last_error = null\s+where id = p_id and status <> 'delivered'/.test(sql)
+   && /grant execute on function public\.requeue_account_event\(bigint\) to service_role;/.test(sql) && /revoke all on function public\.requeue_account_event\(bigint\) from public, anon, authenticated;/.test(sql)
+   && /re-queues a dead row ONLY with\s+select public\.requeue_account_event/.test(sql),
+   'M7 N24 F10: the documented re-queue is a service-role function that resets attempts to 0 (never a delivered row)');
 ok(/on conflict do nothing/.test(sql) && /unique index if not exists account_event_outbox_user_type_uniq on public\.account_event_outbox \(user_id, event_type\)/.test(sql),
    'M2 one event per account, idempotently');
 ok(/enable row level security/.test(sql) && /revoke all on table public\.account_event_outbox from public, anon, authenticated/.test(sql)

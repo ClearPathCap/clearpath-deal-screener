@@ -566,6 +566,17 @@ const cm = (mainJs.match(/function closeModal\(id\)\s*\{[\s\S]*?\n\}/) || [''])[
 ok(om.indexOf("el.classList.add('active')") > -1 && om.indexOf('sheetOpened(el, id)') > om.indexOf("el.classList.add('active')"), 'F21c openModal moves focus after the sheet is shown');
 ok(cm.indexOf("el.classList.remove('active')") > -1 && /if \(wasOpen\) sheetClosed\(el, id\)/.test(cm) && cm.indexOf('sheetClosed(el, id)') > cm.indexOf("el.classList.remove('active')"), 'F21d closeModal returns focus only for a sheet that was open, after hiding it');
 ok(/\ninitSheetFocus\(\);/.test(mainJs.replace(/\r/g, '')), 'F21e the Tab handler is installed at boot');
+// F22 fail-safe (found by the full matrix: five suites' stub elements have no hasAttribute and openModal threw).
+sf._resetSheetFocus();
+const bare = { classList: { contains: () => true } };            // an element with almost no DOM surface
+const bareDoc = { activeElement: null, body: {}, getElementById: () => bare };
+let threw = false;
+try { sf.sheetOpened(bare, 'modal-bare', bareDoc); sf.onSheetTab({ key: 'Tab', preventDefault() {} }, bareDoc); sf.sheetClosed(bare, 'modal-bare', bareDoc); sf.initSheetFocus({}); } catch { threw = true; }
+ok(!threw, 'F22 focus handling never throws into openModal / closeModal / keydown, even on a partial DOM');
+sf._resetSheetFocus();
+opener.focus(); open(A, 'modal-a'); close(A, 'modal-a');
+ok(at() === 'opener', 'F22b ... and the open list is not stranded by an earlier failure');
+sf._resetSheetFocus();
 }
 
 console.log(`\ndesignsystem: ${pass} passed, ${fail} failed`);

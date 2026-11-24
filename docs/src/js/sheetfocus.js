@@ -13,7 +13,10 @@
 // EXCLUDED: #modal-upgrade (sign-in / plans). Its focus is owned by the sign-in
 // session (code-field focus, otpfocus suite); while it is open nothing here acts.
 // Pure DOM, no imports; main.js calls sheetOpened / sheetClosed from openModal /
-// closeModal and initSheetFocus once at boot.
+// closeModal and initSheetFocus once at boot. FAIL-SAFE: focus is a courtesy —
+// no exception from here may ever escape into openModal / closeModal or a
+// keydown, so every export swallows its own errors (bookkeeping happens first,
+// so a later DOM failure cannot strand a sheet in the open list).
 
 export const FOCUS_EXCLUDED = new Set(['modal-upgrade']);
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
@@ -33,7 +36,11 @@ export function focusables(el) {
 
 const excludedOpen = (doc) => Array.from(FOCUS_EXCLUDED).some(id => doc.getElementById(id)?.classList.contains('active'));
 
-export function sheetOpened(el, id, doc = document) {
+export function sheetOpened(el, id, doc = document) { try { openImpl(el, id, doc); } catch {} }
+export function sheetClosed(el, id, doc = document) { try { closeImpl(el, id, doc); } catch {} }
+export function onSheetTab(e, doc = document) { try { return tabImpl(e, doc); } catch { return false; } }
+
+function openImpl(el, id, doc) {
   if (!el || FOCUS_EXCLUDED.has(id)) return;
   if (!_order.includes(id)) {
     const prev = doc.activeElement;
@@ -45,7 +52,7 @@ export function sheetOpened(el, id, doc = document) {
   if (!el.contains(doc.activeElement)) { try { surface.focus({ preventScroll: true }); } catch {} }
 }
 
-export function sheetClosed(el, id, doc = document) {
+function closeImpl(el, id, doc) {
   if (!el || FOCUS_EXCLUDED.has(id)) return;
   const i = _order.indexOf(id);
   if (i < 0) return;
@@ -62,7 +69,7 @@ export function sheetClosed(el, id, doc = document) {
   } catch {}
 }
 
-export function onSheetTab(e, doc = document) {
+function tabImpl(e, doc) {
   if (e.key !== 'Tab' || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return false;
   if (excludedOpen(doc)) return false;
   const id = _order[_order.length - 1];
@@ -84,7 +91,7 @@ export function onSheetTab(e, doc = document) {
 }
 
 export function initSheetFocus(doc = document) {
-  doc.addEventListener('keydown', (e) => onSheetTab(e, doc), true);
+  try { doc.addEventListener('keydown', (e) => onSheetTab(e, doc), true); } catch {}
 }
 
 // Test hook: forget every open sheet (the module keeps state across a suite).

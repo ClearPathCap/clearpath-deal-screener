@@ -285,6 +285,7 @@ closeModal('modal-p');
 await settle();
 history.go = go0;
 openModal('modal-r'); await settle();
+ok(top().sheet === 'modal-r', 'D21h1 after a dropped traversal, the next sheet reaches history at once (no stale expectation keeps it queued)');
 await pressBack();
 ok(app.open.length === 0 && !top().sheet, 'D21h2 a traversal whose popstate never came is retired by the next landing; the user’s Back then closes the sheet');
 // Reload support: pagehide keeps the current entry's scroll position.

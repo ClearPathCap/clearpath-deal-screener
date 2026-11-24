@@ -170,10 +170,17 @@ export function codeSentMessage(email, canPaste) {
 // "Paste code" reads whatever happens to be on the clipboard (review R4: maybe a phone or account number
 // copied earlier). It may verify on its own only when the copied text is just a code ("482913",
 // "482 913") or names one ("Your code is 482913"); anything else fills the box and waits for Verify.
+// Re-verification R4: with a keyword, the number right after it must be the one extractOtp picks
+// ("Zip code 28202, call 7045551234" is not a code). Copied text that is ONLY digits ("7045551234")
+// cannot be told apart from a code and still verifies by itself; a wrong number is simply refused.
 export function clipboardLooksLikeCode(text) {
   const t = String(text == null ? '' : text).trim();
   if (/^\d{3,5}[ \u00a0-]?\d{3,5}$/.test(t) && /^\d{6,10}$/.test(t.replace(/\D/g, ''))) return true;
-  return /\b(code|passcode|verification|otp)\b[^\d\n]{0,24}\d{3,}/i.test(t);
+  const m = t.match(/\b(?:code|passcode|verification|otp)\b[^\d\n]{0,24}(\d[\d \u00a0-]{2,12}\d)/i);
+  if (!m) return false;
+  const named = m[1].replace(/\D/g, '');
+  const picked = extractOtp(t);
+  return /^\d{6,10}$/.test(named) && picked.confident && picked.code === named;
 }
 export const PASTE_CHECK_MSG = 'Check this is the code from your email, then tap Verify.';
 export const PASTE_NO_CODE_MSG = 'No code found in what you copied. Copy just the code from the email, or type it.';

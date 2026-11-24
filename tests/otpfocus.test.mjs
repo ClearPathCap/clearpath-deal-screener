@@ -54,8 +54,9 @@ console.log('— §V a focused code step ─');
      'V6 an auth refresh mid-send never hides the step; signing in ends the focused view');
   ok(/function changeSignInEmail\(\) \{\s*_sendGen\+\+;[^\n]*\n\s*clearPending\(_signinStore\);\s*closeCodeStep\(\);/.test(mj), 'V7 "Use a different email" leaves the focused view');
   ok(S.clipboardLooksLikeCode('482913') && S.clipboardLooksLikeCode(' 482 913 ') && S.clipboardLooksLikeCode('Your DealFit code is 482913.') && S.clipboardLooksLikeCode('Verification: 4829-1377')
-     && !S.clipboardLooksLikeCode('Account 48291377') && !S.clipboardLooksLikeCode('Call 704 555 0101') && !S.clipboardLooksLikeCode('2026-11-24') && !S.clipboardLooksLikeCode(''),
-     'P5 review R4: the button auto-verifies only text that is a code, or names one');
+     && !S.clipboardLooksLikeCode('Account 48291377') && !S.clipboardLooksLikeCode('Call 704 555 0101') && !S.clipboardLooksLikeCode('2026-11-24') && !S.clipboardLooksLikeCode('')
+     && !S.clipboardLooksLikeCode('Zip code 28202, call 7045551234') && S.clipboardLooksLikeCode('Your code is 482 913. Sent 2026-11-24.'),
+     'P5 review R4: the button auto-verifies only text that is a code, or names one (and the named number is the one picked)');
   ok(!/suggested above your keyboard/.test(mj), 'V8 the old message that promised a keyboard suggestion is gone');
 }
 
@@ -90,7 +91,7 @@ console.log('— §L no session from the page address (login CSRF) ─');
 
 console.log('— §B behaviour: the real sign-in functions from main.js against a fake page (review R7) ─');
 { const names = ['showRedeemMsg', 'canPasteCode', 'setSigninFocus', 'refreshSheetAfterSignIn', 'codeStepOpen', 'closeCodeStep', 'showCodeStep', 'renderResendState',
-                 'sendSignInCode', 'resendSignInCode', 'changeSignInEmail', 'verifySignInCode', 'applyPastedCode', 'pasteSignInCode', 'openUpgrade'];
+                 'sendSignInCode', 'resendSignInCode', 'changeSignInEmail', 'verifySignInCode', 'applyPastedCode', 'pasteSignInCode', 'openUpgrade', 'resetStaleCodeStep'];
   const src = names.map(n => { const b = fnBody(n); if (!b) throw new Error('missing ' + n); return b; }).join('\n');
   function harness() {
     const els = {}, log = [];
@@ -108,7 +109,7 @@ console.log('— §B behaviour: the real sign-in functions from main.js against 
       isSignedIn: () => st.signedIn,
       sendOtpCode: (email) => { const d = deferred(); st.sends.push({ email, focusAtSend: doc.activeElement && doc.activeElement.id, d }); log.push('send:' + email); return d.p; },
       verifyOtpCode: async (email, code) => { st.verifies.push(code); return code === '000000' ? { ok: false, msg: 'That code didn’t work' } : { ok: true, msg: 'Signed in' }; },
-      configureUpgradeModal: (t) => st.configured.push(t), openModal: () => {},
+      configureUpgradeModal: (t) => { st.configured.push(t); st.api.resetStaleCodeStep(); }, openModal: () => {},
       _signinStore: store, setInterval: () => 0, clearInterval: () => {},
       extractOtp: S.extractOtp, normalizeOtp: S.normalizeOtp, looksComplete: S.looksComplete, looksLikeEmail: S.looksLikeEmail, clipboardReadable: S.clipboardReadable,
       codeSentMessage: S.codeSentMessage, readPending: S.readPending, writePending: S.writePending, clearPending: S.clearPending, resendWaitSeconds: S.resendWaitSeconds,
@@ -117,7 +118,7 @@ console.log('— §B behaviour: the real sign-in functions from main.js against 
     const keys = Object.keys(env);
     const body = "let _verifyInFlight = false, _sendInFlight = false, _lastTriedCode = '', _codePrevLen = 0, _resendTick = 0, _codeSentAt = 0, _sendGen = 0, _lastUpgradeTrigger = 'general';\n"
       + src + '\nreturn { ' + names.join(', ') + ' };';
-    const api = new Function(...keys, body)(...keys.map((k) => env[k]));
+    const api = new Function(...keys, body)(...keys.map((k) => env[k])); st.api = api;
     const el = (id) => doc.getElementById(id);
     const focused = () => el('upgrade-modal-body').classList.contains('signin-focus');
     return { api, st, el, doc, log, store, focused, flush: () => new Promise((r) => setTimeout(r, 0)) };
@@ -168,6 +169,17 @@ console.log('— §B behaviour: the real sign-in functions from main.js against 
     h.store.setItem(S.PENDING_KEY, JSON.stringify({ email: 'a@local.test', sentAt: Date.now() }));
     h.api.showCodeStep('a@local.test', Date.now()); h.api.openUpgrade('save');
     ok(h.focused() && h.el('signin-code-step').style.display === '', 'B8 while a code IS pending, reopening the sheet keeps the code step');
+    h.store.removeItem(S.PENDING_KEY); h.el('signin-msg').textContent = 'Code sent to a@local.test. …';
+    h.st.configured.length = 0;
+    // the locked market slot and the tier badge call configureUpgradeModal + openModal directly
+    h.api.resetStaleCodeStep();
+    ok(!h.focused() && h.el('signin-code-step').style.display === 'none' && h.el('signin-email-step').style.display === '' && h.el('signin-msg').textContent === '',
+       'B12 review R1 (re-verification): the shared reset also clears a stale code step for entry points that bypass openUpgrade, and its old message');
+  }
+  { const cfg = fnBody('configureUpgradeModal');
+    ok(/_lastUpgradeTrigger = trigger \|\| 'general';\n  resetStaleCodeStep\(\);/.test(cfg)
+       && /configureUpgradeModal\('region'\);/.test(fnBody('handleLockedSlot') || mj) && (mj.match(/configureUpgradeModal\(/g) || []).length >= 5,
+       'B13 every entry point (openUpgrade, locked slot, tier badge, sign-in refresh) runs through configureUpgradeModal, which starts with the reset');
   }
   { const h = harness(); h.api.showCodeStep('a@local.test', Date.now());
     h.st.clip = 'Account 48291377'; await h.api.pasteSignInCode(); await h.flush();
@@ -178,6 +190,8 @@ console.log('— §B behaviour: the real sign-in functions from main.js against 
     h.st.clip = 'Your code is 000000'; await h.api.pasteSignInCode(); await h.flush();
     h.st.clip = '000 000'; await h.api.pasteSignInCode(); await h.flush();
     ok(h.st.verifies.length === 2 && h.st.verifies[1] === '000000', 'B11 a code that failed is never re-sent automatically by another paste');
+    h.el('signin-code').value = ''; h.st.clip = 'Zip code 28202, call 7045551234'; await h.api.pasteSignInCode(); await h.flush();
+    ok(h.st.verifies.length === 2 && h.el('signin-msg').textContent === S.PASTE_CHECK_MSG, 'B14 review R4 residual: a keyword next to a different number never auto-verifies the other number');
   }
 }
 

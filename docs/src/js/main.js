@@ -1632,8 +1632,18 @@ function applyAccountPriority(accountFirst) {
 
 // trigger: 'region' | 'save' | 'cap' | 'general'
 let _lastUpgradeTrigger = 'general';
+// Review R1 (re-verification): the code-only view belongs to a PENDING code. Every way of opening the
+// sheet configures it here (openUpgrade, the locked market slot, the tier badge), so with no code
+// pending (expired after 15 minutes, or never sent) it always starts from the email step.
+function resetStaleCodeStep() {
+  if (isSignedIn() || readPending(_signinStore) || _sendInFlight) return;
+  if (codeStepOpen()) showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: '' });
+  closeCodeStep();
+  const codeInput = document.getElementById('signin-code'); if (codeInput) codeInput.value = '';
+}
 function configureUpgradeModal(trigger) {
   _lastUpgradeTrigger = trigger || 'general';
+  resetStaleCodeStep();
   const tier      = getActiveTier();
   const title     = document.getElementById('upgrade-modal-title');
   const subhead   = document.getElementById('upgrade-subhead');
@@ -2193,13 +2203,7 @@ function applyTierToUI() {
 
 // Open the upgrade modal with a given trigger (used by generated intel blocks)
 function openUpgrade(trigger) {
-  // Review R1: the code-only view belongs to a PENDING code. Once it has expired (15 min) or was never
-  // sent, any trigger opens the normal sheet (title, plans, email step).
-  if (!isSignedIn() && !readPending(_signinStore) && !_sendInFlight) {
-    closeCodeStep();
-    const codeInput = document.getElementById('signin-code'); if (codeInput) codeInput.value = '';
-  }
-  configureUpgradeModal(trigger || 'general');
+  configureUpgradeModal(trigger || 'general');   // resets a stale code step (review R1)
   openModal('modal-upgrade');
 }
 

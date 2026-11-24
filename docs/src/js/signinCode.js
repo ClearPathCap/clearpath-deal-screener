@@ -164,36 +164,14 @@ export function looksLikeEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s == null ? '' : s).trim());
 }
 
-// Can this browser read the clipboard on a tap ("Paste code")? Needs a secure context and
-// navigator.clipboard.readText. iOS Safari shows its own "Paste" bubble first; the text is
-// read only after the person taps it, and only after they tapped "Paste code".
-export function clipboardReadable(nav, secure) {
-  return !!(secure !== false && nav && nav.clipboard && typeof nav.clipboard.readText === 'function');
-}
-
 // What to say once the code is on its way. Names the address (so a typo is visible) and the one
 // next step; it never promises an iPhone keyboard suggestion, which DealFit does not control.
-export function codeSentMessage(email, canPaste) {
+// Real-device UAT 2026-11-24 (b47a9aa, iPhone + Gmail): the custom "Paste code" button failed with a
+// clipboard-read error (Safari reads the clipboard only through its own Paste callout, inside the
+// tap, and rejects otherwise). It is gone; the reliable path is the text field's own
+// press-and-hold Paste, which the field's paste handler turns into one verification.
+export function codeSentMessage(email) {
   const to = String(email || '').trim();
-  return canPaste
-    ? 'Code sent to ' + to + '. Copy the code from the email, come back, and tap Paste code — or type it.'
-    : 'Code sent to ' + to + '. Copy the code from the email, come back, then press and hold the box and tap Paste — or type it.';
+  return 'Code sent to ' + to + '. Copy the code from the email, come back, then press and hold the box and tap Paste — or type it.';
 }
-// "Paste code" reads whatever happens to be on the clipboard (review R4: maybe a phone or account number
-// copied earlier). It may verify on its own only when the copied text is just a code ("482913",
-// "482 913") or names one ("Your code is 482913"); anything else fills the box and waits for Verify.
-// Re-verification R4: with a keyword, the number right after it must be the one extractOtp picks
-// ("Zip code 28202, call 7045551234" is not a code). Copied text that is ONLY digits ("7045551234")
-// cannot be told apart from a code and still verifies by itself; a wrong number is simply refused.
-export function clipboardLooksLikeCode(text) {
-  const t = String(text == null ? '' : text).trim();
-  if (/^\d{3,5}[ \u00a0-]?\d{3,5}$/.test(t) && /^\d{6,10}$/.test(t.replace(/\D/g, ''))) return true;
-  const m = t.match(/\b(?:code|passcode|verification|otp)\b[^\d\n]{0,24}(\d[\d \u00a0-]{2,12}\d)/i);
-  if (!m) return false;
-  const named = m[1].replace(/\D/g, '');
-  const picked = extractOtp(t);
-  return /^\d{6,10}$/.test(named) && picked.confident && picked.code === named;
-}
-export const PASTE_CHECK_MSG = 'Check this is the code from your email, then tap Verify.';
 export const PASTE_NO_CODE_MSG = 'No code found in what you copied. Copy just the code from the email, or type it.';
-export const PASTE_UNREADABLE_MSG = 'Couldn’t read what you copied. Press and hold the code box, then tap Paste.';

@@ -46,8 +46,7 @@ import {
 import { initConnectivity, retryNow } from './connectivity.js';
 import { normalizeOtp, extractOtp, looksComplete, shouldAutoVerify, readAuthLink, stripAuthLink, hasAuthLinkParams,
          AUTH_LINK_ENABLED, readPending, writePending, clearPending, resendWaitSeconds,
-         looksLikeEmail, clipboardReadable, codeSentMessage, PASTE_NO_CODE_MSG, PASTE_UNREADABLE_MSG,
-         clipboardLooksLikeCode, PASTE_CHECK_MSG, sessionLinkKind, LINK_NOT_USED_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
+         looksLikeEmail, codeSentMessage, PASTE_NO_CODE_MSG, sessionLinkKind, LINK_NOT_USED_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline } from './storage.js';
@@ -1864,16 +1863,12 @@ let _sendGen = 0;   // review R3: bumped by "Use a different email"; a send from
 // iPhone UAT follow-up (owner, real iPhone + Gmail): the code step owns the sheet while a code is
 // pending — the email box, the plan cards and the "Have a code?" box are hidden, so the only
 // field on screen is the code box (and iOS has no email field to offer contacts for).
-function canPasteCode() {
-  return clipboardReadable(typeof navigator !== 'undefined' ? navigator : null, typeof window !== 'undefined' ? window.isSecureContext : false);
-}
 function setSigninFocus(on) {
   on = !!on && !isSignedIn();   // review R2: a signed-in sheet never shows the code-only view
   const shell = document.getElementById('upgrade-modal-body');
   if (shell?.classList?.toggle) shell.classList.toggle('signin-focus', !!on);
   const title = document.getElementById('signin-code-title'); if (title) title.hidden = !on;
   const emailStep = document.getElementById('signin-email-step'); if (emailStep) emailStep.style.display = on ? 'none' : '';
-  const paste = document.getElementById('signin-paste-btn'); if (paste) paste.hidden = !(on && canPasteCode());
 }
 // After a sign-in completes with the sheet open, its heading still said "Sign in or create a free
 // account" above "Signed in as …" (the sheet was configured only when it opened). Re-configure it for
@@ -1951,7 +1946,7 @@ async function sendSignInCode() {
     writePending(_signinStore, email, now);
     _lastTriedCode = '';
     showCodeStep(email, now);
-    showRedeemMsg(msgEl, { ok: true, msg: codeSentMessage(email, canPasteCode()) });
+    showRedeemMsg(msgEl, { ok: true, msg: codeSentMessage(email) });
   } else if (wasOnCodeStep && readPending(_signinStore)) {
     // a failed RESEND keeps the step: the earlier code may still be valid
     _codeSentAt = prevSentAt; renderResendState();
@@ -2001,18 +1996,17 @@ async function verifySignInCode(opts = {}) {
   return { status: result.ok ? 'signed-in' : 'failed' };
 }
 
-// One rule for every paste — the field's own paste and the "Paste code" button. The copied text is
-// used only to find the code: it is never stored or logged, and only the extracted digits are ever
-// sent (to verify), and from the button only when the copied text looks like a code (review R4).
-function applyPastedCode(text, replaceAll) {
+// The field's own paste (press and hold → Paste): the copied text is used only to find the code. It
+// is never stored or logged; only the extracted digits are ever sent, to verify.
+function applyPastedCode(text) {
   const input = document.getElementById('signin-code');
   if (!input) return;
   const { code, confident, found } = extractOtp(text);
   if (!code || (!found && /[A-Za-z]/.test(text))) { showRedeemMsg(document.getElementById('signin-msg'), { ok: false, msg: PASTE_NO_CODE_MSG }); return; }
-  // N24 review F2: a complete code replaces the field; a PARTIAL paste into the field goes in at
-  // the caret (digits already typed are kept), then the whole field is cleaned.
+  // N24 review F2: a complete code replaces the field; a PARTIAL paste goes in at the caret
+  // (digits already typed are kept), then the whole field is cleaned.
   let next;
-  if (looksComplete(code) || replaceAll) next = code;
+  if (looksComplete(code)) next = code;
   else {
     const v = input.value || '';
     const s = input.selectionStart ?? v.length, en = input.selectionEnd ?? v.length;
@@ -2021,25 +2015,9 @@ function applyPastedCode(text, replaceAll) {
   input.value = next; _codePrevLen = next.length;
   try { input.setSelectionRange(next.length, next.length); } catch {}
   if (!looksComplete(next)) return;
-  // Review R4: the "Paste code" button reads whatever is on the clipboard — it verifies by itself only
-  // when the copied text is itself a code or names one; otherwise the person checks it and taps Verify.
-  if (replaceAll && !clipboardLooksLikeCode(text)) { showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: PASTE_CHECK_MSG }); return; }
   // N24 review F3: verify by itself only when the paste was unambiguous.
   if (confident || !looksComplete(code)) verifySignInCode({ auto: true });
   else showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: 'The pasted text had more than one number. Check this is the code from your email, then tap Verify.' });
-}
-
-// "Paste code" (iPhone UAT follow-up): one tap after copying the code in the mail app. iOS shows
-// its own "Paste" bubble before anything is read; a refusal or an unsupported browser falls back
-// to press-and-hold Paste in the box.
-async function pasteSignInCode() {
-  const msgEl = document.getElementById('signin-msg');
-  if (_verifyInFlight) return;
-  if (!canPasteCode()) { showRedeemMsg(msgEl, { ok: false, msg: PASTE_UNREADABLE_MSG }); document.getElementById('signin-code')?.focus(); return; }
-  let text;
-  try { text = await navigator.clipboard.readText(); }
-  catch { showRedeemMsg(msgEl, { ok: false, msg: PASTE_UNREADABLE_MSG }); return; }
-  applyPastedCode(text == null ? '' : String(text), true);
 }
 
 // A complete code that arrives in one step (paste, the keyboard / OS suggestion, a drop)
@@ -2052,7 +2030,7 @@ function wireSigninCodeField() {
     const text = e.clipboardData && e.clipboardData.getData('text');
     if (text == null) return;
     e.preventDefault();   // the field only ever receives digits
-    applyPastedCode(text, false);
+    applyPastedCode(text);
   });
   input.addEventListener('input', (e) => {
     const before = _codePrevLen;
@@ -2072,7 +2050,7 @@ function resumePendingSignIn() {
   openUpgrade('general');   // first: opening the sheet refreshes the account block
   const em = document.getElementById('signin-email'); if (em) em.value = p.email;
   showCodeStep(p.email, p.sentAt);
-  showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: 'Enter the code we emailed to ' + p.email + '.' });
+  showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: 'Enter the code we emailed to ' + p.email + ' — press and hold the box to paste it.' });
   document.getElementById('signin-code')?.focus();
   return true;
 }
@@ -2462,7 +2440,6 @@ Object.assign(window, {
   redeemTierCode,
   sendSignInCode,
   verifySignInCode,
-  pasteSignInCode,
   resendSignInCode,
   changeSignInEmail,
   finishLinkSignIn,

@@ -141,10 +141,10 @@ ok(S.AUTH_LINK_ENABLED === false && S.readAuthLink('https://x.test/#auth_th=abcd
    && S.hasAuthLinkParams('https://x.test/#auth_th=abcdefgh123'), 'Z4 F1/F13: the link path is SWITCHED OFF; the fragment form is read and stripped (query form too)');
 ok(/if \(!AUTH_LINK_ENABLED\) return;/.test(mj) && mj.indexOf("history.replaceState(history.state, '', stripAuthLink(href));") < mj.indexOf('if (!AUTH_LINK_ENABLED) return;'),
    'Z5 F1: a link token is always removed from the address, and never offered or spent while switched off');
-ok(/next = normalizeOtp\(v\.slice\(0, s\) \+ code \+ v\.slice\(en\)\);/.test(mj) && /if \(looksComplete\(code\) \|\| replaceAll\) next = code;/.test(mj) && /if \(confident \|\| !looksComplete\(code\)\) verifySignInCode\(\{ auto: true \}\);/.test(mj),
-   'Z6 F2/F3: a partial paste INTO THE FIELD goes in at the caret (digits already typed are kept); there only a complete code replaces the field (the Paste code button always replaces it); an ambiguous paste never auto-verifies');
-// Re-pinned (iPhone UAT follow-up): the rule now lives in applyPastedCode, shared by the field's own paste and the
-// "Paste code" button; replaceAll is true only for the button, whose copied text stands for the whole code.
+ok(/next = normalizeOtp\(v\.slice\(0, s\) \+ code \+ v\.slice\(en\)\);/.test(mj) && /if \(looksComplete\(code\)\) next = code;/.test(mj) && /if \(confident \|\| !looksComplete\(code\)\) verifySignInCode\(\{ auto: true \}\);/.test(mj),
+   'Z6 F2/F3: a partial paste goes in at the caret (digits already typed are kept); only a complete code replaces the field; an ambiguous paste never auto-verifies');
+// Re-pinned 2026-11-24 (real-device UAT): the "Paste code" button is removed; applyPastedCode serves only the field's
+// own paste again, so the original single rule is pinned.
 ok(/const wait = pend && pend\.email\.toLowerCase\(\) === email\.toLowerCase\(\) \? resendWaitSeconds\(pend\.sentAt\) : 0;\s*if \(wait > 0\)/.test(mj), 'Z7 F4: "Send code" honours the resend cooldown for the address a code was just sent to');
 // F5: a fast plan answer that lands after a sign-out is never applied to the signed-out page.
 auth.setEntitlementTimeout(5000);

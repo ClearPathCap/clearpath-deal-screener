@@ -1277,7 +1277,6 @@
           <input type="text" id="signin-code" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" autocapitalize="off" autocorrect="off" enterkeyhint="go" maxlength="64" placeholder="Enter your code" spellcheck="false" aria-describedby="signin-msg" onkeydown="if(event.key==='Enter')verifySignInCode()">
           <button class="btn-redeem btn-redeem-fixed" id="signin-verify-btn" onclick="verifySignInCode()">Verify</button>
         </div>
-        <button type="button" class="btn-redeem signin-paste" id="signin-paste-btn" hidden onclick="pasteSignInCode()">Paste code</button>
         <div id="signin-code-help" class="signin-help" style="display:none">Sent to <strong id="signin-sent-to"></strong> · <button type="button" class="signin-link" id="signin-resend" onclick="resendSignInCode()">Send a new code</button> · <button type="button" class="signin-link" onclick="changeSignInEmail()">Use a different email</button></div>
         <div id="signin-link-step" class="signin-help" style="display:none"><button type="button" class="btn-redeem" id="signin-link-btn" onclick="finishLinkSignIn()">Finish signing in</button> <span>to DealFit with the link from your email.</span></div>
         <div id="signin-msg" class="redeem-msg" role="status" aria-live="polite"></div>

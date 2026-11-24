@@ -368,8 +368,7 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 .signin-focus #upgrade-modal-title,.signin-focus #upgrade-subhead,.signin-focus #upgrade-plans-lead,.signin-focus #upgrade-compare,.signin-focus #upgrade-toptier-note,.signin-focus #manage-sub-btn,.signin-focus #redeem-block,.signin-focus #signin-label,.signin-focus #signin-email-step{display:none!important}
 .signin-focus #account-block{margin-top:0;padding-top:0;border-top:0}
 .signin-code-title{font-family:var(--font);font-size:18px;font-weight:800;color:var(--text);margin:0 0 10px}
-.signin-code-title[hidden],.signin-paste[hidden]{display:none}
-.signin-paste{display:block;width:100%;margin-top:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text)}
+.signin-code-title[hidden]{display:none}
 .signin-focus #signin-code{height:48px;font-size:20px;text-align:center}
 .signin-link{background:none;border:0;padding:12px 2px;margin:-12px 0;min-height:44px;color:var(--accent);text-decoration:underline;font:inherit;cursor:pointer}
 .signin-link[aria-disabled="true"]{color:var(--muted);text-decoration:none;cursor:default}

@@ -27,8 +27,10 @@ ok(!/unlimited saves/i.test(app), 'P4 the structured-data offer no longer claims
 ok(/paid plans add more markets, market data, and shareable deal summaries/.test(app), 'P5 the structured-data offer names real paid features');
 ok(!/unlimited/i.test(features), 'P6 no plan line says "unlimited" (nothing on any plan is metered differently by tier except markets)');
 ok(/<li>Market intel for every market you track<\/li>/.test(features), 'P9 market intel is described per market (it lives in the Field Guide, not on saved deals)');
-ok(/<li>Switch markets any time, with no waiting period<\/li>/.test(features) && /if \(tier === 'pro'\) return 0;/.test(src('docs/src/js/tiers.js')),
-   'P10 the Pro "no waiting period" line matches tiers.js (Pro slot cooldown is 0 days)');
+ok(/<li>Change a market region any time — no waiting period<\/li>/.test(features)
+   && /if \(tier === 'pro'\) return 0;/.test(src('docs/src/js/tiers.js'))
+   && /v_cooldown := case v_tier when 'pro' then 0 when 'investor' then 14 else 30 end;/.test(src('supabase/migrations/0003_phase1b_market_intel_and_user_markets.sql')),
+   'P10 the Pro "no waiting period" line matches the client AND the server cooldown (pro 0 days)');
 ok(/<li>Share any saved deal as a read-only link<\/li>/.test(features)
    && /getActiveTier\(\) === 'investor' \|\| getActiveTier\(\) === 'pro'/.test(pipe), 'P11 the Investor sharing line matches the Investor+ share gate');
 for (const f of ['docs/index.html', 'docs/shared.html', 'docs/privacy.html', 'docs/terms.html']) {

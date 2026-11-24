@@ -142,10 +142,14 @@ stays reachable. On wider screens the same modal is a centered dialog that fades
 Exception this wave: the sign-in / plans sheet (`#modal-upgrade`) keeps its centered presentation — sign-in is being
 redesigned separately and will adopt the sheet.
 
-**Focus** (`sheetfocus.js`): opening a sheet moves focus to its surface (never to an input, which would raise the
-keyboard); Tab and Shift+Tab cycle inside the top open sheet; closing returns focus to the control that opened it when
-that is still on screen, otherwise to the sheet now on top. The sheet surface takes no focus ring. `#modal-upgrade` is
-excluded — its focus belongs to the sign-in flow — and nothing here acts while it is open.
+**Focus** (`sheetfocus.js`): opening a sheet marks its surface `role="dialog"` `aria-modal="true"`, labelled by its
+heading (markup that already does so is respected), and moves focus to it — never to an input, which would raise the
+keyboard. Tab and Shift+Tab cycle inside the top open sheet, skipping disabled controls and `tabindex="-1"`. Closing
+returns focus to the control that opened it when that is still on screen and is not a text field (re-focusing a text
+field would raise the keyboard); otherwise to the sheet now on top. The sheet surface takes no focus ring. Every call
+is fail-safe: focus can never break opening or closing a sheet. `#modal-upgrade` is excluded — its focus belongs to the
+sign-in flow — and Tab is not trapped while it is open. Not yet done (banked): making the page behind `inert`, for
+screen readers that ignore `aria-modal`.
 
 ## States
 

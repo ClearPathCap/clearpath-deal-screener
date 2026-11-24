@@ -451,20 +451,31 @@ ok(/\.legal-footer a\{[^}]*min-height:var\(--tap\)/.test(cssNC) && /\.legal-foot
 const sf = await import('../docs/src/js/sheetfocus.js');
 const fdoc = { activeElement: null, listeners: [], byId: {}, getElementById(id) { return this.byId[id] || null; }, addEventListener(t, f) { this.listeners.push([t, f]); } };
 class FEl {
-  constructor(name, { focusable = false, cls = [], role = null, id = null } = {}) {
-    this.name = name; this.focusable = focusable; this.kids = []; this.parent = null; this.attrs = {}; this.visible = true; this.role = role;
+  constructor(name, { focusable = false, cls = [], role = null, id = null, tag = 'DIV', type = null, disabled = false, attrs = {} } = {}) {
+    this.name = name; this.focusable = focusable; this.kids = []; this.parent = null; this.attrs = { ...attrs }; this.visible = true;
+    this.tagName = tag; this.disabled = disabled; this.id = id || '';
+    if (role) this.attrs.role = role;
+    if (type) this.attrs.type = type;
     this.classList = { s: new Set(cls), contains(c) { return this.s.has(c); }, add(c) { this.s.add(c); }, remove(c) { this.s.delete(c); } };
     if (id) fdoc.byId[id] = this;
   }
   add(...k) { k.forEach(c => { c.parent = this; this.kids.push(c); }); return this; }
   all() { return this.kids.flatMap(k => [k, ...k.all()]); }
   contains(x) { for (let n = x; n; n = n.parent) if (n === this) return true; return false; }
+  matches(sel) { if (sel === '[role="dialog"]') return this.attrs.role === 'dialog'; throw new Error('unexpected matches ' + sel); }
+  getAttribute(a) { return a in this.attrs ? this.attrs[a] : null; }
   querySelector(sel) {
-    if (sel === '[role="dialog"]') return this.all().find(k => k.role === 'dialog') || null;
+    if (sel === '[role="dialog"]') return this.all().find(k => k.attrs.role === 'dialog') || null;
+    if (sel === 'h1, h2, h3, .picker-title') return this.all().find(k => /^H[123]$/.test(k.tagName) || k.classList.contains('picker-title')) || null;
     if (sel === '.modal, .modal-picker') return this.all().find(k => k.classList.contains('modal') || k.classList.contains('modal-picker')) || null;
     throw new Error('unexpected selector ' + sel);
   }
-  querySelectorAll() { return this.all().filter(k => k.focusable || ('tabindex' in k.attrs && k.attrs.tabindex !== '-1')); }
+  // Mirrors the real FOCUSABLE selector's rules (asserted below): native controls unless disabled — a tabindex=-1
+  // control still MATCHES the selector, as in a browser — plus any element whose tabindex is not -1.
+  querySelectorAll(sel) {
+    if (sel !== sf.FOCUSABLE || !/button:not\(\[disabled\]\)/.test(sel) || !/\[tabindex\]:not\(\[tabindex="-1"\]\)/.test(sel)) throw new Error('unexpected selector ' + sel);
+    return this.all().filter(k => (k.focusable && !k.disabled) || ('tabindex' in k.attrs && k.attrs.tabindex !== '-1'));
+  }
   getClientRects() { let n = this; while (n) { if (!n.visible) return []; n = n.parent; } return [1]; }
   hasAttribute(a) { return a in this.attrs; }
   setAttribute(a, v) { this.attrs[a] = String(v); }
@@ -476,12 +487,13 @@ fdoc.body = new FEl('body');
 fdoc.activeElement = fdoc.body;
 const page = new FEl('page'); const opener = new FEl('opener', { focusable: true }); const other = new FEl('other', { focusable: true });
 page.add(opener, other); fdoc.body.add(page);
-const mkSheet = (id, n, { role = null } = {}) => {
-  const back = new FEl(id + '-backdrop', { cls: ['modal-backdrop'], id });
-  const surf = new FEl(id + '-surface', { cls: ['modal'], role });
-  const items = Array.from({ length: n }, (_, i) => new FEl(id + '-item' + i, { focusable: true }));
-  surf.add(...items); back.add(surf); fdoc.body.add(back);
-  return { back, surf, items };
+const mkSheet = (id, n, { role = null, backRole = null, headId = null, surfAttrs = {}, extra = [] } = {}) => {
+  const back = new FEl(id + '-backdrop', { cls: ['modal-backdrop'], id, role: backRole });
+  const surf = new FEl(id + '-surface', { cls: ['modal'], role, attrs: surfAttrs });
+  const head = new FEl(id + '-h3', { tag: 'H3', id: headId });
+  const items = Array.from({ length: n }, (_, i) => new FEl(id + '-item' + i, { focusable: true, tag: 'BUTTON' }));
+  surf.add(head, ...items, ...extra); back.add(surf); fdoc.body.add(back);
+  return { back, surf, head, items };
 };
 const A = mkSheet('modal-a', 3), B = mkSheet('modal-b', 2), U = mkSheet('modal-upgrade', 2), Z = mkSheet('modal-z', 0), D = mkSheet('modal-d', 1, { role: 'dialog' });
 const open = (S, id) => { S.back.classList.add('active'); sf.sheetOpened(S.back, id, fdoc); };
@@ -577,6 +589,47 @@ sf._resetSheetFocus();
 opener.focus(); open(A, 'modal-a'); close(A, 'modal-a');
 ok(at() === 'opener', 'F22b ... and the open list is not stranded by an earlier failure');
 sf._resetSheetFocus();
+
+// F23 screen-reader semantics (review round 1, finding 1): the surface is announced as a modal dialog named by its heading.
+opener.focus(); open(A, 'modal-a');
+ok(A.surf.attrs.role === 'dialog' && A.surf.attrs['aria-modal'] === 'true', 'F23 an opened sheet\'s surface is role="dialog" aria-modal="true"');
+ok(A.head.id === 'modal-a-title' && A.surf.attrs['aria-labelledby'] === 'modal-a-title', 'F23b ... labelled by its heading (an id is given to a heading that has none)');
+close(A, 'modal-a'); sf._resetSheetFocus();
+const H = mkSheet('modal-h', 1, { headId: 'own-title' });
+open(H, 'modal-h');
+ok(H.head.id === 'own-title' && H.surf.attrs['aria-labelledby'] === 'own-title', 'F23c an existing heading id is reused, not replaced');
+close(H, 'modal-h'); sf._resetSheetFocus();
+const L = mkSheet('modal-l', 1, { surfAttrs: { 'aria-label': 'Named', role: 'alertdialog' } });
+open(L, 'modal-l');
+ok(L.surf.attrs.role === 'alertdialog' && !('aria-labelledby' in L.surf.attrs), 'F23d markup that already names or types the dialog is respected');
+close(L, 'modal-l'); sf._resetSheetFocus();
+const R = mkSheet('modal-r2', 1, { backRole: 'dialog' });
+opener.focus(); open(R, 'modal-r2');
+ok(at() === 'modal-r2-backdrop' && !('role' in R.surf.attrs), 'F23e when the backdrop itself is the dialog it is the surface (no nested dialog role)');
+close(R, 'modal-r2'); sf._resetSheetFocus();
+
+// F24 (finding 3): a text field that opened a sheet is not re-focused on close (that would raise the phone keyboard).
+const field = new FEl('field', { focusable: true, tag: 'INPUT', type: 'number' }); page.add(field);
+field.focus(); open(A, 'modal-a'); close(A, 'modal-a');
+ok(at() === 'body', 'F24 closing a sheet does not re-focus a text field opener');
+const chk = new FEl('chk', { focusable: true, tag: 'INPUT', type: 'checkbox' }); page.add(chk);
+sf._resetSheetFocus(); chk.focus(); open(A, 'modal-a'); close(A, 'modal-a');
+ok(at() === 'chk', 'F24b a non-text input (checkbox) opener does get focus back');
+ok(typeof sf.isTextField === 'function' && sf.isTextField({ tagName: 'TEXTAREA' }) && sf.isTextField({ tagName: 'INPUT', getAttribute: () => 'email' }) && !sf.isTextField({ tagName: 'INPUT', getAttribute: () => 'radio' }) && !sf.isTextField({ tagName: 'BUTTON' }), 'F24c isTextField: textarea and email are text; radio and button are not');
+sf._resetSheetFocus();
+
+// F25 (nit 6): the Tab cycle skips disabled controls and controls taken out of the Tab order.
+const dis = new FEl('dis', { focusable: true, tag: 'BUTTON', disabled: true });
+const neg = new FEl('neg', { focusable: true, tag: 'BUTTON', attrs: { tabindex: '-1' } });
+const T = mkSheet('modal-t', 2, { extra: [dis, neg] });
+open(T, 'modal-t'); T.items[1].focus(); [r, e] = tab();
+ok(r === true && at() === 'modal-t-item0', 'F25 Tab wraps from the last tabbable control, skipping a disabled one and a tabindex=-1 one');
+[r, e] = tab(true);
+ok(r === true && at() === 'modal-t-item1', 'F25b Shift+Tab from the first lands on the last tabbable control');
+close(T, 'modal-t'); sf._resetSheetFocus();
+
+// F26 (finding 2): the picker's "No results found" row is a message at full contrast, not a faded control.
+ok(/\.picker-item\.disabled\{opacity:1\}/.test(cssNC) && /\.picker-item\.disabled \.picker-item-label\{color:var\(--text-2\)/.test(cssNC), 'F26 the market picker\'s No results row is not faded (was opacity .35, about 2.9:1)');
 }
 
 console.log(`\ndesignsystem: ${pass} passed, ${fail} failed`);

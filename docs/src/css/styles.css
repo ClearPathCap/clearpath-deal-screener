@@ -1045,3 +1045,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{box-shadow:0 0 0
 /* A sheet's surface takes programmatic focus on open (sheetfocus.js); it needs
    no ring — the sheet itself is the indication. Controls inside keep theirs. */
 .modal[tabindex="-1"]:focus,.modal-picker[tabindex="-1"]:focus,[role="dialog"][tabindex="-1"]:focus{outline:none}
+/* The market picker's "No results found" row reuses .picker-item.disabled (opacity .35,
+   about 2.9:1). It is a message, not a faded control: full opacity, --text-2. */
+.picker-item.disabled{opacity:1}
+.picker-item.disabled .picker-item-label{color:var(--text-2);font-weight:var(--fw-medium)}

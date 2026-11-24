@@ -720,7 +720,7 @@ export function maybeShowFundingButton(result) {
     <button class="btn-get-funding" id="${id}-trigger">
       <span class="funding-btn-label">${btnLabel}</span>
     </button>
-    <div style="font-size:11px;color:#9aa4b2;margin-top:6px;line-height:1.45">Estimate only — not a loan offer, approval, or guarantee of terms. Clear Path Capital is a broker; final terms come from the lender.</div>`;
+    <div style="font-size:11px;color:#9aa4b2;margin-top:6px;line-height:1.45">Estimate only — not a loan offer, approval, or guarantee of terms. Business-purpose, non-owner-occupied investment property only. Clear Path Capital is a broker; final terms come from the lender.</div>`;
 
   document.getElementById(id + '-trigger').addEventListener('click', () => {
     navigator.clipboard.writeText(summary).catch(() => {});  // clipboard fallback stays

@@ -2395,6 +2395,10 @@ function initOnboarding() {
   // code sent from this tab) is about that; the picker would cover the sign-in step. It waits
   // for the next visit (nothing is stored, so it simply reappears).
   if (_pendingAuthLink || _linkNotice || readPending(_signinStore)) return;
+  // Commercial C1: a visitor who came from a public tool page (/?tool=) asked for that analyzer;
+  // the first-launch picker would cover it before any value. The inline "Pick Market" chip stays,
+  // and the picker simply reappears on the next plain visit (nothing is stored).
+  if (toolLink) return;
   if (localStorage.getItem('primaryMarket') || localStorage.getItem('onboardingSkipped')) return;
   openMarketPicker(0, true /* isFirstLaunch */);
 }
@@ -2533,7 +2537,8 @@ renderAllSlots();
 renderGuideMarketIntel();   // item 4: build region intel from selected markets
 // Public tool pages (/risk-evaluation/ and the calculator pages) link in as
 // /?tool=<name>: open that analyzer and strip the parameter. Nothing is
-// prefilled, stored or opened as a modal; an unknown name is ignored.
+// prefilled, stored or opened as a modal; an unknown name is ignored. The
+// first-launch market picker also waits for the next plain visit (Commercial C1).
 const toolLink = consumeToolLink();
 if (toolLink) {
   showPage(toolLink.page, document.querySelector('.nav-btn[data-tab="' + toolLink.page + '"]'));

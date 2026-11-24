@@ -255,11 +255,23 @@ r = await pipeline.saveDeal('ltr');
 ok(r.status === 'refused-auth', 'B1 signed-out -> refused-auth');
 ok(rpcCalls.length === 0, 'B1 no RPC');
 
-// B2 refused-name
+// B2 — RE-PINNED in Commercial C1 (same-commit law): a blank name used to stop the save with a
+// browser alert ('refused-name'), a dead end on the way to the first saved deal. Now the field is
+// no longer a refusal: the deal gets a dated default name (pipeline.defaultDealName) and the save
+// continues to the next check. Here it stops at the result check, so nothing is written, and the
+// form field is left exactly as it was (a refused save never touches the form).
 globalThis.__authState.signedIn = true;
 nameEl.value = '   ';
-r = await pipeline.saveDeal('ltr');
-ok(r.status === 'refused-name', 'B2 blank name -> refused-name');
+{
+  const saveLastLtr = globalThis.__lastResults.ltr;
+  globalThis.__lastResults.ltr = null;     // stop at the result check so no deal is written here
+  r = await pipeline.saveDeal('ltr');
+  globalThis.__lastResults.ltr = saveLastLtr;
+}
+ok(r.status !== 'refused-name', 'B2 blank name is no longer refused');
+ok(r.status === 'refused-result' && nameEl.value === '   ', 'B2 a refused save leaves the blank name field untouched');
+ok(/^Rental deal · /.test(pipeline.defaultDealName('ltr', new Date(2026, 10, 24, 9, 5))), 'B2 the default name for a long-term rental is "Rental deal · <date>"');
+nameEl.value = 'Test Deal';
 
 // B3 refused-result
 nameEl.value = 'Test Deal'; notesEl.value = '';

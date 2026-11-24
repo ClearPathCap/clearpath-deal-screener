@@ -91,6 +91,17 @@ function savedInputsLine(d) {
   return `<div class="saved-inputs"><span class="si-label">Saved inputs</span><span class="si-values">${parts.join(' · ')}</span></div>`;
 }
 
+// Commercial C1: the default name for a deal saved with a blank name field.
+const DEAL_TYPE_LABEL = { flip: 'Flip', ltr: 'Rental', rental: 'Short-term rental', brrr: 'BRRRR' };
+export function defaultDealName(type, when) {
+  const label = DEAL_TYPE_LABEL[type] ? DEAL_TYPE_LABEL[type] + ' deal' : 'Deal';
+  let stamp = '';
+  try {
+    stamp = when.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  } catch { stamp = ''; }
+  return stamp ? label + ' · ' + stamp : label;
+}
+
 export async function saveDeal(type) {
   // Pipeline requires a free account (Option A) — anonymous users can analyze a
   // deal and request funding, but SAVING prompts sign-in / account creation.
@@ -102,14 +113,18 @@ export async function saveDeal(type) {
 
   const nameId  = type + '-deal-name';
   const notesId = type + '-notes';
-  const name    = document.getElementById(nameId).value.trim();
-  if (!name) { alert('Give this deal a name first.'); return { status: 'refused-name' }; }
-
   const result = type === 'flip' ? getLastFlipResult()
     : type === 'ltr'  ? getLastLtrResult()
     : type === 'brrr' ? getLastBrrrResult()
     : getLastRentalResult();
   if (!result) { alert('Analyze the deal first, then save.'); return { status: 'refused-result' }; }
+
+  // Commercial C1: a blank name no longer stops the save with a browser alert (a dead end on
+  // the way to the first saved deal). The saved deal gets a dated default name the user can
+  // change later with Edit. The form field is NOT written, so a save that is refused below
+  // leaves the form exactly as it was (identity boundary, dealreview PB13).
+  // 'refused-name' stays for saveDealEdits only.
+  const name    = document.getElementById(nameId).value.trim() || defaultDealName(type, new Date());
 
   const deals = getDeals();
   const notes = document.getElementById(notesId).value.trim();

@@ -352,6 +352,46 @@ if (haveBase) {
   ok(true, 'E7–E9 skipped: design base not in this clone');
 }
 
+// ─── §F accessibility and cold-start weight (375 px audit fixes) ────────────
+console.log('— §F accessibility + cold start —');
+const html = src('docs/index.html');
+const signIn = (() => { const a = html.indexOf('id="account-block"'); const r = html.indexOf('id="redeem-block"', a); return [a, html.indexOf('</div>', html.indexOf('id="redeem-code-input"', r))]; })();
+const controls = [...html.matchAll(/<(input|select|textarea)\b[^>]*>/g)].filter(m => !/type="hidden"/.test(m[0]) && !(m.index > signIn[0] && m.index < signIn[1]));
+const unnamed = controls.filter(m => {
+  const tag = m[0]; const id = (tag.match(/\bid="([^"]+)"/) || [])[1];
+  if (/aria-label(ledby)?="[^"]+"/.test(tag)) return false;
+  if (id && html.includes(`for="${id}"`)) return false;
+  const open = html.lastIndexOf('<label', m.index), close = html.indexOf('</label>', m.index);
+  if (open > -1 && close > -1 && html.lastIndexOf('</label>', m.index) < open) {
+    const text = html.slice(open, close).replace(/<[^>]*>/g, '').trim();
+    if (text) return false;
+  }
+  return true;
+}).map(m => (m[0].match(/\bid="([^"]+)"/) || [, m[0].slice(0, 40)])[1]);
+ok(controls.length > 80 && unnamed.length === 0, 'F1 every analyzer field, select and toggle has an accessible name (' + unnamed.join(', ') + ')');
+const dialogs = [...html.matchAll(/<div class="modal[^"]*"[^>]*role="dialog"[^>]*>/g)].map(m => m[0]);
+const dlgOk = dialogs.filter(d => /aria-modal="true"/.test(d) && (() => { const id = (d.match(/aria-labelledby="([^"]+)"/) || [])[1]; return id && html.includes(`id="${id}"`); })());
+ok(dialogs.length === 8 && dlgOk.length === 8, 'F2 eight sheets are announced as modal dialogs with a title (' + dlgOk.length + '/' + dialogs.length + ')');
+ok(!/class="modal modal-upgrade"[^>]*role=/.test(html), 'F2 the sign-in / plans sheet is left as it is (sign-in is closed to speculative change)');
+ok((html.match(/<div class="tier( active)?" role="button" tabindex="0" onclick="setRepairTier\(/g) || []).length === 3, 'F3 the three repair tiers are keyboard buttons');
+ok((mainJs.match(/class="picker-item[^"]*" role="button" tabindex="0" onclick="pickerSelect/g) || []).length === 3 && /initA11y\(\);/.test(mainJs), 'F3 market-picker rows are keyboard buttons; main.js starts the key handler');
+const AY = await import('../docs/src/js/a11y.js');
+const kev = (key, tag, extra = {}) => ({ key, defaultPrevented: false, target: { tagName: tag, getAttribute: (k) => (k === 'role' ? 'button' : null) }, ...extra });
+ok(AY.activatesRowButton(kev('Enter', 'DIV')) && AY.activatesRowButton(kev(' ', 'DIV')), 'F4 Enter and Space activate a role="button" row');
+ok(!AY.activatesRowButton(kev('Enter', 'BUTTON')) && !AY.activatesRowButton(kev('Enter', 'INPUT')) && !AY.activatesRowButton(kev('a', 'DIV')) && !AY.activatesRowButton(kev('Enter', 'DIV', { ctrlKey: true })) && !AY.activatesRowButton(kev('Enter', 'DIV', { isComposing: true })),
+  'F4 native controls, other keys, modified keys and IME composition are left alone');
+const kd = []; let clicked = 0;
+AY.initA11y({ addEventListener: (t, f) => kd.push([t, f]) });
+const ke = kev('Enter', 'DIV'); ke.target.click = () => clicked++; ke.preventDefault = function () { this.defaultPrevented = true; };
+kd[0][1](ke);
+ok(kd[0][0] === 'keydown' && clicked === 1 && ke.defaultPrevented, 'F4 the handler clicks the row and stops Space from scrolling');
+const png = readFileSync(join(root, 'docs/icons/clearpath-mark-96.png'));
+ok(png.readUInt32BE(16) === 96 && png.readUInt32BE(20) === 96 && png.length < 16384, 'F5 the app-bar mark is a 96 px PNG under 16 KB (was the 1024 px, 1.53 MB file)');
+const sharedHtml = src('docs/shared.html');
+ok(/<img src="icons\/clearpath-mark-96\.png" alt="Clear Path Capital" class="cpc-logo"/.test(html) && !/<img[^>]*clearpath-mark\.png/.test(html) && !/<img[^>]*clearpath-mark\.png/.test(sharedHtml),
+  'F5 no page loads the 1024 px mark as an <img> at start-up');
+ok(/"src": "icons\/clearpath-mark\.png"/.test(src('docs/manifest.json')) && /rel="apple-touch-icon" href="icons\/clearpath-mark\.png"/.test(html), 'F5 the install icons (manifest, apple-touch-icon) keep the full-size mark');
+
 console.log(`\nnative: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log('  ✗ ' + f)); }
 process.exit(fail ? 1 : 0);

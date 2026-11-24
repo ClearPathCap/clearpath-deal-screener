@@ -51,6 +51,7 @@ import { normalizeOtp, extractOtp, looksComplete, shouldAutoVerify, readAuthLink
          AUTH_LINK_ENABLED, readPending, writePending, clearPending, resendWaitSeconds,
          looksLikeEmail, codeSentMessage, PASTE_NO_CODE_MSG, sessionLinkKind, LINK_NOT_USED_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
+import { initA11y } from './a11y.js';   // native-readiness: keyboard activation for role="button" rows
 import { initPlatform, openPaymentPage, NATIVE_PAYMENT_MESSAGE } from './platform.js';   // native-readiness: web unchanged; the app's shell seam
 import { AUTH_LINK_PARAMS } from './signinCode.js';   // native-readiness: an app deep link carries the same sign-in link parameters a browser visit would
 import { fetchMarketIntel } from './marketIntel.js';
@@ -1048,14 +1049,14 @@ function _pickerRenderStateList(codes) {
   if (!codes.length) { list.innerHTML = '<div class="picker-item disabled"><div class="picker-item-label">No results found</div></div>'; return; }
   list.innerHTML = codes.map(code => {
     const count = map[code].length;
-    return `<div class="picker-item picker-state-btn" onclick="pickerSelectState('${code}')"><div class="picker-item-label">${code} (${count})</div><div class="picker-item-arrow">&#8250;</div></div>`;
+    return `<div class="picker-item picker-state-btn" role="button" tabindex="0" onclick="pickerSelectState('${code}')"><div class="picker-item-label">${code} (${count})</div><div class="picker-item-arrow">&#8250;</div></div>`;
   }).join('');
 }
 function _pickerRenderMarkets(markets) {
   const list = document.getElementById('picker-results');
   if (!list) return;
   list.innerHTML = markets.map(m =>
-    `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')"><div class="picker-item-label">${pickerMarketDisplay(m)}</div><div class="picker-item-arrow">&#10003;</div></div>`
+    `<div class="picker-item" role="button" tabindex="0" onclick="pickerSelectMarket('${m.id}')"><div class="picker-item-label">${pickerMarketDisplay(m)}</div><div class="picker-item-arrow">&#10003;</div></div>`
   ).join('');
 }
 function _pickerRenderSearchResults(markets) {
@@ -1064,7 +1065,7 @@ function _pickerRenderSearchResults(markets) {
   list.innerHTML = markets
     .sort((a, b) => pickerMarketDisplay(a).localeCompare(pickerMarketDisplay(b)))
     .map(m =>
-      `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')"><div><div class="picker-item-label">${pickerMarketDisplay(m)}</div><div class="picker-item-sub">${marketStateCode(m)}</div></div><div class="picker-item-arrow">&#10003;</div></div>`
+      `<div class="picker-item" role="button" tabindex="0" onclick="pickerSelectMarket('${m.id}')"><div><div class="picker-item-label">${pickerMarketDisplay(m)}</div><div class="picker-item-sub">${marketStateCode(m)}</div></div><div class="picker-item-arrow">&#10003;</div></div>`
     ).join('');
 }
 
@@ -2556,6 +2557,7 @@ initSheetFocus();   // design-system wave (a11y): Tab stays inside the top open 
 // Android Back steps the view stack above, links open in the in-app browser,
 // deep links map to a bundled page, status bar and keyboard are configured.
 initPlatform({ canStepBack, authParams: AUTH_LINK_PARAMS });
+initA11y();
 // Design-system wave (review finding 6): ltr.js and brrr.js (protected engine
 // files, unchanged this wave) still write the Title Case 'Monthly Rent' into the
 // rent label on every analysis. Keep the label sentence case without touching

@@ -216,8 +216,8 @@ ok("the edit affordance has a primary style", /\.btn-action\.primary\{background
 // RE-PINNED in the design-system wave commit: field labels are sentence case
 // (banked UX item 5 — uppercase is reserved for section eyebrows), so the same
 // renamed labels read "Buying costs %" / "Selling costs %". Wording unchanged.
-ok("flip form says Buying Costs %", /<label>Buying costs %<\/label>/.test(html));
-ok("flip form says Selling Costs %", /<label>Selling costs %<\/label>/.test(html));
+ok("flip form says Buying Costs %", /<label for="f-cc1">Buying costs %<\/label>/.test(html));
+ok("flip form says Selling Costs %", /<label for="f-cc2">Selling costs %<\/label>/.test(html));
 ok("the old flip cost labels are gone",
    !/<label>Purchase Costs %<\/label>/.test(html) && !/<label>Sale Costs %<\/label>/.test(html));
 ok("buy-side helper speaks acquisition closing costs", /Acquisition closing costs — attorney\/title/.test(html));

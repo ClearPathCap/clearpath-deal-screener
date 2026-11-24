@@ -41,7 +41,7 @@ import {
 import {
   initAuthAndEntitlement, onAuthChange, syncEntitlement,
   sendOtpCode, verifyOtpCode, signOutAccount, redeemServerCode,
-  isSignedIn, getUserEmail, entitlementStatus,
+  isSignedIn, getUserEmail, getUserId, entitlementStatus,
 } from './auth.js';
 import { initConnectivity, retryNow } from './connectivity.js';   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
@@ -344,6 +344,14 @@ function reviewResetField(id, kind) {
 }
 
 const reviewPrefilledIds = { flip: [], rental: [], ltr: [], brrr: [] };
+// Overnight wave 2026-11-24 (Workstream B, the accepted Phase 0 residual): the account whose
+// SAVED deal an analyzer form now holds ('' = the form holds only what was typed on this device).
+// Set when a saved deal is opened for review; it stays set after the review ends (the values stay
+// on the form) and is cleared only by Clear & New Deal. On a switch to another account, or sign-out,
+// hideForeignAccountData() clears every analyzer owned by a different account: inputs, result,
+// deal name, notes and review mode — so the previous account's private figures are never shown,
+// saved into the new account, or carried into a CPC handoff.
+const analyzerOwner = { flip: '', rental: '', ltr: '', brrr: '' };
 
 // Is a review pending for THIS analyzer (the deal still exists and is of this type)?
 function reviewPendingFor(type) {
@@ -392,6 +400,7 @@ function reviewDeal(id) {
     else reviewResetField(fid, kind);
   }
   reviewPrefilledIds[type] = filled;
+  analyzerOwner[type] = isSignedIn() ? (getUserId() || '') : '';   // B: this form now holds this account's saved deal
   // A6: the rows wiped above were describedby targets — release the marks AFTER
   // the prefill, so the value-based mask rule judges the saved values rather
   // than the malformed text the user abandoned (verification corrective, pass 4).
@@ -610,7 +619,16 @@ function resetAnalyzerProtection(type) {
 
 // ─── Clear & New Deal ─────────────────────────────────────────────────────────
 
+// B: every field a saved deal can fill returns to the analyzer default (not just the identifying
+// ones Clear & New Deal resets), then Clear & New Deal clears the result, name, notes and review mode
+// and re-applies the market presets.
+function clearForeignAnalyzer(type) {
+  for (const [fid, , kind] of REVIEW_FIELDS[type] || []) reviewResetField(fid, kind);
+  clearNewDeal(type);
+}
+
 function clearNewDeal(type) {
+  analyzerOwner[type] = '';   // B: a cleared form holds no account's saved deal
   // Saved-deal review: clearing the form ends a pending review for THIS
   // analyzer (the snapshot was never touched) and releases the prefill
   // protection so market presets and band defaults apply to the next deal.
@@ -2222,6 +2240,12 @@ onAuthChange(syncMarketsOnAuth);   // UX wave finding 3: market slots follow the
 onAuthChange(hideForeignAccountData, { beforeEntitlement: true });
 function hideForeignAccountData() {
   if (purgeForeignMarketSlots() > 0) { renderAllSlots(); renderGuideMarketIntel(); }
+  // B: an analyzer holding another account's saved deal is cleared (before its pipeline goes, so a
+  // review of that deal is cancelled through the normal path). The same account keeps its forms.
+  const uidNow = isSignedIn() ? (getUserId() || '') : '';
+  for (const t of Object.keys(analyzerOwner)) {
+    if (analyzerOwner[t] && analyzerOwner[t] !== uidNow) { try { clearForeignAnalyzer(t); } catch (e) { console.warn(e); analyzerOwner[t] = ''; } }
+  }
   const rid = getReviewingDealId();
   const reviewedType = rid != null ? (getDeals().find(d => d.id === rid) || {}).type : null;
   if (dropForeignPipeline()) {

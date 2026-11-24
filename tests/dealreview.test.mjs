@@ -34,7 +34,7 @@ const LABELS = { 'bridgeport-ct': 'Bridgeport, CT', 'charlotte-nc': 'Charlotte, 
 const STUBS = {
   'supabaseClient.js': `export const supabase = globalThis.__supabaseStub;`,
   'auth.js': `export const entitlementStatus = () => (globalThis.__entitlementStatus || 'verified'); 
-    export const isSignedIn = () => globalThis.__authState.signedIn; export const getUserId = () => '';
+    export const isSignedIn = () => globalThis.__authState.signedIn; export const getUserId = () => globalThis.__authState.uid || '';
     export const getUserEmail = () => globalThis.__authState.email;
     const L = []; export const onAuthChange = f => L.push(f);
     globalThis.__notifyAuth = () => L.forEach(f => { try { f(); } catch {} });
@@ -766,6 +766,61 @@ console.log('— §Q DF-P1 quick-read provenance in a real saved-deal review —
   globalThis.analyzeFlip(); r = rowsQ();
   ok(r['Points'] === MINE && r['Selling costs'] === MINE && r[ROW['f-rate']] === DEF && r['Buying costs'] === DEF, 'Q14 a fresh deal: typing the default number reads "Your entry"; the untouched ones stay "DealFit default" (I-b)');
   globalThis.clearNewDeal('flip');
+}
+
+// ── §PB · Overnight wave 2026-11-24, Workstream B (accepted Phase 0 residual): analyzer fields filled from a
+//    saved deal follow the ACCOUNT. On a switch to another account or a sign-out they are cleared (inputs,
+//    result, name, notes, review) by the real main.js hideForeignAccountData, run through the auth chain.
+console.log('— §PB analyzer data from a saved deal follows the account —');
+{
+  const A = globalThis.__authState; const signedInBefore = A.signedIn;
+  const LTR_IDS = ['l-addr', 'l-city', 'l-state', 'l-price', 'l-rent', 'l-units', 'l-down', 'l-vac', 'l-tax', 'l-ins', 'l-hoa', 'l-util', 'l-maint', 'l-pm',
+                   'l-capex', 'l-rate', 'l-amort', 'l-points', 'l-cc', 'l-target', 'l-ptype'];
+  const snap = (ids) => Object.fromEntries(ids.map(id => [id, v(id)]));
+  const seedAs = async (uid, deals) => { A.signedIn = true; A.uid = uid; await storage.hydratePipeline(); const r = await storage.saveDeals(deals); return r.ok; };
+  // the oracle: what a fresh Clear & New Deal leaves on the LTR form (analyzer defaults + this market's presets)
+  for (const id of LTR_IDS) { const e = el(id); if (e && e.defaultValue != null) e.value = String(e.defaultValue); }
+  globalThis.clearNewDeal('ltr'); globalThis.clearNewDeal('flip');
+  const FRESH = snap(LTR_IDS);
+  const seeded = await seedAs('u-a', [ORANGE, STR, BRRR, FLIP]);
+  globalThis.reviewDeal(ORANGE.id); globalThis.analyzeLtr();
+  const REVIEWED = snap(LTR_IDS);
+  const setup = seeded && !!ltr.getLastLtrResult() && REVIEWED['l-addr'] === '73 Orange Street, Bridgeport, CT 06607' && REVIEWED['l-price'] === '649,900' && v('ltr-deal-name') === ORANGE.name;
+  globalThis.__notifyAuth();   // same account (token refresh / tab return)
+  const keptSame = JSON.stringify(snap(LTR_IDS)) === JSON.stringify(REVIEWED) && !!ltr.getLastLtrResult() && pipeline.getReviewingDealId() === ORANGE.id;
+  ok(setup && keptSame, 'PB1 setup: A reviews and analyzes Orange Street; a same-account auth event keeps the form, the result and the review');
+  el('f-addr').value = '9 Elm St, Raleigh, NC 27601'; el('f-ask').value = '150,000';   // a typed-only flip form (no saved deal)
+  const saves0 = saveCalls();
+  A.uid = 'u-b'; globalThis.__notifyAuth();   // direct switch to B
+  const AFTER = snap(LTR_IDS);
+  const diff = LTR_IDS.filter(id => AFTER[id] !== FRESH[id]);
+  ok(diff.length === 0, 'PB2 a direct switch A → B returns the whole LTR form to a fresh Clear & New Deal state (differs: ' + (diff.map(id => id + '=' + AFTER[id] + '≠' + FRESH[id]).join(', ') || 'none') + ')');
+  const kept = LTR_IDS.filter(id => REVIEWED[id] !== FRESH[id] && AFTER[id] === REVIEWED[id]);
+  ok(kept.length === 0 && ['l-addr', 'l-price', 'l-rent', 'l-tax', 'l-ins', 'l-down', 'l-units'].every(id => REVIEWED[id] !== AFTER[id] || REVIEWED[id] === FRESH[id]),
+     'PB3 …no value that came from A’s saved deal remains (kept: ' + (kept.join(',') || 'none') + ')');
+  ok(ltr.getLastLtrResult() === null && el('ltr-results').style.display === 'none' && pipeline.getReviewingDealId() == null && v('ltr-deal-name') === ''
+     && el('ltr-save-btn').textContent === 'Save' && el('ltr-review-banner').style.display === 'none',
+     'PB4 …and A’s result, deal name, review banner and "Update Saved Deal" mode are gone (nothing of A’s can be saved or handed off)');
+  const sv = await pipeline.saveDeal('ltr');
+  ok(/^refused/.test(sv && sv.status) && saveCalls() === saves0, 'PB5 a Save as B right after the switch is refused before any request (' + (sv && sv.status) + ')');
+  ok(v('f-addr') === '9 Elm St, Raleigh, NC 27601' && v('f-ask') === '150,000', 'PB6 a form the user only typed on this device (no saved deal) is kept');
+  // sign-out clears a reviewed deal
+  globalThis.clearNewDeal('flip');
+  const seededC = await seedAs('u-c', [FLIP]);
+  const rv = globalThis.reviewDeal(FLIP.id);
+  const flipLoaded = seededC && rv.status === 'reviewing' && v('f-addr') === '412 Oak St, Lexington SC' && v('flip-deal-name') === FLIP.name;
+  A.signedIn = false; A.uid = ''; globalThis.__notifyAuth();
+  ok(flipLoaded && v('f-addr') === '' && v('f-ask') === '' && v('flip-deal-name') === '' && v('flip-notes') === '' && pipeline.getReviewingDealId() == null && flip.getLastFlipResult() === null,
+     'PB7 sign-out clears a reviewed saved deal (address, price, name, notes, review, result)');
+  // Clear & New Deal releases the ownership: values typed afterwards survive a switch
+  await seedAs('u-a', [STR]); globalThis.reviewDeal(STR.id); globalThis.clearNewDeal('rental');
+  el('v-addr').value = '1 Pine Ct, Asheville, NC'; A.uid = 'u-b'; globalThis.__notifyAuth();
+  ok(v('v-addr') === '1 Pine Ct, Asheville, NC', 'PB8 after Clear & New Deal the form holds no saved deal; values typed afterwards survive a switch');
+  ok(/analyzerOwner\[type\] = isSignedIn\(\) \? \(getUserId\(\) \|\| ''\) : '';/.test(mainSrc) && /function clearForeignAnalyzer\(type\) \{\s*for \(const \[fid, , kind\] of REVIEW_FIELDS\[type\]/.test(mainSrc)
+     && mainSrc.indexOf('clearForeignAnalyzer(t)') < mainSrc.indexOf('if (dropForeignPipeline())'),
+     'PB9 source: a review records the owning account; the pre-plan-check hook clears foreign analyzers before the pipeline drop');
+  globalThis.clearNewDeal('rental'); globalThis.clearNewDeal('flip'); globalThis.clearNewDeal('ltr');
+  A.signedIn = signedInBefore; A.uid = '';
 }
 
 console.log(`\ndealreview: ${pass} passed, ${fail} failed`);

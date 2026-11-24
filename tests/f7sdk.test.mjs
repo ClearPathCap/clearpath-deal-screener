@@ -92,10 +92,11 @@ auth.onAuthChange((s, ctx) => { compiled(msync.hydrateMarketsOnAuth, auth.readOn
 // (O1 renamed it hideForeignAccountData; either name compiles. Its pipeline / account-line parts are no-ops here.)
 const hm = mainSrc.match(/function (?:hideForeignAccountData|hideForeignMarkets)\(\) \{([\s\S]*?)\r?\n\}/);
 const earlyHook = hm ? new Function('purgeForeignMarketSlots', 'renderAllSlots', 'renderGuideMarketIntel', 'getReviewingDealId', 'getDeals', 'dropForeignPipeline',
-  'cancelDealReview', 'renderPipeline', 'updateAccountUI', 'document', hm[1]) : null;
+  'cancelDealReview', 'renderPipeline', 'updateAccountUI', 'document',
+    'analyzerOwner', 'isSignedIn', 'getUserId', 'clearForeignAnalyzer', hm[1]) : null;   // overnight B: analyzer owner (no analyzer here: empty)
 const earlyRenders = [];
 if (earlyHook) auth.onAuthChange(() => earlyHook(msync.purgeForeignMarketSlots, () => { earlyRenders.push([0, 1, 2, 3, 4, 5].map(i => tiers.getMarketForSlot(i))); }, () => {},
-  () => null, () => [], () => false, () => {}, () => {}, () => {}, { getElementById: () => null }), { beforeEntitlement: true });
+  () => null, () => [], () => false, () => {}, () => {}, () => {}, { getElementById: () => null }, {}, auth.isSignedIn, auth.getUserId, () => {}), { beforeEntitlement: true });
 
 for (let i = 0; i < 6; i++) tiers.setMarketSlot(i, '');
 tiers.setMarketSlot(0, 'tampa-fl');

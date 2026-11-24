@@ -16,7 +16,7 @@ import { saveDeal as _saveDeal, renderPipeline,
          dealEditMarketChanged, dealEditRepTouched,
          beginDealReview, endDealReview, getReviewingDealId, onDealReviewEnded } from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
-import { initViewStack, recordPage, recordSheetOpen, recordSheetClose, haptic, canStepBack, topSheet } from './viewstack.js';   // design-system wave: History-API view stack
+import { initViewStack, recordPage, recordSheetOpen, recordSheetClose, haptic } from './viewstack.js';   // design-system wave: History-API view stack
 import { stateHtml }                                               from './states.js';      // design-system wave: one empty/loading/error component
 import { initSheetFocus, sheetOpened, sheetClosed }               from './sheetfocus.js';  // design-system wave (a11y): focus moves into, stays in and returns from sheets
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
@@ -53,6 +53,7 @@ import { normalizeOtp, extractOtp, looksComplete, shouldAutoVerify, readAuthLink
 import { supabase } from './supabaseClient.js';
 import { initA11y } from './a11y.js';   // native-readiness: keyboard activation for role="button" rows
 import { initPlatform, openPaymentPage, paymentsInApp, NATIVE_PAYMENT_MESSAGE } from './platform.js';   // native-readiness: web unchanged; the app's shell seam
+import { canStepBack, topSheet } from './viewstack.js';   // native-readiness: Android Back reads the view stack's model (kept below the engine imports)
 import { AUTH_LINK_PARAMS } from './signinCode.js';   // native-readiness: an app deep link carries the same sign-in link parameters a browser visit would
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline } from './storage.js';

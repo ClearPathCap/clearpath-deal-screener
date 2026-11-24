@@ -38,17 +38,24 @@ export function createSecureSessionStorage(backend, legacy) {
   const lsGet = (k) => { try { return legacy ? legacy.getItem(k) : null; } catch { return null; } };
   const lsDel = (k) => { try { if (legacy) legacy.removeItem(k); } catch {} };
 
+  // A memory copy exists only when it is NEWER than the secure store (a write
+  // that the store refused), so it always wins: handing back the older stored
+  // session would replay a refresh token supabase-js has already rotated.
   async function readSecure(key) {
-    if (!ok) return mem.has(key) ? mem.get(key) : null;
+    if (mem.has(key)) return mem.get(key);
+    if (!ok) return null;
     try {
       const r = await backend.get({ key });
-      const v = r && typeof r.value === 'string' ? r.value : null;
-      return v !== null ? v : (mem.has(key) ? mem.get(key) : null);
-    } catch { return mem.has(key) ? mem.get(key) : null; }
+      return r && typeof r.value === 'string' ? r.value : null;
+    } catch { return null; }
   }
   async function writeSecure(key, value) {
     if (ok) {
-      try { await backend.set({ key, value }); mem.delete(key); return; } catch { /* fall through to memory */ }
+      try { await backend.set({ key, value }); mem.delete(key); return; } catch {
+        // The store refused the new value: drop the stale one too, so a later
+        // launch starts signed out instead of from an already-rotated token.
+        try { await backend.remove({ key }); } catch {}
+      }
     }
     mem.set(key, value);   // this launch only — never localStorage
   }

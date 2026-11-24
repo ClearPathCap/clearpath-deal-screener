@@ -16,22 +16,29 @@ Every native difference goes through `docs/src/js/platform.js`. With no native b
 `initPlatform()` changes nothing. No native plugin code is loaded on the web: the shell injects its own bridge, and
 `platform.js` only talks to it. `tests/native.test.mjs` §A pins this.
 
-DealFit has no bundler, so `@capacitor/core` (which defines `registerPlugin`) is not loaded. The native bridge still
-provides `nativePromise`, `nativeCallback` and `PluginHeaders`, and those are all core's own `registerPlugin` uses.
-`plugin(name)` builds the same minimal proxy and publishes it on `Capacitor.Plugins`, so code that reads
-`Capacitor.Plugins.X` directly (the design wave's `haptic()`) works unchanged.
+**The bridge.** DealFit has no bundler, so `@capacitor/core` is not loaded. A Capacitor 8 shell still pre-fills
+`window.Capacitor.Plugins` (Android `JSExport`, iOS `JSExport.swift`):
+- every plugin is an object whose methods call `nativePromise` / `nativeCallback`;
+- its `addListener` returns a plain `{ remove }`, **not a Promise**. (With core loaded, `addListener` returns a Promise.)
+
+`platform.js` therefore calls plugins only through `call()` and `listen()`, which accept both shapes and never throw.
+`main.js` and `sharedView.js` also guard `initPlatform()`, so no shell difference can stop the boot. A plugin listed in
+`PluginHeaders` but missing from `Plugins` gets a fallback object built the way `JSExport` builds it. The design wave's
+`haptic()` reads `Capacitor.Plugins.Haptics` directly, which the shell provides. `tests/native.test.mjs` §C runs against
+all three shapes: pre-filled `JSExport`, core proxies, and unfilled. (Review round 1 found the first version throwing on
+the pre-filled shape.)
 
 | Seam | Web (unchanged) | App | Status |
 |---|---|---|---|
-| Share (`share.js`) | `navigator.share`, then the fallback sheet | `@capacitor/share` (Android WebView has no `navigator.share`); dismissal still shows the fallback | built · device-only |
+| Share (`share.js`) | `navigator.share`, then the fallback sheet | `@capacitor/share` (Android WebView has no `navigator.share`); dismissal still shows the fallback. Shared links use the **public** origin (in the app, `location.href` is `capacitor://localhost/…`) | built · device-only |
 | External pages (CPC hand-off in `clearpath.js` / `ltr.js` / `brrr.js`, `<a target=_blank>`) | `window.open(url, '_blank', 'noopener')` | in-app browser (`@capacitor/browser`: SFSafariViewController / Custom Tabs). The analyzers are **byte-identical**: in the app a `window.open` shim routes `_blank` calls. A bundled page (`terms.html`, `privacy.html`) opens its **published** copy. `javascript:`, `data:` and cleartext `http:` are refused. `mailto:`/`tel:` go to the system | built · device-only |
-| Payment pages (Stripe Checkout / Portal in `main.js`) | `location.href = url` | **refused**, with a neutral message that names no other place to pay ("Plans can’t be changed in the app yet."). No checkout code exists for the app | built |
+| Payment pages (Stripe Checkout / Portal in `main.js`) | `location.href = url` | **refused before any request** (no checkout or portal call, so no Stripe session is created). The message names no other place to pay: "Plans can’t be changed in the app yet." The Subscribe and Manage-subscription buttons are hidden by an injected style (no markup change); plan **prices are still shown**, pending the owner's payment decision. No checkout code exists for the app | built |
 | Install prompt (`install.js`) | unchanged | the app counts as installed: no "Get the App", no prompt, no toast | built |
-| Hardware Back (Android) | — | `@capacitor/app` `backButton`: when the view stack can step back → `history.back()` (top sheet first, then the previous tab; a required sheet stays); at the root → `minimizeApp()` | built · device-only |
+| Hardware Back (Android) | — | `@capacitor/app` `backButton`: when the view stack can step back → `history.back()` (top sheet first, then the previous tab); at the root, or while a required sheet that Back cannot close is on top (the first-launch market picker) → `minimizeApp()` | built · device-only |
 | Haptics | no-op | `@capacitor/haptics` selection tick on tab switch (design law: never on a financial result) | built · device-only |
 | Status bar / safe area | — | light text (`StatusBar.setStyle DARK`), web content under the bar on Android; the design wave's `viewport-fit=cover` + safe-area padding apply | built · device-only |
 | Keyboard | design wave's visual-viewport watcher | `capacitor.config.json` `Keyboard.resize = "native"`; the iOS accessory bar stays visible (§4) | config built · device-only |
-| Deep links | — | `appUrlOpen` + `getLaunchUrl` → a bundled page (§5) | built · device-only |
+| Deep links | — | `appUrlOpen` + `getLaunchUrl` → a bundled page (§5). `shared.html` (`sharedView.js`) sets the platform up too. Its "not available" and offline states now link home (on the web as well) | built · device-only |
 | `<html data-platform>` | not set | `ios` / `android` (a hook for later app-only styling) | built |
 
 ## 2. Secure session storage
@@ -141,7 +148,12 @@ Add these only when the Apple Team ID and Android signing fingerprint exist (own
   - the sign-in link parameters (`auth_th` / `auth_type`), which keep their web semantics: today `AUTH_LINK_ENABLED =
     false`, so they are only removed from the address.
   
-  `?install` and `?checkout` are dropped in the app. A cold-start link is applied once per launch URL (no reload loop).
+  `?install` and `?checkout` are dropped in the app.
+  - A cold-start link is applied once per launch URL. A warm link is recorded so that the launch read on the page it
+    opens cannot re-apply it.
+  - A link to the page already showing is ignored.
+  - Without `sessionStorage`, a launch link is never re-applied (no reload loop; the link is dropped in that rare case).
+  - The share token must match the viewer's own shape (32 hex); otherwise the link opens the app home.
   Opening a link replaces the current page, so unsaved analyzer input is lost, as with any navigation (device-check the
   UX).
 
@@ -163,7 +175,11 @@ Audited in a local browser at 375 × 812 against the stacked candidate.
 - Eight sheets are now announced as modal dialogs with their title (`role="dialog"`, `aria-modal`,
   `aria-labelledby`). The sign-in / plans sheet is unchanged (sign-in is closed to speculative change).
 - The repair tiers and the market-picker rows were click-only `<div>`s. They are now `role="button"` + `tabindex="0"`, and
-  `a11y.js` answers Enter / Space.
+  `a11y.js` gives them native-button behaviour:
+  - Enter acts on key-down; Space acts on key-up, never scrolls the page, and does not repeat when held;
+  - the selected tier is announced (`aria-pressed` follows the `.active` class that `repair.js`, unchanged, sets);
+  - when a row re-renders its list (picker: state → markets), focus moves to the new list instead of falling to `<body>`;
+  - the picker dialog has a stable name ("Choose a market").
 - **Cold start:** the app bar loaded the 1024 px, 1.53 MB mark to draw a 26 px logo. A 96 px copy (6.7 KB, same image)
   now serves `index.html` and `shared.html`; the install icons keep the full mark. Signed-out first load fell from
   **2.71 MB to 1.19 MB** (decoded bytes: 30 module scripts, 0.91 MB, of which the vendored SDK is 0.22 MB; no third-party
@@ -220,7 +236,8 @@ No location, contacts, photos, device identifiers or diagnostics are collected. 
 - DealFit is a business-purpose real-estate investment calculator from Clear Path Capital, a loan broker. It does not
   lend, approve or quote terms; every figure is an estimate.
 - Every analyzer works without an account and offline. Signing in (email code) only saves deals and market choices.
-- Paid plans are not sold in the app.
+- Paid plans are not sold in the app: there are no purchase buttons, and no checkout request is made. Whether plan prices
+  should show at all is part of the owner's payment decision.
 - **Demo account:** an owner decision, tracked with the store decisions outside this repository. A reviewer cannot read a
   DealFit sign-in email, and no review-only sign-in bypass will be built.
 

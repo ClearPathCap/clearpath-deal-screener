@@ -8,8 +8,8 @@
 //   · external pages   — window.open(url, '_blank') on the web; the in-app
 //                        browser (SFSafariViewController / Custom Tabs) in the app;
 //   · payment pages    — location.href on the web; REFUSED in the app until the
-//                        owner chooses a store-compliant payment path (see
-//                        NATIVE_PAYMENTS_AND_SUBSCRIPTIONS.md) — no checkout code;
+//                        owner chooses a store-compliant payment path (an owner
+//                        decision, NATIVE_READINESS.md §7) — no checkout code;
 //   · install prompt   — never offered inside the app;
 //   · hardware Back    — Android Back steps the design wave's view stack;
 //   · haptics, status bar, safe area, keyboard accessory bar;
@@ -21,12 +21,16 @@
 // native plugin code is ever loaded on the web: a native shell injects its own
 // bridge (`window.Capacitor`), and this module only talks to that bridge.
 //
-// NO-BUILD SHELL. DealFit has no bundler, so @capacitor/core (which defines
-// Capacitor.registerPlugin) is not loaded. The native bridge still provides
-// nativePromise / nativeCallback / PluginHeaders, which is all core's own
-// registerPlugin uses; plugin() below builds the same minimal proxy from them and
-// publishes it on Capacitor.Plugins (only where nothing is there yet), so the
-// design wave's haptic() (viewstack.js) works unchanged inside the shell.
+// THE BRIDGE. In a real Capacitor 8 shell the native side pre-fills
+// window.Capacitor.Plugins (Android JSExport, iOS JSExport.swift): every plugin
+// is an object whose methods call nativePromise / nativeCallback, and whose
+// addListener returns a plain { remove } object — NOT a Promise. With
+// @capacitor/core loaded (not the case here: no bundler) the entries are
+// registerPlugin proxies whose addListener returns a Promise. call() and
+// listen() below accept both shapes and never throw, so a shell difference can
+// never stop main.js from booting. A plugin listed in PluginHeaders but missing
+// from Capacitor.Plugins gets a fallback object built the same way JSExport
+// builds it.
 //
 // Importable in Node: no top-level browser access (the share/handoff suites
 // import modules that import this one).
@@ -44,32 +48,48 @@ export function platformId() {
   try { const p = CAP().getPlatform(); return p === 'ios' || p === 'android' ? p : 'web'; } catch { return 'web'; }
 }
 
-// ── Plugins (no-build) ──────────────────────────────────────────────────────
-// Returns a plugin proxy, or null on the web or when the shell does not carry it.
-const _proxies = new Map();
+// ── Plugins ─────────────────────────────────────────────────────────────────
+// Returns the shell's plugin object, or null on the web or when the shell does
+// not carry it.
+const _fallbacks = new Map();
 export function plugin(name) {
   if (!isNative()) return null;
   const c = CAP();
-  if (c.Plugins && c.Plugins[name] && !_proxies.has(name)) return c.Plugins[name];   // @capacitor/core present, or a shell-registered proxy
-  if (_proxies.has(name)) return _proxies.get(name);
+  if (c.Plugins && c.Plugins[name]) return c.Plugins[name];
+  if (_fallbacks.has(name)) return _fallbacks.get(name);
   const header = Array.isArray(c.PluginHeaders) ? c.PluginHeaders.find(h => h && h.name === name) : null;
-  if (!header || typeof c.nativePromise !== 'function') return null;
-  const methods = new Map((header.methods || []).map(m => [m.name, m.rtype]));
-  const call = (m) => (opts) => (methods.get(m) === 'promise'
-    ? c.nativePromise(name, m, opts || {})
-    : Promise.reject(new Error(name + '.' + m + ' is not available')));
-  const proxy = {
-    // Same contract as core's addListenerNative: resolves to { remove() }.
-    addListener(eventName, cb) {
-      if (typeof c.nativeCallback !== 'function') return Promise.reject(new Error('no native callbacks'));
-      const id = c.nativeCallback(name, 'addListener', { eventName }, cb);
-      return Promise.resolve({ remove: () => c.nativePromise(name, 'removeListener', { eventName, callbackId: id }) });
-    },
+  if (!header || typeof c.nativePromise !== 'function' || typeof c.nativeCallback !== 'function') return null;
+  const obj = {};
+  for (const m of (header.methods || [])) {
+    if (!m || m.name === 'addListener' || m.name === 'removeListener') continue;
+    obj[m.name] = m.rtype === 'promise'
+      ? (opts) => c.nativePromise(name, m.name, opts || {})
+      : (opts, cb) => c.nativeCallback(name, m.name, opts || {}, cb);
+  }
+  // Same shape as the bridge's own cap.addListener: a plain { remove }.
+  obj.addListener = (eventName, cb) => {
+    if (typeof c.addListener === 'function') return c.addListener(name, eventName, cb);
+    const callbackId = c.nativeCallback(name, 'addListener', { eventName }, cb);
+    return { remove: async () => { c.nativeCallback(name, 'removeListener', { callbackId, eventName }, cb); } };
   };
-  for (const m of methods.keys()) if (m !== 'addListener' && m !== 'removeListener') proxy[m] = call(m);
-  _proxies.set(name, proxy);
-  try { if (c.Plugins && !c.Plugins[name]) c.Plugins[name] = proxy; } catch {}
-  return proxy;
+  _fallbacks.set(name, obj);
+  try { if (c.Plugins && !c.Plugins[name]) c.Plugins[name] = obj; } catch {}
+  return obj;
+}
+// Call a plugin method: always a Promise, never a synchronous throw.
+export function call(P, method, opts) {
+  try {
+    if (!P || typeof P[method] !== 'function') return Promise.reject(new Error(method + ' is not available'));
+    return Promise.resolve(P[method](opts || {}));
+  } catch (e) { return Promise.reject(e); }
+}
+// Add a listener: resolves to the handle ({ remove }) or null; never throws,
+// whether the shell's addListener returns a handle or a Promise of one.
+export function listen(P, eventName, cb) {
+  try {
+    if (!P || typeof P.addListener !== 'function') return Promise.resolve(null);
+    return Promise.resolve(P.addListener(eventName, cb)).catch(() => null);
+  } catch { return Promise.resolve(null); }
 }
 
 // ── Share ───────────────────────────────────────────────────────────────────
@@ -82,10 +102,8 @@ export function canShare() {
 }
 export function share(payload) {
   if (isNative()) {
-    const S = plugin('Share');
-    if (!S || !S.share) return Promise.reject(new Error('share unavailable'));
     const p = payload || {};
-    return S.share({ title: p.title, text: p.text, url: p.url, dialogTitle: p.title });
+    return call(plugin('Share'), 'share', { title: p.title, text: p.text, url: p.url, dialogTitle: p.title });
   }
   return navigator.share(payload);
 }
@@ -102,8 +120,8 @@ export function openExternal(url) {
   const target = externalTarget(url);
   if (!target) return null;
   const B = plugin('Browser');
-  if (target.kind === 'web' && B && B.open) {
-    B.open({ url: target.url, presentationStyle: 'popover' }).catch(() => {});
+  if (target.kind === 'web' && B && typeof B.open === 'function') {
+    call(B, 'open', { url: target.url, presentationStyle: 'popover' }).catch(() => {});
     return null;
   }
   // mailto:/tel:/sms:, or no Browser plugin: a main-frame navigation to a URL
@@ -137,18 +155,15 @@ export function openPaymentPage(url) {
   return true;
 }
 export const NATIVE_PAYMENT_MESSAGE = 'Plans can’t be changed in the app yet.';
+// The plans sheet's purchase buttons, hidden in the app (no markup change: the
+// plans sheet belongs to the sign-in / commercial work). Prices stay visible
+// until the owner's store-payment decision.
+export const NATIVE_HIDDEN_PURCHASE = '.btn-upgrade-investor,.btn-upgrade-pro,#manage-sub-btn';
 
 // ── Install prompt ──────────────────────────────────────────────────────────
 // Inside the app the PWA install ("Get the App") is meaningless: treat it as
 // already installed (install.js hides the button, never prompts or toasts).
 export function isInstalledApp() { return isNative(); }
-
-// ── Haptics ─────────────────────────────────────────────────────────────────
-// Light confirmation ticks only — never on a financial result (design law).
-export function hapticTick() {
-  const Hp = plugin('Haptics');
-  try { if (Hp && Hp.selectionChanged) Hp.selectionChanged().catch(() => {}); } catch {}
-}
 
 // ── Deep links (Universal Links / App Links) ────────────────────────────────
 // Pure mapping from an opened https link to a page INSIDE the bundle, or null.
@@ -157,7 +172,7 @@ export function hapticTick() {
 // the same visit in a browser. ?install= and ?checkout= are dropped in the app
 // (no install prompt; no payment page in the app).
 export const LINK_HOSTS = ['dealfit.clearpathcapfunding.com'];
-const SHARE_TOKEN = /^[A-Za-z0-9_-]{8,128}$/;
+const SHARE_TOKEN = /^[0-9a-f]{32}$/;      // the viewer's own token shape (sharedView.js)
 export function deepLinkTarget(href, authParams) {
   let u;
   try { u = new URL(String(href)); } catch { return null; }
@@ -184,18 +199,25 @@ export function deepLinkTarget(href, authParams) {
 }
 
 // ── Init (native only; a no-op on the web) ─────────────────────────────────
-// hooks: { canStepBack(): boolean } from the view stack; authParams: the sign-in
-// link parameter names (signinCode.js AUTH_LINK_PARAMS) for deepLinkTarget.
+// hooks: { canStepBack(): boolean, requiredSheetOpen(): boolean } from the view
+// stack; authParams: the sign-in link parameter names (signinCode.js
+// AUTH_LINK_PARAMS) for deepLinkTarget. Never throws.
 let _inited = false;
 export function initPlatform(hooks) {
   if (_inited || !isNative()) return false;
   _inited = true;
+  try { setUp(hooks || {}); } catch (e) { try { console.warn('platform init', e); } catch {} }
+  return true;
+}
+function setUp(h) {
   const w = W(), doc = w.document, id = platformId();
-  const h = hooks || {};
   try { doc.documentElement.setAttribute('data-platform', id); } catch {}
-  // Publish a proxy for every plugin the shell carries, so code that reads
-  // Capacitor.Plugins directly (the design wave's haptic()) finds them.
   try { (CAP().PluginHeaders || []).forEach(hd => hd && hd.name && plugin(hd.name)); } catch {}
+  try {
+    const st = doc.createElement('style');
+    st.textContent = NATIVE_HIDDEN_PURCHASE + '{display:none!important}';
+    (doc.head || doc.documentElement).appendChild(st);
+  } catch {}
 
   // External links: window.open(…, '_blank') from any module (the analyzers'
   // CPC hand-off among them, unchanged) goes to the in-app browser.
@@ -209,6 +231,7 @@ export function initPlatform(hooks) {
   // <a target="_blank"> (legal footer, guide sources, share fallbacks): same route.
   // Same-tab links (in-page anchors, the app's own pages) stay in the WebView.
   doc.addEventListener('click', (e) => {
+    if (e.defaultPrevented) return;
     const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
     if (!a) return;
     const href = a.getAttribute('href');
@@ -219,47 +242,52 @@ export function initPlatform(hooks) {
   });
 
   // Android hardware Back → the view stack (the top sheet closes first, then the
-  // previous tab). At the root it backgrounds the app (Android's own behaviour
-  // for a root activity), never a dead press and never a history entry from a
-  // previous page load.
+  // previous tab). At the root — or while a required sheet that Back cannot
+  // close is on top (the first-launch market picker) — it backgrounds the app
+  // (Android's behaviour for a root activity): never a dead press, and never a
+  // history entry from a previous page load.
   const App = plugin('App');
-  if (App && App.addListener) {
-    App.addListener('backButton', () => {
-      if (h.canStepBack && h.canStepBack()) { try { w.history.back(); } catch {} return; }
-      if (App.minimizeApp) App.minimizeApp().catch(() => {});
-    }).catch(() => {});
-    // Deep links: a warm open replaces the page with the mapped local page; a cold
-    // open is read once per launch URL (never a reload loop).
-    const go = (href) => {
-      const t = deepLinkTarget(href, h.authParams);
-      if (t) { try { w.location.replace(new URL(t, w.location.href).href); } catch {} }
-    };
-    App.addListener('appUrlOpen', (ev) => go(ev && ev.url)).catch(() => {});
-    if (App.getLaunchUrl) {
-      App.getLaunchUrl().then((r) => {
-        const url = r && r.url;
-        if (!url) return;
-        let seen = null;
-        try { seen = w.sessionStorage.getItem('df.launchUrl'); w.sessionStorage.setItem('df.launchUrl', url); } catch {}
-        if (seen !== url) go(url);
-      }).catch(() => {});
-    }
-  }
+  listen(App, 'backButton', () => {
+    const required = !!(h.requiredSheetOpen && h.requiredSheetOpen());
+    if (!required && h.canStepBack && h.canStepBack()) { try { w.history.back(); } catch {} return; }
+    call(App, 'minimizeApp').catch(() => {});
+  });
+  // Deep links: an opened link replaces the page with the mapped local page,
+  // unless that page is already the one showing (a re-delivered link, or the
+  // reload the link itself caused) — never a reload loop, even without
+  // sessionStorage.
+  const here = () => { try { const l = w.location; return (l.pathname.replace(/^.*\//, '') || 'index.html') + l.search + l.hash; } catch { return ''; } };
+  const go = (href) => {
+    const t = deepLinkTarget(href, h.authParams);
+    if (!t || t === here()) return;
+    try { w.location.replace(new URL(t, w.location.href).href); } catch {}
+  };
+  // A warm link (or one the shell retained across a cold start) is recorded as
+  // applied, so the launch-URL read on the page it opens does not re-apply it.
+  listen(App, 'appUrlOpen', (ev) => {
+    const url = ev && ev.url;
+    if (!url) return;
+    try { w.sessionStorage.setItem('df.launchUrl', url); } catch {}
+    go(url);
+  });
+  call(App, 'getLaunchUrl').then((r) => {
+    const url = r && r.url;
+    if (!url) return;
+    let seen = null;
+    try { seen = w.sessionStorage.getItem('df.launchUrl'); w.sessionStorage.setItem('df.launchUrl', url); } catch { seen = url; }   // no sessionStorage → never re-apply
+    if (seen !== url) go(url);
+  }).catch(() => {});
 
   // Status bar: light text on the dark app bar; the web content runs under it
   // (viewport-fit=cover + the safe-area padding the design wave already set).
   const SB = plugin('StatusBar');
-  if (SB) {
-    try { SB.setStyle && SB.setStyle({ style: 'DARK' }).catch(() => {}); } catch {}
-    if (id === 'android') { try { SB.setOverlaysWebView && SB.setOverlaysWebView({ overlay: true }).catch(() => {}); } catch {} }
-  }
+  call(SB, 'setStyle', { style: 'DARK' }).catch(() => {});
+  if (id === 'android') call(SB, 'setOverlaysWebView', { overlay: true }).catch(() => {});
   // Keyboard: keep the iOS accessory bar (its "Done" is the only way to close a
   // decimal keypad, which has no return key). Resize mode comes from
   // capacitor.config.json (Keyboard.resize = "native"), which the design wave's
   // visual-viewport watcher already handles.
-  const KB = plugin('Keyboard');
-  if (KB && id === 'ios') { try { KB.setAccessoryBarVisible && KB.setAccessoryBarVisible({ isVisible: true }).catch(() => {}); } catch {} }
-  return true;
+  if (id === 'ios') call(plugin('Keyboard'), 'setAccessoryBarVisible', { isVisible: true }).catch(() => {});
 }
 // Test-only reset (Node suites re-run initPlatform with different fakes).
-export function _resetForTests() { _inited = false; _proxies.clear(); _rawOpen = null; }
+export function _resetForTests() { _inited = false; _fallbacks.clear(); _rawOpen = null; }

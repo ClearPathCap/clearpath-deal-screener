@@ -5,12 +5,14 @@ import { getDeals } from './storage.js';
 import { supabase } from './supabaseClient.js';
 import { noteServerResult, serverUnreachable } from './connectivity.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
-import { canShare, share as platformShare } from './platform.js';   // native-readiness: the OS share sheet on the web AND in the app
+import { canShare, share as platformShare, isNative, PUBLIC_ORIGIN } from './platform.js';   // native-readiness: the OS share sheet on the web AND in the app
 
 // NOTE: Phase 1 will hard-code APP_URL to the deployed domain.
 // Wave 5 (SR-7 testability): guard the top-level `location` read so the pure
 // summary builder below is importable by the Node test suite.
-const APP_URL = (typeof location !== 'undefined' ? location.href : '').split('#')[0];
+// Native-readiness: inside the app location.href is the bundle (capacitor://localhost/…,
+// https://localhost/…), which opens nothing for a recipient — links point at the site.
+const APP_URL = isNative() ? PUBLIC_ORIGIN + '/' : (typeof location !== 'undefined' ? location.href : '').split('#')[0];
 
 // Local modal helpers
 // Track A2: modals must go through the central lock-aware helpers (body

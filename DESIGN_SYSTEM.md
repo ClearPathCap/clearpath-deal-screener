@@ -27,7 +27,10 @@ Text roles added in this wave:
 | `--text` | `#f0ede8` | primary text and **entered values** |
 | `--text-2` | `#9a9a9a` | secondary text, field labels, hints (≥ 4.5:1 on `--bg` and `--surface`) |
 | `--placeholder` | `#8a8a8a` | example placeholders (5.3:1 on `--surface`) |
-| `--muted` | `#6b6b6b` | legacy decorative text only — not for new body copy |
+| `--muted` | `#8e8e8e` | quiet captions and meta text (≥ 4.5:1 on every surface, `--surface3` included; raised from `#6b6b6b` in the accessibility round) |
+| `--muted2` | `#444` | borders and dashes only — never text (2.0:1) |
+
+Contrast rule: all text meets WCAG AA (4.5:1; 3:1 only for text at 18px+ or 14px+ bold) on the surface it sits on.
 
 ## Type scale
 
@@ -62,7 +65,9 @@ A 4px grid: `--sp-1` 4 · `--sp-2` 8 · `--sp-3` 12 · `--sp-4` 16 · `--sp-5` 2
 - Radii: `--r-xs` 6 · `--r-sm` 8 (inputs, slots) · `--r-md` 10 (cards, buttons) · `--r-lg` 14 (dialogs) · `--r-xl` 20
   (sheet top corners) · `--r-pill` (chips, toasts).
 - Touch: every interactive control offers at least `--tap` (44px). Inputs and secondary buttons are `--control-h` (44px);
-  the primary task button is `--control-h-lg` (52px).
+  the primary task button is `--control-h-lg` (52px). A control that stays visually compact (the 34px app-bar controls)
+  gets an invisible centred `::after` hit area of `--tap`; that only works on an element without `overflow:hidden`, so a
+  clipping control (the market slot) grows to `--tap` instead.
 - Layers: app bar 20 · tab bar 30 · sheets 100 · toast 200.
 
 ## Navigation
@@ -136,6 +141,11 @@ stays reachable. On wider screens the same modal is a centered dialog that fades
 
 Exception this wave: the sign-in / plans sheet (`#modal-upgrade`) keeps its centered presentation — sign-in is being
 redesigned separately and will adopt the sheet.
+
+**Focus** (`sheetfocus.js`): opening a sheet moves focus to its surface (never to an input, which would raise the
+keyboard); Tab and Shift+Tab cycle inside the top open sheet; closing returns focus to the control that opened it when
+that is still on screen, otherwise to the sheet now on top. The sheet surface takes no focus ring. `#modal-upgrade` is
+excluded — its focus belongs to the sign-in flow — and nothing here acts while it is open.
 
 ## States
 

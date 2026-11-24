@@ -414,5 +414,159 @@ if (base) {
 ok(/\.modal-backdrop:not\(#modal-upgrade\)/.test(css), 'E4 the sign-in / plans sheet keeps its presentation this wave (owned by the sign-in redesign)');
 ok(/PAID_PLANS_LEAD/.test(mainJs) && /funding stays free on every tier/.test(mainJs), 'E5 tier law copy is untouched');
 
+console.log('— §F accessibility (375px audit, 2026-11-24) —');
+{   // §F block scope: its helpers must not collide with earlier sections
+// F1–F3 contrast: every text tone clears WCAG AA 4.5:1 on every surface it can sit on.
+const hex6 = (h) => { h = h.replace('#', ''); return h.length === 3 ? h.split('').map(c => c + c).join('') : h; };
+const lumi = (h) => { h = hex6(h); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0); };
+const cr = (a, b) => { const x = lumi(a), y = lumi(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+const tokv = (n) => (css.match(new RegExp('--' + n + ':(#[0-9a-fA-F]{3,6})[;}\\s]')) || [])[1];
+const surfaces = ['bg', 'surface', 'surface2', 'surface3'].map(tokv);
+ok(surfaces.every(Boolean), 'F1a the four surface tokens are readable from the stylesheet');
+for (const t of ['text', 'text-2', 'placeholder', 'muted']) {
+  const v = tokv(t);
+  ok(!!v && surfaces.every(s => s && cr(v, s) >= 4.5), `F1 --${t} clears 4.5:1 on --bg/--surface/--surface2/--surface3 (${surfaces.map(s => (v && s) ? cr(v, s).toFixed(2) : '?').join(' / ')})`);
+}
+const cssNC = css.replace(/\/\*[\s\S]*?\*\//g, '');
+ok(!/(^|[;{\s])color:var\(--muted2\)/.test(cssNC), 'F2 no text is coloured --muted2 (#444 is 2.0:1); it is a border tone only');
+ok(!/6b6b6b/i.test(cssNC), 'F3 the old #6b6b6b grey is gone everywhere, the select caret included');
+
+// F4–F8 touch: every flagged control offers at least --tap (44px).
+ok(/--tap:44px/.test(css), 'F4a --tap is 44px');
+const after = (cssNC.match(/#auth-chip::after,\.util-bar \.icon-btn::after,\.get-app-btn::after\{[^}]*\}/) || [''])[0];
+ok(/position:absolute/.test(after) && /height:var\(--tap\)/.test(after) && /width:max\(100%,var\(--tap\)\)/.test(after) && /translate\(-50%,-50%\)/.test(after),
+   'F4 the app-bar controls (sign-in chip, Share, Get the App) get a centred hit area of at least 44x44');
+ok(/#auth-chip,\.util-bar \.icon-btn,\.get-app-btn\{position:relative\}/.test(cssNC), 'F4b the hit area is anchored to its own control');
+const host = (sel) => (cssNC.match(new RegExp('(^|[}\\s])' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\{[^}]*\\}', 'g')) || []).join('');
+ok(!/overflow:hidden/.test(host('.icon-btn') + host('.get-app-btn') + host('.util-bar') + host('.appbar')) && !/overflow:hidden/.test((html.match(/id="auth-chip"[^>]*>/) || [''])[0]),
+   'F5 no host of a hit-area pseudo clips it (no overflow:hidden on the chip, Share, Get the App, util bar or app bar)');
+ok(/height:34px/.test(host('.get-app-btn')) && /height:34px/.test(host('.icon-btn')), 'F5b the controls keep their compact 34px look (installux pins it)');
+const lastSlot = (cssNC.match(/(^|[}\s])\.market-slot\{[^}]*\}/g) || []).pop() || '';
+ok(/min-height:var\(--tap\)/.test(lastSlot) && /height:auto/.test(lastSlot), 'F6 market slots (which clip their label) grow to 44px instead of a pseudo hit area');
+ok(/#sqft\{height:var\(--control-h\)!important\}/.test(cssNC) && /id="sqft"[^>]*style="height:38px"/.test(html), 'F7 the square-footage field is 44px high (CSS beats its inline 38px; the markup is untouched)');
+ok(/\.legal-footer a\{[^}]*min-height:var\(--tap\)/.test(cssNC) && /\.legal-footer a,\.sign-out-link\{[^}]*min-height:24px/.test(cssNC),
+   'F8 Terms / Privacy are 44px targets; the shared 24px floor rule (Sign out) is unchanged');
+
+// F9–F20 sheet focus law (sheetfocus.js) against a minimal DOM.
+const sf = await import('../docs/src/js/sheetfocus.js');
+const fdoc = { activeElement: null, listeners: [], byId: {}, getElementById(id) { return this.byId[id] || null; }, addEventListener(t, f) { this.listeners.push([t, f]); } };
+class FEl {
+  constructor(name, { focusable = false, cls = [], role = null, id = null } = {}) {
+    this.name = name; this.focusable = focusable; this.kids = []; this.parent = null; this.attrs = {}; this.visible = true; this.role = role;
+    this.classList = { s: new Set(cls), contains(c) { return this.s.has(c); }, add(c) { this.s.add(c); }, remove(c) { this.s.delete(c); } };
+    if (id) fdoc.byId[id] = this;
+  }
+  add(...k) { k.forEach(c => { c.parent = this; this.kids.push(c); }); return this; }
+  all() { return this.kids.flatMap(k => [k, ...k.all()]); }
+  contains(x) { for (let n = x; n; n = n.parent) if (n === this) return true; return false; }
+  querySelector(sel) {
+    if (sel === '[role="dialog"]') return this.all().find(k => k.role === 'dialog') || null;
+    if (sel === '.modal, .modal-picker') return this.all().find(k => k.classList.contains('modal') || k.classList.contains('modal-picker')) || null;
+    throw new Error('unexpected selector ' + sel);
+  }
+  querySelectorAll() { return this.all().filter(k => k.focusable || ('tabindex' in k.attrs && k.attrs.tabindex !== '-1')); }
+  getClientRects() { let n = this; while (n) { if (!n.visible) return []; n = n.parent; } return [1]; }
+  hasAttribute(a) { return a in this.attrs; }
+  setAttribute(a, v) { this.attrs[a] = String(v); }
+  focus() { if (this.getClientRects().length) fdoc.activeElement = this; }
+  blur() { if (fdoc.activeElement === this) fdoc.activeElement = fdoc.body; }
+  get isConnected() { return true; }
+}
+fdoc.body = new FEl('body');
+fdoc.activeElement = fdoc.body;
+const page = new FEl('page'); const opener = new FEl('opener', { focusable: true }); const other = new FEl('other', { focusable: true });
+page.add(opener, other); fdoc.body.add(page);
+const mkSheet = (id, n, { role = null } = {}) => {
+  const back = new FEl(id + '-backdrop', { cls: ['modal-backdrop'], id });
+  const surf = new FEl(id + '-surface', { cls: ['modal'], role });
+  const items = Array.from({ length: n }, (_, i) => new FEl(id + '-item' + i, { focusable: true }));
+  surf.add(...items); back.add(surf); fdoc.body.add(back);
+  return { back, surf, items };
+};
+const A = mkSheet('modal-a', 3), B = mkSheet('modal-b', 2), U = mkSheet('modal-upgrade', 2), Z = mkSheet('modal-z', 0), D = mkSheet('modal-d', 1, { role: 'dialog' });
+const open = (S, id) => { S.back.classList.add('active'); sf.sheetOpened(S.back, id, fdoc); };
+const close = (S, id) => { S.back.classList.remove('active'); sf.sheetClosed(S.back, id, fdoc); };
+const tab = (shift = false) => { const e = { key: 'Tab', shiftKey: shift, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } }; const r = sf.onSheetTab(e, fdoc); return [r, e]; };
+const at = () => fdoc.activeElement && fdoc.activeElement.name;
+
+sf._resetSheetFocus();
+opener.focus(); open(A, 'modal-a');
+ok(at() === 'modal-a-surface', 'F9 opening a sheet moves focus to its surface (not to an input, which would raise the keyboard)');
+ok(A.surf.attrs.tabindex === '-1', 'F9b the surface is made programmatically focusable (tabindex -1, out of the Tab order)');
+let r, e;
+A.items[2].focus(); [r, e] = tab();
+ok(r === true && e.defaultPrevented && at() === 'modal-a-item0', 'F10 Tab on the last control wraps to the first');
+[r, e] = tab(true);
+ok(r === true && at() === 'modal-a-item2', 'F11 Shift+Tab on the first control wraps to the last');
+A.surf.focus(); [r, e] = tab(true);
+ok(r === true && at() === 'modal-a-item2', 'F11b Shift+Tab from the sheet surface goes to the last control, not out of the sheet');
+A.items[1].focus(); [r, e] = tab();
+ok(r === false && !e.defaultPrevented, 'F12 Tab between inner controls is left to the browser');
+other.focus(); [r, e] = tab();
+ok(r === true && at() === 'modal-a-item0', 'F13 focus that escaped the sheet is brought back in on Tab');
+close(A, 'modal-a');
+ok(at() === 'opener', 'F14 closing returns focus to the control that opened the sheet');
+
+sf._resetSheetFocus();
+opener.focus(); open(A, 'modal-a'); A.items[1].focus(); open(B, 'modal-b');
+ok(at() === 'modal-b-surface', 'F15 a sheet opened over another takes focus');
+B.items[1].focus(); [r, e] = tab();
+ok(at() === 'modal-b-item0', 'F15b Tab cycles in the top sheet only');
+close(B, 'modal-b');
+ok(at() === 'modal-a-item1', 'F15c closing the top sheet returns focus to the control in the sheet below that opened it');
+close(A, 'modal-a');
+ok(at() === 'opener', 'F15d closing the last sheet returns focus to the page control');
+
+sf._resetSheetFocus();
+opener.focus(); open(A, 'modal-a'); A.items[0].focus(); open(A, 'modal-a');
+ok(at() === 'modal-a-item0', 'F16 re-opening an open sheet keeps the focus already inside it');
+close(A, 'modal-a');
+ok(at() === 'opener', 'F16b ... and keeps the original opener as the return target');
+
+sf._resetSheetFocus();
+opener.focus(); open(A, 'modal-a'); page.visible = false; close(A, 'modal-a');
+ok(at() === 'body', 'F17 when the opener is no longer on screen focus leaves the hidden sheet instead of jumping somewhere arbitrary');
+page.visible = true;
+
+sf._resetSheetFocus();
+opener.focus(); open(A, 'modal-a'); other.focus(); close(A, 'modal-a');
+ok(at() === 'other', 'F18 focus the code already moved elsewhere on purpose is left alone on close');
+
+sf._resetSheetFocus();
+opener.focus(); open(U, 'modal-upgrade');
+ok(at() === 'opener' && !('tabindex' in U.surf.attrs), 'F19 the sign-in / plans sheet is excluded: no focus move, no tabindex (its focus belongs to the sign-in flow)');
+open(A, 'modal-a'); A.items[2].focus(); [r, e] = tab();
+ok(r === false && !e.defaultPrevented, 'F19b while the sign-in sheet is open no Tab is trapped');
+close(U, 'modal-upgrade'); [r, e] = tab();
+ok(r === true && at() === 'modal-a-item0', 'F19c once it closes the sheet below traps Tab again');
+close(A, 'modal-a');
+
+sf._resetSheetFocus();
+opener.focus(); open(Z, 'modal-z'); [r, e] = tab();
+ok(r === true && e.defaultPrevented && at() === 'modal-z-surface', 'F20 a sheet with no controls keeps focus on its surface');
+close(Z, 'modal-z');
+sf._resetSheetFocus();
+opener.focus(); open(D, 'modal-d');
+ok(at() === 'modal-d-surface' && D.surf.attrs.tabindex === '-1', 'F20b an element with role="dialog" is the surface that takes focus');
+close(D, 'modal-d');
+for (const k of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }]) {
+  sf._resetSheetFocus(); open(A, 'modal-a'); A.items[2].focus();
+  const ev = { key: 'Tab', defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...k };
+  ok(sf.onSheetTab(ev, fdoc) === false, 'F20c a modified Tab (' + Object.keys(k)[0] + ') is not intercepted');
+  close(A, 'modal-a');
+}
+sf._resetSheetFocus();
+
+// F21 wiring in main.js and the module's purity.
+const sfSrc = src('docs/src/js/sheetfocus.js');
+ok(!/^\s*import\s/m.test(stripLineComments(sfSrc)), 'F21 sheetfocus.js is pure DOM with no imports');
+ok(/FOCUS_EXCLUDED = new Set\(\['modal-upgrade'\]\)/.test(sfSrc), 'F21b #modal-upgrade is the one excluded sheet');
+const om = (mainJs.match(/function openModal\(id\)\s*\{[\s\S]*?\n\}/) || [''])[0];
+const cm = (mainJs.match(/function closeModal\(id\)\s*\{[\s\S]*?\n\}/) || [''])[0];
+ok(om.indexOf("el.classList.add('active')") > -1 && om.indexOf('sheetOpened(el, id)') > om.indexOf("el.classList.add('active')"), 'F21c openModal moves focus after the sheet is shown');
+ok(cm.indexOf("el.classList.remove('active')") > -1 && /if \(wasOpen\) sheetClosed\(el, id\)/.test(cm) && cm.indexOf('sheetClosed(el, id)') > cm.indexOf("el.classList.remove('active')"), 'F21d closeModal returns focus only for a sheet that was open, after hiding it');
+ok(/\ninitSheetFocus\(\);/.test(mainJs.replace(/\r/g, '')), 'F21e the Tab handler is installed at boot');
+}
+
 console.log(`\ndesignsystem: ${pass} passed, ${fail} failed`);
 if (fail) { fails.forEach(f => console.log('  ✗ ' + f)); process.exit(1); }

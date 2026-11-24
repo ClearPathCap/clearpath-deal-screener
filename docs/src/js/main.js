@@ -18,6 +18,7 @@ import { saveDeal as _saveDeal, renderPipeline,
 import { openShareApp, shareDeal }                                   from './share.js';
 import { initViewStack, recordPage, recordSheetOpen, recordSheetClose, haptic } from './viewstack.js';   // design-system wave: History-API view stack
 import { stateHtml }                                               from './states.js';      // design-system wave: one empty/loading/error component
+import { initSheetFocus, sheetOpened, sheetClosed }               from './sheetfocus.js';  // design-system wave (a11y): focus moves into, stays in and returns from sheets
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { consumeInstallLink, openInstallFromLink }                   from './install.js';   // business-card ?install=1
 import { consumeToolLink }                                            from './toolLink.js';  // public tool pages: /?tool=<name>
@@ -1429,6 +1430,7 @@ function openModal(id)  {
   el.classList.add('active');
   const surface = el.querySelector('.modal, .modal-picker');
   if (surface) surface.scrollTop = 0;           // no stale scroll on reopen
+  sheetOpened(el, id);                          // design-system wave (a11y): focus moves into the sheet
 }
 function closeModal(id) {
   const el = document.getElementById(id);
@@ -1443,6 +1445,7 @@ function closeModal(id) {
     }
   }
   el.classList.remove('active');
+  if (wasOpen) sheetClosed(el, id);             // design-system wave (a11y): focus returns to the opener
   if (wasOpen) recordSheetClose(id);            // design-system wave: consumes this sheet's History entry
 }
 
@@ -2546,6 +2549,7 @@ initViewStack({
   currentPage: currentPageId,
   isRequired: (id) => { const m = document.getElementById(id); return !!(m && m.dataset && m.dataset.required); },
 });
+initSheetFocus();   // design-system wave (a11y): Tab stays inside the top open sheet
 // Design-system wave (review finding 6): ltr.js and brrr.js (protected engine
 // files, unchanged this wave) still write the Title Case 'Monthly Rent' into the
 // rent label on every analysis. Keep the label sentence case without touching

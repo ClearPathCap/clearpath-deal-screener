@@ -1861,7 +1861,7 @@ async function sendSignInCode() {
   showRedeemMsg(msgEl, { ok: true, msg: 'Sending…' });
   let result;
   try { result = await sendOtpCode(email); } finally { _sendInFlight = false; }
-  showRedeemMsg(msgEl, result.ok ? { ok: true, msg: 'Code sent to ' + email + '. Paste it here, or tap the code suggested above your keyboard.' } : result);
+  showRedeemMsg(msgEl, result.ok ? { ok: true, msg: 'Check your email. Paste the code here, or tap the code suggested above your keyboard.' } : result);
   if (result.ok) {
     const now = Date.now();
     writePending(_signinStore, email, now);
@@ -1941,9 +1941,9 @@ function resumePendingSignIn() {
   if (isSignedIn()) { clearPending(_signinStore); return false; }
   const p = readPending(_signinStore);
   if (!p) return false;
+  openUpgrade('general');   // first: opening the sheet refreshes the account block
   const em = document.getElementById('signin-email'); if (em) em.value = p.email;
   showCodeStep(p.email, p.sentAt);
-  openUpgrade('general');
   showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: 'Enter the code we emailed to ' + p.email + '.' });
   document.getElementById('signin-code')?.focus();
   return true;
@@ -1961,9 +1961,9 @@ function takeAuthLinkFromUrl() {
 }
 function showPendingAuthLink() {
   if (!_pendingAuthLink) return false;
+  openUpgrade('general');
   const step = document.getElementById('signin-link-step');
   if (step) step.style.display = '';
-  openUpgrade('general');
   document.getElementById('signin-link-btn')?.focus();
   return true;
 }
@@ -1999,13 +1999,18 @@ function updateAccountUI() {
   // Mobile Phase 0: the plan check could not reach the server — premium stays off (fail closed); say why.
   const planNote = document.getElementById('account-plan-unverified');
   if (planNote) planNote.hidden = !(signedIn && entitlementStatus() === 'unverified');
-  // Reset the sign-in steps when signed out (back to the email step).
-  if (!signedIn) {
+  // Reset the sign-in steps when signed out (back to the email step) — but NOT while a code
+  // is pending for this tab (overnight A browser finding: any auth refresh, or reopening the
+  // sheet, used to hide the code field the person was about to fill).
+  if (!signedIn && !readPending(_signinStore)) {
     const codeStep = document.getElementById('signin-code-step');
     if (codeStep) codeStep.style.display = 'none';
+    const help = document.getElementById('signin-code-help');
+    if (help) help.style.display = 'none';
     const codeInput = document.getElementById('signin-code');
     if (codeInput) codeInput.value = '';
   }
+  if (signedIn) { const help = document.getElementById('signin-code-help'); if (help) help.style.display = 'none'; }
 }
 
 // ── Wave A1 auth chip (util-bar) ─────────────────────────────────────────────
@@ -2225,6 +2230,10 @@ function initOnboarding() {
   // Business-card ?install=1 visit: "Get the App" owns this visit; the market
   // picker waits for the next one (nothing is stored, so it simply reappears).
   if (installLinkVisit) return;
+  // Overnight A (browser finding): a visit that is finishing a sign-in (an emailed link, or a
+  // code sent from this tab) is about that; the picker would cover the sign-in step. It waits
+  // for the next visit (nothing is stored, so it simply reappears).
+  if (_pendingAuthLink || readPending(_signinStore)) return;
   if (localStorage.getItem('primaryMarket') || localStorage.getItem('onboardingSkipped')) return;
   openMarketPicker(0, true /* isFirstLaunch */);
 }
@@ -2369,6 +2378,7 @@ if (toolLink) {
   showPage(toolLink.page, document.querySelector('.nav-btn[data-tab="' + toolLink.page + '"]'));
   if (toolLink.view) switchRentalView(toolLink.view, document.getElementById('subtab-' + toolLink.view));
 }
+takeAuthLinkFromUrl();   // overnight A: an emailed sign-in token never lingers in the address bar (and the picker waits)
 initOnboarding();
 openInstallFromLink();      // business-card QR: open "Get the App" after load
 
@@ -2413,7 +2423,6 @@ window.addEventListener('storage', (e) => {
 // subscription is wired, and the first entitlement sync + notify ran. Until
 // then the chip stays in its neutral init state; no timers, no guessing.
 initConnectivity();   // Mobile Phase 0: banner + online/visibility retry wiring, before the first server call settles
-takeAuthLinkFromUrl();   // overnight A: an emailed sign-in token never lingers in the address bar
 wireSigninCodeField();
 initAuthAndEntitlement().then(() => {
   _authReady = true;

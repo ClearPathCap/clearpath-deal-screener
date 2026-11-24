@@ -300,7 +300,10 @@ ok(/\.modal-backdrop:not\(#modal-upgrade\)\[data-required\] > \.modal::before\{d
 // ─── §E what this wave does not touch ───────────────────────────────────────
 console.log('— §E boundaries —');
 let base = null;
-try { execFileSync('git', ['-C', root, 'cat-file', '-e', 'b47a9aa963d4c190eadb30650648c4e9df8756b3^{commit}'], { stdio: 'ignore' }); base = 'b47a9aa963d4c190eadb30650648c4e9df8756b3'; } catch {}
+// The production commit this branch is built on (re-based 2026-11-24 from b47a9aa onto dfb7a4d, the
+// sign-in paste-button removal). Re-point it when the branch is re-based again.
+const PROD_BASE = 'dfb7a4d086a16b9b340201ea7c30810c760c9262';
+try { execFileSync('git', ['-C', root, 'cat-file', '-e', PROD_BASE + '^{commit}'], { stdio: 'ignore' }); base = PROD_BASE; } catch {}
 if (base) {
   const changed = execFileSync('git', ['-C', root, 'diff', '--name-only', base, '--', 'docs', 'supabase'], { encoding: 'utf8' }).split('\n').filter(Boolean);
   const forbidden = changed.filter(f => /\/(finance|flip|ltr|brrr|strFinance|rental|auth|signinCode|supabaseClient|tiers|storage|marketSync|clearpath)\.js$/.test(f) || /^supabase\//.test(f) || /^docs\/vendor\//.test(f) || /(privacy|terms)\.html$/.test(f));

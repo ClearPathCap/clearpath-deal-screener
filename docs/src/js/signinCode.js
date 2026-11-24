@@ -175,3 +175,11 @@ export function codeSentMessage(email) {
   return 'Code sent to ' + to + '. Copy the code from the email, come back, then press and hold the box and tap Paste — or type it.';
 }
 export const PASTE_NO_CODE_MSG = 'No code found in what you copied. Copy just the code from the email, or type it.';
+
+// RETIRED with the "Paste code" button (security review F9): kept for one release as inert stubs so
+// a browser or CDN that still holds the previous main.js (which imports them) keeps working while
+// the caches turn over. Nothing uses them; remove them in the release after this one.
+export function clipboardReadable() { return false; }
+export function clipboardLooksLikeCode() { return false; }
+export const PASTE_CHECK_MSG = '';
+export const PASTE_UNREADABLE_MSG = '';

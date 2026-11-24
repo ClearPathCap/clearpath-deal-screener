@@ -21,7 +21,16 @@ ok(S.looksLikeEmail('aaron@example.com') && S.looksLikeEmail('  a.b+x@sub.exampl
   ok(a.includes('a@local.test') && /press and hold the box and tap Paste/.test(a) && /or type it/.test(a),
      'P3 the sent message names the address and the one reliable next step (the box\'s own press-and-hold Paste)');
   ok(![a, S.PASTE_NO_CODE_MSG].some(m => /suggest|keyboard|automatic|AutoFill|Paste code/i.test(m)), 'P4 no message promises an iPhone keyboard suggestion or a Paste code button');
-  ok(S.clipboardReadable === undefined && S.clipboardLooksLikeCode === undefined && S.PASTE_UNREADABLE_MSG === undefined, 'P2 the clipboard-button helpers are gone (real-device UAT: the button failed in Safari)');
+  ok(S.clipboardReadable() === false && S.clipboardLooksLikeCode('482913') === false && S.PASTE_UNREADABLE_MSG === '' && S.PASTE_CHECK_MSG === ''
+     && !/clipboardReadable|clipboardLooksLikeCode|PASTE_CHECK_MSG|PASTE_UNREADABLE_MSG/.test(mj), 'P2 the clipboard-button helpers are retired: inert stubs nothing imports (kept one release for cache safety, review F9)');
+  { // review F9: a release must never REMOVE an export the live main.js may still import from a cached copy
+    const LIVE_B47A9AA_EXPORTS = ['extractOtp', 'normalizeOtp', 'looksComplete', 'shouldAutoVerify', 'friendlyAuthError', 'AUTH_LINK_ENABLED', 'AUTH_LINK_PARAMS', 'readAuthLink',
+      'SESSION_URL_PARAMS', 'sessionLinkKind', 'LINK_NOT_USED_MSG', 'hasAuthLinkParams', 'stripAuthLink', 'PENDING_KEY', 'PENDING_TTL_MS', 'readPending', 'writePending',
+      'clearPending', 'RESEND_COOLDOWN_MS', 'resendWaitSeconds', 'looksLikeEmail', 'clipboardReadable', 'codeSentMessage', 'clipboardLooksLikeCode', 'PASTE_CHECK_MSG',
+      'PASTE_NO_CODE_MSG', 'PASTE_UNREADABLE_MSG'];
+    const missing = LIVE_B47A9AA_EXPORTS.filter(k => !(k in S));
+    ok(missing.length === 0, 'X1 every export of the live signinCode.js (b47a9aa) still exists, so a cached old main.js cannot fail to load' + (missing.length ? ' — missing: ' + missing.join(',') : ''));
+  }
 }
 
 console.log('— §F focus on the tap (iOS Safari) ─');

@@ -45,7 +45,8 @@ import {
 } from './auth.js';
 import { initConnectivity, retryNow } from './connectivity.js';
 import { normalizeOtp, extractOtp, looksComplete, shouldAutoVerify, readAuthLink, stripAuthLink, hasAuthLinkParams,
-         AUTH_LINK_ENABLED, readPending, writePending, clearPending, resendWaitSeconds } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
+         AUTH_LINK_ENABLED, readPending, writePending, clearPending, resendWaitSeconds,
+         looksLikeEmail, clipboardReadable, codeSentMessage, PASTE_NO_CODE_MSG, PASTE_UNREADABLE_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline } from './storage.js';
@@ -1629,7 +1630,9 @@ function applyAccountPriority(accountFirst) {
 }
 
 // trigger: 'region' | 'save' | 'cap' | 'general'
+let _lastUpgradeTrigger = 'general';
 function configureUpgradeModal(trigger) {
+  _lastUpgradeTrigger = trigger || 'general';
   const tier      = getActiveTier();
   const title     = document.getElementById('upgrade-modal-title');
   const subhead   = document.getElementById('upgrade-subhead');
@@ -1845,9 +1848,43 @@ const _signinStore = (() => { try { return window.sessionStorage; } catch { retu
 let _verifyInFlight = false, _sendInFlight = false, _lastTriedCode = '', _codePrevLen = 0, _resendTick = 0, _codeSentAt = 0;
 let _pendingAuthLink = null;
 
+// iPhone UAT follow-up (owner, real iPhone + Gmail): the code step owns the sheet while a code is
+// pending — the email box, the plan cards and the "Have a code?" box are hidden, so the only
+// field on screen is the code box (and iOS has no email field to offer contacts for).
+function canPasteCode() {
+  return clipboardReadable(typeof navigator !== 'undefined' ? navigator : null, typeof window !== 'undefined' ? window.isSecureContext : false);
+}
+function setSigninFocus(on) {
+  const shell = document.getElementById('upgrade-modal-body');
+  if (shell?.classList?.toggle) shell.classList.toggle('signin-focus', !!on);
+  const title = document.getElementById('signin-code-title'); if (title) title.hidden = !on;
+  const emailStep = document.getElementById('signin-email-step'); if (emailStep) emailStep.style.display = on ? 'none' : '';
+  const paste = document.getElementById('signin-paste-btn'); if (paste) paste.hidden = !(on && canPasteCode());
+}
+// After a sign-in completes with the sheet open, its heading still said "Sign in or create a free
+// account" above "Signed in as …" (the sheet was configured only when it opened). Re-configure it for
+// the signed-in state once the session is in place — now, or on the auth refresh that follows.
+let _refreshSheetOnSignIn = false;
+function refreshSheetAfterSignIn() {
+  if (!isSignedIn()) { _refreshSheetOnSignIn = true; return; }
+  _refreshSheetOnSignIn = false;
+  if (document.getElementById('modal-upgrade')?.classList?.contains('active')) configureUpgradeModal(_lastUpgradeTrigger);
+}
+function codeStepOpen() {
+  const codeStep = document.getElementById('signin-code-step');
+  return !!codeStep && codeStep.style.display !== 'none';
+}
+function closeCodeStep() {
+  clearInterval(_resendTick);
+  const codeStep = document.getElementById('signin-code-step'); if (codeStep) codeStep.style.display = 'none';
+  const help = document.getElementById('signin-code-help'); if (help) help.style.display = 'none';
+  setSigninFocus(false);
+}
+
 function showCodeStep(email, sentAt) {
   const codeStep = document.getElementById('signin-code-step');
   if (codeStep) codeStep.style.display = '';
+  setSigninFocus(true);
   const help = document.getElementById('signin-code-help');
   if (help) help.style.display = '';
   const to = document.getElementById('signin-sent-to');
@@ -1869,25 +1906,44 @@ function renderResendState() {
 
 async function sendSignInCode() {
   if (_sendInFlight) return;
-  const email = (document.getElementById('signin-email')?.value || '').trim();
+  const emailEl = document.getElementById('signin-email');
+  const email = (emailEl?.value || '').trim();
   const msgEl = document.getElementById('signin-msg');
+  const input = document.getElementById('signin-code');
+  if (!looksLikeEmail(email)) { showRedeemMsg(msgEl, { ok: false, msg: 'Enter your email address, then tap Send code.' }); emailEl?.focus(); return; }
   // N24 review F4: the resend cooldown applies to "Send code" too, for the address a code was just sent to.
   const pend = readPending(_signinStore);
   const wait = pend && pend.email.toLowerCase() === email.toLowerCase() ? resendWaitSeconds(pend.sentAt) : 0;
-  if (wait > 0) { showRedeemMsg(msgEl, { ok: false, msg: 'A code was just sent to ' + email + '. You can send a new one in ' + wait + 's.' }); return; }
+  if (wait > 0) {   // nothing is sent; the person goes (back) to the code step for the code already on its way
+    showCodeStep(pend.email, pend.sentAt); input?.focus();
+    showRedeemMsg(msgEl, { ok: true, msg: 'A code was just sent to ' + email + '. Enter it here — you can send a new one in ' + wait + 's.' });
+    return;
+  }
   _sendInFlight = true;
-  showRedeemMsg(msgEl, { ok: true, msg: 'Sending…' });
+  const wasOnCodeStep = codeStepOpen(), prevSentAt = _codeSentAt;
+  // iPhone: iOS Safari moves the keyboard to a field only when focus() runs INSIDE the tap — never
+  // after a network round trip (which is why the keyboard used to stay on the email box and offer
+  // contacts and saved addresses). So the code step opens and takes focus now, before the request.
+  if (input) { input.value = ''; _codePrevLen = 0; }
+  showCodeStep(email, Date.now());
+  input?.focus();
+  showRedeemMsg(msgEl, { ok: true, msg: 'Sending your code to ' + email + '…' });
   let result;
   try { result = await sendOtpCode(email); } finally { _sendInFlight = false; }
-  showRedeemMsg(msgEl, result.ok ? { ok: true, msg: 'Check your email. Paste the code here, or tap the code suggested above your keyboard.' } : result);
   if (result.ok) {
     const now = Date.now();
     writePending(_signinStore, email, now);
     _lastTriedCode = '';
-    const input = document.getElementById('signin-code');
-    if (input) { input.value = ''; _codePrevLen = 0; }
     showCodeStep(email, now);
-    input?.focus();
+    showRedeemMsg(msgEl, { ok: true, msg: codeSentMessage(email, canPasteCode()) });
+  } else if (wasOnCodeStep && readPending(_signinStore)) {
+    // a failed RESEND keeps the step: the earlier code may still be valid
+    _codeSentAt = prevSentAt; renderResendState();
+    showRedeemMsg(msgEl, result);
+  } else {
+    closeCodeStep();
+    showRedeemMsg(msgEl, result);
+    emailEl?.focus();
   }
 }
 async function resendSignInCode() {
@@ -1896,9 +1952,7 @@ async function resendSignInCode() {
 }
 function changeSignInEmail() {
   clearPending(_signinStore);
-  clearInterval(_resendTick);
-  const codeStep = document.getElementById('signin-code-step'); if (codeStep) codeStep.style.display = 'none';
-  const help = document.getElementById('signin-code-help'); if (help) help.style.display = 'none';
+  closeCodeStep();
   const input = document.getElementById('signin-code'); if (input) input.value = '';
   _lastTriedCode = ''; _codePrevLen = 0;
   showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: '' });
@@ -1925,8 +1979,46 @@ async function verifySignInCode(opts = {}) {
     clearPending(_signinStore); clearInterval(_resendTick);
     if (input) input.value = '';
     _lastTriedCode = ''; _codePrevLen = 0;
+    refreshSheetAfterSignIn();
   } else if (input) { input.focus(); try { input.select(); } catch {} }
   return { status: result.ok ? 'signed-in' : 'failed' };
+}
+
+// One rule for every paste — the field's own paste and the "Paste code" button. The copied text
+// is used only to find the code; it is never stored, logged or sent anywhere else.
+function applyPastedCode(text, replaceAll) {
+  const input = document.getElementById('signin-code');
+  if (!input) return;
+  const { code, confident, found } = extractOtp(text);
+  if (!code || (!found && /[A-Za-z]/.test(text))) { showRedeemMsg(document.getElementById('signin-msg'), { ok: false, msg: PASTE_NO_CODE_MSG }); return; }
+  // N24 review F2: a complete code replaces the field; a PARTIAL paste into the field goes in at
+  // the caret (digits already typed are kept), then the whole field is cleaned.
+  let next;
+  if (looksComplete(code) || replaceAll) next = code;
+  else {
+    const v = input.value || '';
+    const s = input.selectionStart ?? v.length, en = input.selectionEnd ?? v.length;
+    next = normalizeOtp(v.slice(0, s) + code + v.slice(en));
+  }
+  input.value = next; _codePrevLen = next.length;
+  try { input.setSelectionRange(next.length, next.length); } catch {}
+  if (!looksComplete(next)) return;
+  // N24 review F3: verify by itself only when the paste was unambiguous.
+  if (confident || !looksComplete(code)) verifySignInCode({ auto: true });
+  else showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: 'The pasted text had more than one number. Check this is the code from your email, then tap Verify.' });
+}
+
+// "Paste code" (iPhone UAT follow-up): one tap after copying the code in the mail app. iOS shows
+// its own "Paste" bubble before anything is read; a refusal or an unsupported browser falls back
+// to press-and-hold Paste in the box.
+async function pasteSignInCode() {
+  const msgEl = document.getElementById('signin-msg');
+  if (_verifyInFlight) return;
+  if (!canPasteCode()) { showRedeemMsg(msgEl, { ok: false, msg: PASTE_UNREADABLE_MSG }); document.getElementById('signin-code')?.focus(); return; }
+  let text;
+  try { text = await navigator.clipboard.readText(); }
+  catch { showRedeemMsg(msgEl, { ok: false, msg: PASTE_UNREADABLE_MSG }); return; }
+  applyPastedCode(text == null ? '' : String(text), true);
 }
 
 // A complete code that arrives in one step (paste, the keyboard / OS suggestion, a drop)
@@ -1938,24 +2030,8 @@ function wireSigninCodeField() {
   input.addEventListener('paste', (e) => {
     const text = e.clipboardData && e.clipboardData.getData('text');
     if (text == null) return;
-    const { code, confident, found } = extractOtp(text);
     e.preventDefault();   // the field only ever receives digits
-    if (!code || (!found && /[A-Za-z]/.test(text))) { showRedeemMsg(document.getElementById('signin-msg'), { ok: false, msg: 'No code found in what you pasted. Copy just the code from the email, or type it.' }); return; }
-    // N24 review F2: a complete code replaces the field; a PARTIAL paste goes in at the caret
-    // (digits already typed are kept), then the whole field is cleaned.
-    let next;
-    if (looksComplete(code)) next = code;
-    else {
-      const v = input.value || '';
-      const s = input.selectionStart ?? v.length, en = input.selectionEnd ?? v.length;
-      next = normalizeOtp(v.slice(0, s) + code + v.slice(en));
-    }
-    input.value = next; _codePrevLen = next.length;
-    try { input.setSelectionRange(next.length, next.length); } catch {}
-    if (!looksComplete(next)) return;
-    // N24 review F3: verify by itself only when the paste was unambiguous.
-    if (confident || !looksComplete(code)) verifySignInCode({ auto: true });
-    else showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: 'The pasted text had more than one number. Check this is the code from your email, then tap Verify.' });
+    applyPastedCode(text, false);
   });
   input.addEventListener('input', (e) => {
     const before = _codePrevLen;
@@ -2009,7 +2085,7 @@ async function finishLinkSignIn() {
   let result;
   try { result = await verifyOtpCode('', '', { tokenHash: link.tokenHash, type: link.type }); } finally { _verifyInFlight = false; }
   showRedeemMsg(msgEl, result);
-  if (result.ok) clearPending(_signinStore);
+  if (result.ok) { clearPending(_signinStore); refreshSheetAfterSignIn(); }
   return { status: result.ok ? 'signed-in' : 'failed' };
 }
 
@@ -2034,15 +2110,12 @@ function updateAccountUI() {
   // Reset the sign-in steps when signed out (back to the email step) — but NOT while a code
   // is pending for this tab (overnight A browser finding: any auth refresh, or reopening the
   // sheet, used to hide the code field the person was about to fill).
-  if (!signedIn && !readPending(_signinStore)) {
-    const codeStep = document.getElementById('signin-code-step');
-    if (codeStep) codeStep.style.display = 'none';
-    const help = document.getElementById('signin-code-help');
-    if (help) help.style.display = 'none';
+  if (!signedIn && !readPending(_signinStore) && !_sendInFlight) {
+    closeCodeStep();
     const codeInput = document.getElementById('signin-code');
     if (codeInput) codeInput.value = '';
   }
-  if (signedIn) { const help = document.getElementById('signin-code-help'); if (help) help.style.display = 'none'; }
+  if (signedIn) { const help = document.getElementById('signin-code-help'); if (help) help.style.display = 'none'; setSigninFocus(false); if (_refreshSheetOnSignIn) refreshSheetAfterSignIn(); }
 }
 
 // ── Wave A1 auth chip (util-bar) ─────────────────────────────────────────────
@@ -2356,6 +2429,7 @@ Object.assign(window, {
   redeemTierCode,
   sendSignInCode,
   verifySignInCode,
+  pasteSignInCode,
   resendSignInCode,
   changeSignInEmail,
   finishLinkSignIn,

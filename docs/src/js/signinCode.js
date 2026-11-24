@@ -125,3 +125,36 @@ export function resendWaitSeconds(sentAt, now = Date.now()) {
   if (typeof sentAt !== 'number') return 0;
   return Math.max(0, Math.ceil((sentAt + RESEND_COOLDOWN_MS - now) / 1000));
 }
+
+// ─── iPhone UAT follow-up (owner, real iPhone + Gmail, 2026-11-24) ────────────
+// Owner-observed: the email arrived, but no code suggestion appeared; the keyboard offered
+// "AutoFill Contact" and saved email addresses (it was still attached to the EMAIL field), and
+// copying the code out of the Gmail notification was awkward. In source: the code box was
+// focused only after the send request returned, which iOS Safari ignores (focus must happen
+// inside the tap), and the email box, the plan cards and the "Have a code?" box all stayed on
+// screen during code entry. The iOS one-time-code suggestion itself is the OS's: it appears only
+// when iOS has read the code (Messages, or Apple Mail; not the Gmail app as of this writing), so
+// DealFit never promises it. The helpers below keep the new rules testable.
+
+// A plausible email address, checked before anything is sent (the provider still decides).
+export function looksLikeEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s == null ? '' : s).trim());
+}
+
+// Can this browser read the clipboard on a tap ("Paste code")? Needs a secure context and
+// navigator.clipboard.readText. iOS Safari shows its own "Paste" bubble first; the text is
+// read only after the person taps it, and only after they tapped "Paste code".
+export function clipboardReadable(nav, secure) {
+  return !!(secure !== false && nav && nav.clipboard && typeof nav.clipboard.readText === 'function');
+}
+
+// What to say once the code is on its way. Names the address (so a typo is visible) and the one
+// next step; it never promises an iPhone keyboard suggestion, which DealFit does not control.
+export function codeSentMessage(email, canPaste) {
+  const to = String(email || '').trim();
+  return canPaste
+    ? 'Code sent to ' + to + '. Copy the code from the email, come back, and tap Paste code — or type it.'
+    : 'Code sent to ' + to + '. Copy the code from the email, come back, then press and hold the box and tap Paste — or type it.';
+}
+export const PASTE_NO_CODE_MSG = 'No code found in what you copied. Copy just the code from the email, or type it.';
+export const PASTE_UNREADABLE_MSG = 'Couldn’t read what you copied. Press and hold the code box, then tap Paste.';

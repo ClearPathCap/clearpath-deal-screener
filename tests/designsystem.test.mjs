@@ -629,6 +629,13 @@ ok(r === true && at() === 'modal-t-item1', 'F25b Shift+Tab from the first lands 
 close(T, 'modal-t'); sf._resetSheetFocus();
 
 // F26 (finding 2): the picker's "No results found" row is a message at full contrast, not a faded control.
+// F27 (review round 2): the market picker keeps its accessible name through the state drill-down.
+{
+  const setTitle = (mainJs.match(/function _pickerSetTitle\(text\) \{[\s\S]*?\n\}/) || [''])[0];
+  const setBack = (mainJs.match(/function _pickerSetBack\(code\) \{[\s\S]*?\n\}/) || [''])[0];
+  ok(/class="picker-title" id="picker-headline"/.test(setTitle) && /class="picker-title" id="picker-headline"/.test(setBack) && /id="picker-headline"/.test(html),
+     'F27 every picker title render (initial markup, title, drill-down) carries id="picker-headline", the sheet\'s aria-labelledby target');
+}
 ok(/\.picker-item\.disabled\{opacity:1\}/.test(cssNC) && /\.picker-item\.disabled \.picker-item-label\{color:var\(--text-2\)/.test(cssNC), 'F26 the market picker\'s No results row is not faded (was opacity .35, about 2.9:1)');
 }
 

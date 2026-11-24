@@ -1036,7 +1036,7 @@ function _pickerSetTitle(text) {
 }
 function _pickerSetBack(code) {
   const nav = document.getElementById('picker-nav');
-  if (nav) nav.innerHTML = `<button class="picker-back" onclick="pickerBack()">&#8592; Back</button><div class="picker-title">${code}</div>`;
+  if (nav) nav.innerHTML = `<button class="picker-back" onclick="pickerBack()">&#8592; Back</button><div class="picker-title" id="picker-headline">${code}</div>`;   // keeps the sheet's aria-labelledby target (a11y review r2)
 }
 
 function _pickerRenderStateList(codes) {

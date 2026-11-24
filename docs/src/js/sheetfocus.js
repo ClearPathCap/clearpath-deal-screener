@@ -18,7 +18,12 @@
 // it on engines that ignore aria-modal.
 // EXCLUDED: #modal-upgrade (sign-in / plans). Its focus is owned by the sign-in
 // session (code-field focus, otpfocus suite): it is never managed here, and Tab
-// is not trapped while it is open.
+// is not trapped while it is open. RULE: close a managed sheet before opening
+// #modal-upgrade (every current path does — pipeline.js closes first; the other
+// callers are on pages): aria-modal on a sheet left open beneath it would hide
+// the sign-in sheet from screen readers.
+// A sheet whose title element is re-rendered must keep the id its
+// aria-labelledby names (the market picker re-uses #picker-headline).
 // Pure DOM, no imports; main.js calls sheetOpened / sheetClosed from openModal /
 // closeModal and initSheetFocus once at boot. FAIL-SAFE: focus is a courtesy —
 // no exception from here may ever escape into openModal / closeModal or a

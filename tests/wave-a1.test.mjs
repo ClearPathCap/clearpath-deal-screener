@@ -270,7 +270,7 @@ nameEl.value = '   ';
 }
 ok(r.status !== 'refused-name', 'B2 blank name is no longer refused');
 ok(r.status === 'refused-result' && nameEl.value === '   ', 'B2 a refused save leaves the blank name field untouched');
-ok(/^Rental deal · /.test(pipeline.defaultDealName('ltr', new Date(2026, 10, 24, 9, 5))), 'B2 the default name for a long-term rental is "Rental deal · <date>"');
+ok(/^Long-term rental deal · /.test(pipeline.defaultDealName('ltr', new Date(2026, 10, 24, 9, 5))), 'B2 the default name for a long-term rental is "Long-term rental deal · <date>"');
 nameEl.value = 'Test Deal';
 
 // B3 refused-result
@@ -292,6 +292,26 @@ globalThis.__tier = 'starter';
 globalThis.__lastResults.ltr = fakeLtr;
 r = await pipeline.saveDeal('ltr');
 ok(r.status === 'saved', 'B4a starter under the uniform allowance -> saved (old 2-deal starter cap gone)');
+// B2b (Commercial C1, review R1-4): a blank name with a valid result SAVES under the dated default name, and
+// the form field is left as the user had it.
+nameEl.value = '   ';
+r = await pipeline.saveDeal('ltr');
+{
+  const all = storage.getDeals(); const last = all.find(d => /^Long-term rental deal · /.test(d.name));   // new deals are prepended
+  ok(r.status === 'saved' && last && /^Long-term rental deal · /.test(last.name) && nameEl.value === '   ',
+     'B2b a blank-name save is stored as "Long-term rental deal · <date>" and the field is untouched (' + (last && last.name) + ')');
+  // B2c (review R1-3): updating a reviewed saved deal with the name cleared keeps its saved name.
+  const renamed = all.map(d => d.id === last.id ? { ...d, name: 'Orange St triplex' } : d);
+  await storage.saveDeals(renamed);
+  pipeline.beginDealReview(last.id);
+  nameEl.value = '';
+  const r2 = await pipeline.saveDeal('ltr');
+  const after = storage.getDeals().find(d => d.id === last.id);
+  ok(r2.status === 'saved' && after && after.name === 'Orange St triplex' && storage.getDeals().length === all.length,
+     'B2c Update Saved Deal with a blank name keeps the saved name and adds no duplicate (' + (after && after.name) + ')');
+  pipeline.endDealReview();
+}
+nameEl.value = 'Test Deal';
 { // Fill to the allowance and prove the refusal is tier-blind (pro refused too).
   const filler = [];
   for (let i = 0; i < storage.PIPELINE_ALLOWANCE; i++) {

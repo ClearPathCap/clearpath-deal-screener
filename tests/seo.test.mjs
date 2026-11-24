@@ -236,7 +236,9 @@ for (const p of ALL) {
      "W2b the strongest LTR verdict line says it clears DealFit's DSCR bar, never 'clears underwriting' (review L1)");
   ok(/Each lever on its own would bring this deal to <strong>' \+ \(g\.hotLabel \|\| 'the strongest verdict'\)/.test(src("docs/src/js/main.js")),
      "W3 the guidance fallback label is DealFit's strongest verdict");
-  ok(/Unlimited exports \+ shareable deal summaries/.test(app), "W4 the paid-tier list sells deal summaries, never lender readiness");
+  // RE-PINNED in Commercial C1 (review R1-7): the Pro line "Unlimited exports + shareable deal summaries" implied
+  // Investor exports are metered (nothing meters them). Same intent, pinned on the Investor summary line.
+  ok(/Export a clean deal summary to send a partner or lender/.test(app) && !/lender[- ]ready/i.test(app), "W4 the paid-tier list sells deal summaries, never lender readiness");
   // F4: the flip target is $40,000 by default (index.html value), and the market pre-fill replaces it.
   const flipPage = src("docs/fix-and-flip-calculator/index.html");
   ok(/id="f-target"[^>]*value="40,000"/.test(app), "W5 the flip minimum-profit target input defaults to 40,000");

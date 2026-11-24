@@ -401,14 +401,24 @@ try { execFileSync('git', ['-C', root, 'cat-file', '-e', PROD_BASE + '^{commit}'
 if (base) {
   const changed = execFileSync('git', ['-C', root, 'diff', '--name-only', base, '--', 'docs', 'supabase'], { encoding: 'utf8' }).split('\n').filter(Boolean);
   const forbidden = changed.filter(f => /\/(finance|flip|ltr|brrr|strFinance|rental|auth|signinCode|supabaseClient|tiers|storage|marketSync|clearpath)\.js$/.test(f) || /^supabase\//.test(f) || /^docs\/vendor\//.test(f) || /(privacy|terms)\.html$/.test(f));
-  // RE-PINNED in Commercial C1 (same-commit law): clearpath.js may differ from production by exactly the one
-  // business-purpose copy line on the funding button (pinned by tests/commercialc1 F1). Any other change fails.
+  // RE-PINNED in Commercial C1 (same-commit law; review R1-5): clearpath.js may differ from production ONLY by
+  // the C1 compliance copy — the business-purpose statement on every funding handoff (button captions and
+  // clipboard summaries) and the broker line added to the flip/STR summaries (pinned by tests/commercialc1 F*).
+  // Whole-file check: remove exactly those insertions from the current file; the rest must equal production.
+  const C1_INSERTS = [
+    '\n  <div style="font-size:11px;color:#9aa4b2;margin-top:6px;line-height:1.45">Estimate only — not a loan offer, approval, or guarantee of terms. Business-purpose, non-owner-occupied investment property only. Clear Path Capital is a broker; final terms come from the lender.</div>',
+    ' Business-purpose, non-owner-occupied investment property only. Clear Path Capital is a broker.\',',
+    ' Business-purpose, non-owner-occupied investment property only.',
+  ];
   const c1Only = (f) => {
     if (!/\/clearpath\.js$/.test(f)) return false;
-    const d = execFileSync('git', ['-C', root, 'diff', '-U0', base, '--', f], { encoding: 'utf8' }).replace(/\r/g, '');
-    const lines = d.split('\n').filter(l => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l));
-    return lines.length === 2 && lines[0].startsWith('-') && lines[1].startsWith('+')
-      && lines[1].replace('Business-purpose, non-owner-occupied investment property only. ', '') === '+' + lines[0].slice(1);
+    const norm = (t) => t.replace(/\r\n/g, '\n');
+    const prod = norm(execFileSync('git', ['-C', root, 'show', base + ':' + f], { encoding: 'utf8' }));
+    let cur = norm(readFileSync(join(root, f), 'utf8'));
+    cur = cur.split(C1_INSERTS[0]).join('');
+    cur = cur.split(C1_INSERTS[1]).join('\',');
+    cur = cur.split(C1_INSERTS[2]).join('');
+    return cur === prod;
   };
   const forbiddenNow = forbidden.filter(f => !c1Only(f));
   ok(forbiddenNow.length === 0, 'E1 engines, sign-in, Supabase, vendor, tier/storage and legal files are byte-identical to production (' + forbiddenNow.join(', ') + ')');

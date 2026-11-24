@@ -35,7 +35,7 @@ let pendingDeleteId = null;
 // ─── Save ─────────────────────────────────────────────────────────────────────
 
 // Wave A1 save outcome contract: resolves to {status} where status is exactly one
-// of refused-auth | refused-name | refused-result | refused-cap | refused-busy |
+// of refused-auth | refused-result | refused-cap | refused-busy |
 // saved | save-failed (save-failed adds failureClass:'auth'|'stale'|'other' —
 // 'stale' is the UX-wave silent-wipe guard: hydration unproven, nothing written,
 // recover by rehydrate + retry). Success
@@ -92,7 +92,7 @@ function savedInputsLine(d) {
 }
 
 // Commercial C1: the default name for a deal saved with a blank name field.
-const DEAL_TYPE_LABEL = { flip: 'Flip', ltr: 'Rental', rental: 'Short-term rental', brrr: 'BRRRR' };
+const DEAL_TYPE_LABEL = { flip: 'Flip', ltr: 'Long-term rental', rental: 'Short-term rental', brrr: 'BRRRR' };
 export function defaultDealName(type, when) {
   const label = DEAL_TYPE_LABEL[type] ? DEAL_TYPE_LABEL[type] + ' deal' : 'Deal';
   let stamp = '';
@@ -119,13 +119,6 @@ export async function saveDeal(type) {
     : getLastRentalResult();
   if (!result) { alert('Analyze the deal first, then save.'); return { status: 'refused-result' }; }
 
-  // Commercial C1: a blank name no longer stops the save with a browser alert (a dead end on
-  // the way to the first saved deal). The saved deal gets a dated default name the user can
-  // change later with Edit. The form field is NOT written, so a save that is refused below
-  // leaves the form exactly as it was (identity boundary, dealreview PB13).
-  // 'refused-name' stays for saveDealEdits only.
-  const name    = document.getElementById(nameId).value.trim() || defaultDealName(type, new Date());
-
   const deals = getDeals();
   const notes = document.getElementById(notesId).value.trim();
   let candidate, onOk;
@@ -135,6 +128,16 @@ export async function saveDeal(type) {
   // the reviewed raw inputs + fresh derived outputs, updated stamps. No
   // duplicate, and nothing else in the pipeline moves.
   const reviewing = reviewingDealId != null ? deals.find(d => d.id === reviewingDealId) : null;
+
+  // Commercial C1: a blank name no longer stops the save with a browser alert (a dead end on
+  // the way to the first saved deal). Updating a reviewed deal keeps its saved name; a new deal
+  // gets a dated default name. The form field is NOT written, so a save that is refused below
+  // leaves the form exactly as it was (identity boundary, dealreview PB13).
+  // 'refused-name' stays for saveDealEdits only.
+  const typedName = document.getElementById(nameId).value.trim();
+  const name = typedName
+    || (reviewing && reviewing.type === type && reviewing.name)
+    || defaultDealName(type, new Date());
   if (reviewing && reviewing.type === type) {
     const now = new Date();
     const updatedDeal = {

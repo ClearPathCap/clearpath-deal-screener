@@ -14,6 +14,9 @@
 // SDK bytes change only with a DealFit commit. Bump deliberately: change the
 // version in tools/vendor, run `npm run vendor`, and update this path.
 import { createClient } from '../../vendor/supabase-js-2.112.3.js';
+// Native-readiness wave: on the web this adds NOTHING (the SDK keeps choosing
+// localStorage itself); in the Capacitor app the session goes to Keychain/Keystore.
+import { authStorageOption } from './sessionStore.js';
 
 const SUPABASE_URL = 'https://qbddbblhduzwcfwslbac.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_-9yLyv7rA5tkjKv_HEPe8A_iCvRq-xf';
@@ -29,5 +32,6 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     // sign-in stays an owner decision (signinCode.js AUTH_LINK_ENABLED); such tokens are only removed
     // from the address (main.js takeAuthLinkFromUrl), never used.
     detectSessionInUrl: false,
+    ...authStorageOption(),
   },
 });

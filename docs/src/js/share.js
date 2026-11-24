@@ -5,6 +5,7 @@ import { getDeals } from './storage.js';
 import { supabase } from './supabaseClient.js';
 import { noteServerResult, serverUnreachable } from './connectivity.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
+import { canShare, share as platformShare } from './platform.js';   // native-readiness: the OS share sheet on the web AND in the app
 
 // NOTE: Phase 1 will hard-code APP_URL to the deployed domain.
 // Wave 5 (SR-7 testability): guard the top-level `location` read so the pure
@@ -29,7 +30,7 @@ export async function openShareApp() {
   const msg = 'Check out DealFit by Clear Path Capital — it analyzes real estate deals in seconds: ' + APP_URL;
   if (canNativeShare()) {
     try {
-      await navigator.share({ title: 'DealFit by Clear Path Capital',
+      await platformShare({ title: 'DealFit by Clear Path Capital',
         text: 'Check out DealFit by Clear Path Capital — it analyzes real estate deals in seconds.', url: APP_URL });
       return;
     } catch { /* dismissed or rejected payload — offer the fallback */ }
@@ -98,7 +99,7 @@ export async function shareDeal(id) {
   // A. Native share sheet — the OS owns contact/app selection.
   if (canNativeShare() && url) {
     try {
-      await navigator.share({ title: deal.name, text: buildShareMessage(deal, null), url });
+      await platformShare({ title: deal.name, text: buildShareMessage(deal, null), url });
       return;
     } catch { /* user dismissed the sheet, or payload rejected — offer the fallback */ }
   }
@@ -201,7 +202,8 @@ function renderShareOpt(o, i, kind) {
   </div>`;
 }
 
-function canNativeShare() { return !!navigator.share; }
+// Web: navigator.share exactly as before; app: the Share plugin (platform.js).
+function canNativeShare() { return canShare(); }
 
 // UX-wave hardening ruling 2: promptPhoneAndSend (the sms: launcher) is GONE —
 // both share paths now route through the OS share sheet or the clean fallbacks

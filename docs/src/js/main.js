@@ -16,7 +16,7 @@ import { saveDeal as _saveDeal, renderPipeline,
          dealEditMarketChanged, dealEditRepTouched,
          beginDealReview, endDealReview, getReviewingDealId, onDealReviewEnded } from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
-import { initViewStack, recordPage, recordSheetOpen, recordSheetClose, haptic } from './viewstack.js';   // design-system wave: History-API view stack
+import { initViewStack, recordPage, recordSheetOpen, recordSheetClose, haptic, canStepBack } from './viewstack.js';   // design-system wave: History-API view stack
 import { stateHtml }                                               from './states.js';      // design-system wave: one empty/loading/error component
 import { initSheetFocus, sheetOpened, sheetClosed }               from './sheetfocus.js';  // design-system wave (a11y): focus moves into, stays in and returns from sheets
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
@@ -51,6 +51,8 @@ import { normalizeOtp, extractOtp, looksComplete, shouldAutoVerify, readAuthLink
          AUTH_LINK_ENABLED, readPending, writePending, clearPending, resendWaitSeconds,
          looksLikeEmail, codeSentMessage, PASTE_NO_CODE_MSG, sessionLinkKind, LINK_NOT_USED_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
+import { initPlatform, openPaymentPage, NATIVE_PAYMENT_MESSAGE } from './platform.js';   // native-readiness: web unchanged; the app's shell seam
+import { AUTH_LINK_PARAMS } from './signinCode.js';   // native-readiness: an app deep link carries the same sign-in link parameters a browser visit would
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline } from './storage.js';
 
@@ -1789,7 +1791,7 @@ async function startCheckout(tierName) {
       showToast('Checkout is unavailable right now. Nothing was charged.');
       return;
     }
-    if (data.url) { location.href = data.url; return; }
+    if (data.url) { if (openPaymentPage(data.url)) return; showToast(NATIVE_PAYMENT_MESSAGE); return; }
     logFunctionsFailure('checkout', { name: 'MalformedResponse', message: 'success response carried no url' });
     showToast('Checkout is unavailable right now. Nothing was charged.');
   } catch (e) {
@@ -1807,7 +1809,7 @@ async function manageSubscription() {
   manageSubscription._busy = true;
   try {
     const { data, error } = await supabase.functions.invoke('portal', { body: {} });
-    if (!error && data?.url) { location.href = data.url; return; }
+    if (!error && data?.url) { if (openPaymentPage(data.url)) return; showToast(NATIVE_PAYMENT_MESSAGE); return; }
     let code = null;
     try { code = (await error?.context?.clone()?.json())?.error ?? null; } catch { /* non-JSON or no body */ }
     if (code === 'no_subscription') { showToast('No Stripe subscription is linked to this account.'); return; }
@@ -2550,6 +2552,10 @@ initViewStack({
   isRequired: (id) => { const m = document.getElementById(id); return !!(m && m.dataset && m.dataset.required); },
 });
 initSheetFocus();   // design-system wave (a11y): Tab stays inside the top open sheet
+// Native-readiness wave: inside the Capacitor app only (a no-op on the web) —
+// Android Back steps the view stack above, links open in the in-app browser,
+// deep links map to a bundled page, status bar and keyboard are configured.
+initPlatform({ canStepBack, authParams: AUTH_LINK_PARAMS });
 // Design-system wave (review finding 6): ltr.js and brrr.js (protected engine
 // files, unchanged this wave) still write the Title Case 'Monthly Rent' into the
 // rent label on every analysis. Keep the label sentence case without touching

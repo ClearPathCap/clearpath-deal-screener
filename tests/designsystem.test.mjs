@@ -400,7 +400,10 @@ const PROD_BASE = 'dfb7a4d086a16b9b340201ea7c30810c760c9262';
 try { execFileSync('git', ['-C', root, 'cat-file', '-e', PROD_BASE + '^{commit}'], { stdio: 'ignore' }); base = PROD_BASE; } catch {}
 if (base) {
   const changed = execFileSync('git', ['-C', root, 'diff', '--name-only', base, '--', 'docs', 'supabase'], { encoding: 'utf8' }).split('\n').filter(Boolean);
-  const forbidden = changed.filter(f => /\/(finance|flip|ltr|brrr|strFinance|rental|auth|signinCode|supabaseClient|tiers|storage|marketSync|clearpath)\.js$/.test(f) || /^supabase\//.test(f) || /^docs\/vendor\//.test(f) || /(privacy|terms)\.html$/.test(f));
+  // Native-readiness wave (stacked on this wave): supabaseClient.js gains ONLY the secure
+  // session-storage option, empty on the web — that additive-only diff and the identical web
+  // storage are pinned in tests/native.test.mjs (§B, E9), so it is exempt here.
+  const forbidden = changed.filter(f => f !== 'docs/src/js/supabaseClient.js').filter(f => /\/(finance|flip|ltr|brrr|strFinance|rental|auth|signinCode|supabaseClient|tiers|storage|marketSync|clearpath)\.js$/.test(f) || /^supabase\//.test(f) || /^docs\/vendor\//.test(f) || /(privacy|terms)\.html$/.test(f));
   ok(forbidden.length === 0, 'E1 engines, sign-in, Supabase, vendor, tier/storage and legal files are byte-identical to production (' + forbidden.join(', ') + ')');
   const acct = (h) => { const a = h.indexOf('id="account-block"'); return h.slice(a, h.indexOf('id="redeem-block"', a)); };
   const baseHtml = execFileSync('git', ['-C', root, 'show', base + ':docs/index.html'], { encoding: 'utf8' });

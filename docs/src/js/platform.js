@@ -262,20 +262,27 @@ function setUp(h) {
     if (!t || t === here()) return;
     try { w.location.replace(new URL(t, w.location.href).href); } catch {}
   };
-  // A warm link (or one the shell retained across a cold start) is recorded as
-  // applied, so the launch-URL read on the page it opens does not re-apply it.
+  // Every applied link is remembered for this app session. The launch-URL read
+  // applies its link only once: Android's getLaunchUrl keeps returning the link
+  // that STARTED the process for its whole life, so it must never override a
+  // later warm link. A warm link (appUrlOpen) is the user's latest tap and is
+  // always applied (unless that page is already showing).
+  const APPLIED = 'df.appliedLinks';
+  const applied = () => { try { const v = JSON.parse(w.sessionStorage.getItem(APPLIED) || '[]'); return Array.isArray(v) ? v : []; } catch { return null; } };
+  const remember = (url) => { try { const v = applied() || []; if (!v.includes(url)) { v.push(url); w.sessionStorage.setItem(APPLIED, JSON.stringify(v.slice(-20))); } } catch {} };
   listen(App, 'appUrlOpen', (ev) => {
     const url = ev && ev.url;
     if (!url) return;
-    try { w.sessionStorage.setItem('df.launchUrl', url); } catch {}
+    remember(url);
     go(url);
   });
   call(App, 'getLaunchUrl').then((r) => {
     const url = r && r.url;
     if (!url) return;
-    let seen = null;
-    try { seen = w.sessionStorage.getItem('df.launchUrl'); w.sessionStorage.setItem('df.launchUrl', url); } catch { seen = url; }   // no sessionStorage → never re-apply
-    if (seen !== url) go(url);
+    const v = applied();
+    if (v === null || v.includes(url)) return;   // no sessionStorage → never re-apply (no reload loop)
+    remember(url);
+    go(url);
   }).catch(() => {});
 
   // Status bar: light text on the dark app bar; the web content runs under it

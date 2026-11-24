@@ -149,8 +149,9 @@ Add these only when the Apple Team ID and Android signing fingerprint exist (own
     false`, so they are only removed from the address.
   
   `?install` and `?checkout` are dropped in the app.
-  - A cold-start link is applied once per launch URL. A warm link is recorded so that the launch read on the page it
-    opens cannot re-apply it.
+  - Every applied link is remembered for the app session. The launch-URL read applies its link only once (Android's
+    `getLaunchUrl` returns the process's first link for its whole life), so it never overrides a later warm link. A warm
+    link is the user's latest tap and is always applied.
   - A link to the page already showing is ignored.
   - Without `sessionStorage`, a launch link is never re-applied (no reload loop; the link is dropped in that rare case).
   - The share token must match the viewer's own shape (32 hex); otherwise the link opens the app home.
@@ -172,8 +173,8 @@ Audited in a local browser at 375 × 812 against the stacked candidate.
 - 98 analyzer fields, selects, toggles and the market search had no programmatic name (screen readers read only the
   placeholder). Adjacent `<label>`s now name their control (`for=`); the rest carry `aria-label`. Sign-in fields are
   untouched.
-- Eight sheets are now announced as modal dialogs with their title (`role="dialog"`, `aria-modal`,
-  `aria-labelledby`). The sign-in / plans sheet is unchanged (sign-in is closed to speculative change).
+- Eight sheets are now announced as modal dialogs with their title (`role="dialog"`, `aria-modal`, and
+  `aria-labelledby`, or a fixed `aria-label` on the market picker, whose header text changes). The sign-in / plans sheet is unchanged (sign-in is closed to speculative change).
 - The repair tiers and the market-picker rows were click-only `<div>`s. They are now `role="button"` + `tabindex="0"`, and
   `a11y.js` gives them native-button behaviour:
   - Enter acts on key-down; Space acts on key-up, never scrolls the page, and does not repeat when held;
@@ -236,8 +237,12 @@ No location, contacts, photos, device identifiers or diagnostics are collected. 
 - DealFit is a business-purpose real-estate investment calculator from Clear Path Capital, a loan broker. It does not
   lend, approve or quote terms; every figure is an estimate.
 - Every analyzer works without an account and offline. Signing in (email code) only saves deals and market choices.
-- Paid plans are not sold in the app: there are no purchase buttons, and no checkout request is made. Whether plan prices
-  should show at all is part of the owner's payment decision.
+- Paid plans are not sold in the app: there are no purchase buttons, and no checkout request is made. Two items are part
+  of the owner's payment decision:
+  - whether plan prices should show at all;
+  - the "Have a code? / Redeem" field, which unlocks paid tiers. App Review 3.1.1 bars unlocking features with the app's
+    own codes outside App Store offer codes. It can be hidden in the app with the same injected style, touching no
+    sign-in markup.
 - **Demo account:** an owner decision, tracked with the store decisions outside this repository. A reviewer cannot read a
   DealFit sign-in email, and no review-only sign-in bypass will be built.
 

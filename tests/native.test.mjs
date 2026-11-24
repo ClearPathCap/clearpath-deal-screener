@@ -295,12 +295,27 @@ ok(loc.replaced.length === 1, 'C17 without sessionStorage a launch link is never
 Object.defineProperty(globalThis, 'sessionStorage', { value: savedSS, configurable: true, writable: true });
 launchUrl = null;
 callbacks['App:appUrlOpen']({ url: 'https://dealfit.clearpathcapfunding.com/?tool=ltr&checkout=success&install=1' });
-ok(loc.replaced[1] === 'https://localhost/index.html?tool=ltr' && ssMap.get('df.launchUrl') === 'https://dealfit.clearpathcapfunding.com/?tool=ltr&checkout=success&install=1',
-  'C18 a warm App Link keeps ?tool, drops ?checkout / ?install, and is recorded so the launch read cannot re-apply it');
+ok(loc.replaced[1] === 'https://localhost/index.html?tool=ltr' && JSON.parse(ssMap.get('df.appliedLinks') || '[]').includes('https://dealfit.clearpathcapfunding.com/?tool=ltr&checkout=success&install=1'),
+  'C18 a warm App Link keeps ?tool, drops ?checkout / ?install, and is remembered as applied');
 callbacks['App:appUrlOpen']({ url: 'https://dealfit.clearpathcapfunding.com/?tool=ltr' });
 ok(loc.replaced.length === 2, 'C18 a link to the page already showing is not re-applied');
 callbacks['App:appUrlOpen']({ url: 'https://evil.example/shared.html?d=0123456789abcdef0123456789abcdef' });
 ok(loc.replaced.length === 2, 'C19 a link for another host is ignored');
+// Android: getLaunchUrl returns the link that STARTED the process for its whole life
+// (Bridge.intentUri is set once). A warm link B must not be overridden by launch link A
+// on the page B opens (review round 2, R2-1).
+{
+  ssMap.clear();
+  const A = 'https://dealfit.clearpathcapfunding.com/shared.html?d=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const B = 'https://dealfit.clearpathcapfunding.com/shared.html?d=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  loc.href = 'https://localhost/index.html'; launchUrl = A; const n0 = loc.replaced.length;
+  P._resetForTests(); P.initPlatform({ canStepBack: () => false, authParams: [] }); await tick(); await tick();   // cold start from A
+  callbacks['App:appUrlOpen']({ url: B });                                                                         // warm B
+  for (let i = 0; i < 2; i++) { P._resetForTests(); P.initPlatform({ canStepBack: () => false, authParams: [] }); await tick(); await tick(); }   // B's page loads (launch read still says A)
+  ok(loc.href === 'https://localhost/shared.html?d=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' && loc.replaced.length === n0 + 2,
+    'C19 Android: a warm link is never overridden by the link that launched the app (the launch read applies once)');
+  launchUrl = null;
+}
 // window.open shim: the analyzers' exact call now lands in the in-app browser
 opened.length = 0;
 const nb = callsTo('Browser', 'open').length;

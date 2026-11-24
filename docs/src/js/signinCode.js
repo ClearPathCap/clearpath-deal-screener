@@ -90,22 +90,24 @@ export function readAuthLink(href) {
 // takes a session from the address (supabaseClient.js detectSessionInUrl: false); they are removed.
 export const SESSION_URL_PARAMS = ['access_token', 'refresh_token', 'expires_in', 'expires_at', 'token_type', 'provider_token', 'provider_refresh_token'];
 function hasSessionFragment(h) { return SESSION_URL_PARAMS.some(k => h.has(k)) || h.has('error_code') || h.has('error_description'); }
+const PROVIDER_ERROR_PARAMS = ['error', 'error_code', 'error_description'];
 export function hasAuthLinkParams(href) {
   let u; try { u = new URL(href); } catch { return false; }
   const h = new URLSearchParams(u.hash.replace(/^#/, ''));
-  return AUTH_LINK_PARAMS.some(k => u.searchParams.has(k) || h.has(k)) || hasSessionFragment(h);
+  return AUTH_LINK_PARAMS.some(k => u.searchParams.has(k) || h.has(k)) || hasSessionFragment(h) || u.searchParams.has('error_code');
 }
 // The same URL without the token (so it never lingers in history, a bookmark or a share).
 export function stripAuthLink(href) {
   let u; try { u = new URL(href); } catch { return href; }
   for (const k of AUTH_LINK_PARAMS) u.searchParams.delete(k);
+  if (u.searchParams.has('error_code')) for (const k of PROVIDER_ERROR_PARAMS) u.searchParams.delete(k);   // review R9: query-form provider error
   const h = new URLSearchParams(u.hash.replace(/^#/, ''));
   let hash = u.hash;
   if (AUTH_LINK_PARAMS.some(k => h.has(k)) || hasSessionFragment(h)) {
-    const session = hasSessionFragment(h);
-    for (const k of AUTH_LINK_PARAMS) h.delete(k);
-    if (session) for (const k of [...SESSION_URL_PARAMS, 'type', 'error', 'error_code', 'error_description']) h.delete(k);
-    hash = h.toString() ? '#' + h.toString() : '';
+    const drop = new Set(hasSessionFragment(h) ? [...AUTH_LINK_PARAMS, ...SESSION_URL_PARAMS, 'type', ...PROVIDER_ERROR_PARAMS] : AUTH_LINK_PARAMS);
+    // Review R9: remove whole key=value segments only; anything else in the fragment is kept byte for byte.
+    const keep = u.hash.replace(/^#/, '').split('&').filter(seg => { let k = seg.split('=')[0]; try { k = decodeURIComponent(k); } catch {} return seg && !drop.has(k); });
+    hash = keep.length ? '#' + keep.join('&') : '';
   }
   return u.pathname + (u.search ? u.search : '') + hash;
 }
@@ -165,5 +167,14 @@ export function codeSentMessage(email, canPaste) {
     ? 'Code sent to ' + to + '. Copy the code from the email, come back, and tap Paste code — or type it.'
     : 'Code sent to ' + to + '. Copy the code from the email, come back, then press and hold the box and tap Paste — or type it.';
 }
+// "Paste code" reads whatever happens to be on the clipboard (review R4: maybe a phone or account number
+// copied earlier). It may verify on its own only when the copied text is just a code ("482913",
+// "482 913") or names one ("Your code is 482913"); anything else fills the box and waits for Verify.
+export function clipboardLooksLikeCode(text) {
+  const t = String(text == null ? '' : text).trim();
+  if (/^\d{3,5}[ \u00a0-]?\d{3,5}$/.test(t) && /^\d{6,10}$/.test(t.replace(/\D/g, ''))) return true;
+  return /\b(code|passcode|verification|otp)\b[^\d\n]{0,24}\d{3,}/i.test(t);
+}
+export const PASTE_CHECK_MSG = 'Check this is the code from your email, then tap Verify.';
 export const PASTE_NO_CODE_MSG = 'No code found in what you copied. Copy just the code from the email, or type it.';
 export const PASTE_UNREADABLE_MSG = 'Couldn’t read what you copied. Press and hold the code box, then tap Paste.';

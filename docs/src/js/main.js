@@ -46,7 +46,8 @@ import {
 import { initConnectivity, retryNow } from './connectivity.js';
 import { normalizeOtp, extractOtp, looksComplete, shouldAutoVerify, readAuthLink, stripAuthLink, hasAuthLinkParams,
          AUTH_LINK_ENABLED, readPending, writePending, clearPending, resendWaitSeconds,
-         looksLikeEmail, clipboardReadable, codeSentMessage, PASTE_NO_CODE_MSG, PASTE_UNREADABLE_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
+         looksLikeEmail, clipboardReadable, codeSentMessage, PASTE_NO_CODE_MSG, PASTE_UNREADABLE_MSG,
+         clipboardLooksLikeCode, PASTE_CHECK_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline } from './storage.js';
@@ -1847,6 +1848,7 @@ async function redeemTierCode() {
 const _signinStore = (() => { try { return window.sessionStorage; } catch { return null; } })();
 let _verifyInFlight = false, _sendInFlight = false, _lastTriedCode = '', _codePrevLen = 0, _resendTick = 0, _codeSentAt = 0;
 let _pendingAuthLink = null;
+let _sendGen = 0;   // review R3: bumped by "Use a different email"; a send from an older generation is ignored
 
 // iPhone UAT follow-up (owner, real iPhone + Gmail): the code step owns the sheet while a code is
 // pending — the email box, the plan cards and the "Have a code?" box are hidden, so the only
@@ -1855,6 +1857,7 @@ function canPasteCode() {
   return clipboardReadable(typeof navigator !== 'undefined' ? navigator : null, typeof window !== 'undefined' ? window.isSecureContext : false);
 }
 function setSigninFocus(on) {
+  on = !!on && !isSignedIn();   // review R2: a signed-in sheet never shows the code-only view
   const shell = document.getElementById('upgrade-modal-body');
   if (shell?.classList?.toggle) shell.classList.toggle('signin-focus', !!on);
   const title = document.getElementById('signin-code-title'); if (title) title.hidden = !on;
@@ -1864,10 +1867,9 @@ function setSigninFocus(on) {
 // After a sign-in completes with the sheet open, its heading still said "Sign in or create a free
 // account" above "Signed in as …" (the sheet was configured only when it opened). Re-configure it for
 // the signed-in state once the session is in place — now, or on the auth refresh that follows.
-let _refreshSheetOnSignIn = false;
+// Review R6: on EVERY signed-in refresh while the sheet is open (a late or failed plan check changes it too).
 function refreshSheetAfterSignIn() {
-  if (!isSignedIn()) { _refreshSheetOnSignIn = true; return; }
-  _refreshSheetOnSignIn = false;
+  if (!isSignedIn()) return;   // the auth refresh that follows calls this again via updateAccountUI
   if (document.getElementById('modal-upgrade')?.classList?.contains('active')) configureUpgradeModal(_lastUpgradeTrigger);
 }
 function codeStepOpen() {
@@ -1920,6 +1922,7 @@ async function sendSignInCode() {
     return;
   }
   _sendInFlight = true;
+  const gen = ++_sendGen;
   const wasOnCodeStep = codeStepOpen(), prevSentAt = _codeSentAt;
   // iPhone: iOS Safari moves the keyboard to a field only when focus() runs INSIDE the tap — never
   // after a network round trip (which is why the keyboard used to stay on the email box and offer
@@ -1930,6 +1933,8 @@ async function sendSignInCode() {
   showRedeemMsg(msgEl, { ok: true, msg: 'Sending your code to ' + email + '…' });
   let result;
   try { result = await sendOtpCode(email); } finally { _sendInFlight = false; }
+  if (isSignedIn()) { clearPending(_signinStore); closeCodeStep(); return; }   // review R2: signed in meanwhile (an earlier code)
+  if (gen !== _sendGen) return;                                              // review R3: the person moved on to another email
   if (result.ok) {
     const now = Date.now();
     writePending(_signinStore, email, now);
@@ -1951,6 +1956,7 @@ async function resendSignInCode() {
   await sendSignInCode();
 }
 function changeSignInEmail() {
+  _sendGen++;   // review R3: a send still in flight for the old address no longer reopens its code step
   clearPending(_signinStore);
   closeCodeStep();
   const input = document.getElementById('signin-code'); if (input) input.value = '';
@@ -1984,8 +1990,9 @@ async function verifySignInCode(opts = {}) {
   return { status: result.ok ? 'signed-in' : 'failed' };
 }
 
-// One rule for every paste — the field's own paste and the "Paste code" button. The copied text
-// is used only to find the code; it is never stored, logged or sent anywhere else.
+// One rule for every paste — the field's own paste and the "Paste code" button. The copied text is
+// used only to find the code: it is never stored or logged, and only the extracted digits are ever
+// sent (to verify), and from the button only when the copied text looks like a code (review R4).
 function applyPastedCode(text, replaceAll) {
   const input = document.getElementById('signin-code');
   if (!input) return;
@@ -2003,6 +2010,9 @@ function applyPastedCode(text, replaceAll) {
   input.value = next; _codePrevLen = next.length;
   try { input.setSelectionRange(next.length, next.length); } catch {}
   if (!looksComplete(next)) return;
+  // Review R4: the "Paste code" button reads whatever is on the clipboard — it verifies by itself only
+  // when the copied text is itself a code or names one; otherwise the person checks it and taps Verify.
+  if (replaceAll && !clipboardLooksLikeCode(text)) { showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: PASTE_CHECK_MSG }); return; }
   // N24 review F3: verify by itself only when the paste was unambiguous.
   if (confident || !looksComplete(code)) verifySignInCode({ auto: true });
   else showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: 'The pasted text had more than one number. Check this is the code from your email, then tap Verify.' });
@@ -2115,7 +2125,7 @@ function updateAccountUI() {
     const codeInput = document.getElementById('signin-code');
     if (codeInput) codeInput.value = '';
   }
-  if (signedIn) { const help = document.getElementById('signin-code-help'); if (help) help.style.display = 'none'; setSigninFocus(false); if (_refreshSheetOnSignIn) refreshSheetAfterSignIn(); }
+  if (signedIn) { const help = document.getElementById('signin-code-help'); if (help) help.style.display = 'none'; setSigninFocus(false); refreshSheetAfterSignIn(); }
 }
 
 // ── Wave A1 auth chip (util-bar) ─────────────────────────────────────────────
@@ -2183,6 +2193,12 @@ function applyTierToUI() {
 
 // Open the upgrade modal with a given trigger (used by generated intel blocks)
 function openUpgrade(trigger) {
+  // Review R1: the code-only view belongs to a PENDING code. Once it has expired (15 min) or was never
+  // sent, any trigger opens the normal sheet (title, plans, email step).
+  if (!isSignedIn() && !readPending(_signinStore) && !_sendInFlight) {
+    closeCodeStep();
+    const codeInput = document.getElementById('signin-code'); if (codeInput) codeInput.value = '';
+  }
   configureUpgradeModal(trigger || 'general');
   openModal('modal-upgrade');
 }

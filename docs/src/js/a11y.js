@@ -30,15 +30,14 @@ export function activatesRowButton(e) {
   return !!rowButton(e);
 }
 
-function refocusAfter(el, d) {
-  const box = el.parentElement;
+function refocusAfter(el, box, d) {
   setTimeout(() => {
     if (!box || (d.contains && d.contains(el))) return;          // the row is still there: nothing to do
     const next = box.querySelector && box.querySelector('[role="button"]:not([aria-disabled="true"]), button, input');
     if (next && next.focus) next.focus();
   }, 0);
 }
-function activate(el, d) { el.click(); refocusAfter(el, d); }
+function activate(el, d) { const box = el.parentElement; el.click(); refocusAfter(el, box, d); }   // the list is read BEFORE the click: a re-render detaches the row
 
 export function syncPressed(root) {
   if (!root || !root.querySelectorAll) return 0;

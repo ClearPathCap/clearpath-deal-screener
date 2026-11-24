@@ -527,7 +527,7 @@ AY.syncPressed({ querySelectorAll: () => tiers });
 ok(tiers[0]._t.attrs['aria-pressed'] === 'true' && tiers[1]._t.attrs['aria-pressed'] === 'false', 'F4 the selected repair tier is announced (aria-pressed follows .active, set by the unchanged repair.js)');
 const firstNew = { focused: 0, focus() { this.focused++; } };
 const list = { querySelector: () => firstNew };
-const gone = { tagName: 'DIV', getAttribute: (k) => (k === 'role' ? 'button' : null), click: () => {}, parentElement: list };
+const gone = { tagName: 'DIV', getAttribute: (k) => (k === 'role' ? 'button' : null), parentElement: list, click() { this.parentElement = null; } };   // a re-render detaches the row, as the real DOM does
 fakeDoc.contains = () => false;
 kd.keydown(mk('Enter', gone));
 await new Promise(r => setTimeout(r, 5));

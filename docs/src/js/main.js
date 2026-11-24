@@ -354,6 +354,20 @@ const reviewPrefilledIds = { flip: [], rental: [], ltr: [], brrr: [] };
 // deal name, notes and review mode — so the previous account's private figures are never shown,
 // saved into the new account, or carried into a CPC handoff.
 const analyzerOwner = { flip: '', rental: '', ltr: '', brrr: '' };
+// N1124 identity boundary: a TYPED-ONLY form (never a saved deal) has no owner above, yet whatever
+// was typed while an account was signed in is that account's private in-progress work. So the tab
+// also remembers the signed-in account its analyzer forms were last shown under ('' = signed out).
+// When that account changes — a direct switch, a sign-out, or a reload that finds another account
+// or none — every analyzer is cleared. A same-account reload keeps its draft, and a signed-out draft
+// is kept on sign-in (it was typed while no account's data could be on the form). sessionStorage:
+// this tab only, survives a reload (a browser may restore typed values on reload).
+const FORM_ACCOUNT_KEY = 'df_form_account';
+const formAccountStore = (() => { try { return window.sessionStorage; } catch { return null; } })();
+let formAccount = (() => { try { return (formAccountStore && formAccountStore.getItem(FORM_ACCOUNT_KEY)) || ''; } catch { return ''; } })();
+function setFormAccount(uid) {
+  formAccount = uid || '';
+  try { if (!formAccountStore) return; if (formAccount) formAccountStore.setItem(FORM_ACCOUNT_KEY, formAccount); else formAccountStore.removeItem(FORM_ACCOUNT_KEY); } catch { /* memory still holds it */ }
+}
 
 // Is a review pending for THIS analyzer (the deal still exists and is of this type)?
 function reviewPendingFor(type) {
@@ -2416,9 +2430,13 @@ function hideForeignAccountData() {
   // B: an analyzer holding another account's saved deal is cleared (before its pipeline goes, so a
   // review of that deal is cancelled through the normal path). The same account keeps its forms.
   const uidNow = isSignedIn() ? (getUserId() || '') : '';
+  // N1124 identity boundary: the forms were last shown to a different signed-in account → clear
+  // every analyzer, typed-only drafts included (inputs, result, name, notes, review mode).
+  const leftAccount = !!formAccount && formAccount !== uidNow;
   for (const t of Object.keys(analyzerOwner)) {
-    if (analyzerOwner[t] && analyzerOwner[t] !== uidNow) { try { clearForeignAnalyzer(t); } catch (e) { console.warn(e); analyzerOwner[t] = ''; } }
+    if (leftAccount || (analyzerOwner[t] && analyzerOwner[t] !== uidNow)) { try { clearForeignAnalyzer(t); } catch (e) { console.warn(e); analyzerOwner[t] = ''; } }
   }
+  setFormAccount(uidNow);
   const rid = getReviewingDealId();
   const reviewedType = rid != null ? (getDeals().find(d => d.id === rid) || {}).type : null;
   if (dropForeignPipeline()) {

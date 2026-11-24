@@ -803,7 +803,10 @@ console.log('— §PB analyzer data from a saved deal follows the account —');
      'PB4 …and A’s result, deal name, review banner and "Update Saved Deal" mode are gone (nothing of A’s can be saved or handed off)');
   const sv = await pipeline.saveDeal('ltr');
   ok(/^refused/.test(sv && sv.status) && saveCalls() === saves0, 'PB5 a Save as B right after the switch is refused before any request (' + (sv && sv.status) + ')');
-  ok(v('f-addr') === '9 Elm St, Raleigh, NC 27601' && v('f-ask') === '150,000', 'PB6 a form the user only typed on this device (no saved deal) is kept');
+  // N1124 identity boundary — RE-PINNED: PB6 used to assert this typed-only form was KEPT across A → B. That was the
+  // defect (A's unsaved inputs, result and notes stayed on screen as B and could be saved into B's pipeline): a form
+  // typed while A was signed in is A's private in-progress work, so the switch clears it too.
+  ok(v('f-addr') === '' && v('f-ask') === '' && flip.getLastFlipResult() === null, 'PB6 a form A only typed (no saved deal) is ALSO cleared on the direct switch A → B (re-pinned: keeping it was the leak)');
   // sign-out clears a reviewed deal
   globalThis.clearNewDeal('flip');
   const seededC = await seedAs('u-c', [FLIP]);
@@ -812,13 +815,61 @@ console.log('— §PB analyzer data from a saved deal follows the account —');
   A.signedIn = false; A.uid = ''; globalThis.__notifyAuth();
   ok(flipLoaded && v('f-addr') === '' && v('f-ask') === '' && v('flip-deal-name') === '' && v('flip-notes') === '' && pipeline.getReviewingDealId() == null && flip.getLastFlipResult() === null,
      'PB7 sign-out clears a reviewed saved deal (address, price, name, notes, review, result)');
-  // Clear & New Deal releases the ownership: values typed afterwards survive a switch
-  await seedAs('u-a', [STR]); globalThis.reviewDeal(STR.id); globalThis.clearNewDeal('rental');
+  // N1124 — RE-PINNED: PB8 used to assert values typed (as A) after Clear & New Deal survive a switch to B. They are
+  // A's in-progress work: cleared.
+  await seedAs('u-a', [STR]); globalThis.__notifyAuth();   // A signs in (the forms were signed out: nothing to clear)
+  globalThis.reviewDeal(STR.id); globalThis.clearNewDeal('rental');
   el('v-addr').value = '1 Pine Ct, Asheville, NC'; A.uid = 'u-b'; globalThis.__notifyAuth();
-  ok(v('v-addr') === '1 Pine Ct, Asheville, NC', 'PB8 after Clear & New Deal the form holds no saved deal; values typed afterwards survive a switch');
+  ok(v('v-addr') === '', 'PB8 values A typed after Clear & New Deal are cleared on a switch to B (re-pinned: keeping them was the leak)');
+  // PB10–PB13 (N1124 identity boundary): a typed-only draft follows the signed-in account it was typed under.
+  A.signedIn = false; A.uid = ''; globalThis.__notifyAuth();   // sign-out: the forms are now signed-out forms
+  typed('v-addr', '5 Birch Ln, Durham, NC'); typed('v-price', '275,000');   // typed while signed out (anonymous)
+  await seedAs('u-b', []); globalThis.__notifyAuth();   // B signs in on this device
+  ok(v('v-addr') === '5 Birch Ln, Durham, NC' && v('v-price') === '275,000', 'PB10 a draft typed while signed out is kept when an account signs in (no account’s data could be on it)');
+  globalThis.__notifyAuth();   // same account again (token refresh / tab return / re-sign-in as B)
+  ok(v('v-addr') === '5 Birch Ln, Durham, NC', 'PB11 a same-account auth event keeps the draft');
+  A.signedIn = false; A.uid = ''; globalThis.__notifyAuth();   // B signs out (another tab, or the session ends — no reload)
+  ok(v('v-addr') === '' && v('v-price') === '' && v('rental-deal-name') === '', 'PB12 sign-out clears a typed-only draft (it was typed while B was signed in)');
+  // PB13: A types AND analyzes a flip (result + CPC funding CTA), then a direct switch to B
+  await seedAs('u-a', []); globalThis.__notifyAuth();
+  globalThis.clearNewDeal('flip');
+  typed('f-addr', '88 Quill Ave, Columbia, SC'); typed('f-ask', '200,000'); typed('f-arv', '320,000'); typed('f-rep', '30,000');
+  el('flip-deal-name').value = 'A private flip'; el('flip-notes').value = 'A private note';
+  globalThis.analyzeFlip();
+  const hadResult = !!flip.getLastFlipResult() && v('f-addr') !== '';
+  const saves1 = saveCalls();
+  A.uid = 'u-b'; globalThis.__notifyAuth();
+  const svB = await pipeline.saveDeal('flip');
+  ok(hadResult && flip.getLastFlipResult() === null && el('flip-results').style.display === 'none' && el('flip-funding-btn').innerHTML === ''
+     && v('f-addr') === '' && v('f-ask') === '' && v('flip-deal-name') === '' && v('flip-notes') === '',
+     'PB13 A’s unsaved flip (inputs, result, name, notes, CPC funding CTA) is gone after the switch to B');
+  ok(/^refused/.test(svB && svB.status) && saveCalls() === saves1, 'PB13b a Save as B is refused before any request — nothing of A’s enters B’s pipeline (' + (svB && svB.status) + ')');
   ok(/analyzerOwner\[type\] = isSignedIn\(\) \? \(getUserId\(\) \|\| ''\) : '';/.test(mainSrc) && /function clearForeignAnalyzer\(type\) \{\s*for \(const \[fid, , kind\] of REVIEW_FIELDS\[type\]/.test(mainSrc)
      && mainSrc.indexOf('clearForeignAnalyzer(t)') < mainSrc.indexOf('if (dropForeignPipeline())'),
      'PB9 source: a review records the owning account; the pre-plan-check hook clears foreign analyzers before the pipeline drop');
+  // PB14 (N1124) reload semantics, compiled from main.js source: the tab remembers (sessionStorage) the account its
+  // forms were last shown under, so a browser-restored draft is kept on a same-account reload and cleared when the
+  // reload finds another account or none.
+  {
+    const hmB = mainSrc.match(/function hideForeignAccountData\(\) \{([\s\S]*?)\r?\n\}/);
+    const initM = mainSrc.match(/let formAccount = (\(\(\) => \{[\s\S]*?\}\)\(\));/);
+    const initOf = (store) => new Function('formAccountStore', 'FORM_ACCOUNT_KEY', 'return ' + initM[1])(store, 'df_form_account');
+    const run = (persisted, signedIn, uid) => { const cleared = []; let next = null;
+      new Function('purgeForeignMarketSlots', 'renderAllSlots', 'renderGuideMarketIntel', 'getReviewingDealId', 'getDeals', 'dropForeignPipeline',
+        'cancelDealReview', 'renderPipeline', 'updateAccountUI', 'document', 'analyzerOwner', 'isSignedIn', 'getUserId', 'clearForeignAnalyzer',
+        'formAccount', 'setFormAccount', hmB[1])(() => 0, () => {}, () => {}, () => null, () => [], () => false, () => {}, () => {}, () => {},
+        { getElementById: () => null }, { flip: '', rental: '', ltr: '', brrr: '' }, () => signedIn, () => uid, (t) => cleared.push(t), persisted, (u) => { next = u; });
+      return cleared.join() + '|' + next; };
+    const ALL = 'flip,rental,ltr,brrr';
+    ok(!!hmB && !!initM && initOf({ getItem: (k) => (k === 'df_form_account' ? 'u-a' : null) }) === 'u-a' && initOf(null) === '' && initOf({ getItem: () => { throw new Error('blocked'); } }) === '',
+       'PB14a the remembered account is read from this tab’s sessionStorage at load ("" when storage is missing or blocked)');
+    ok(run('u-a', true, 'u-a') === '|u-a', 'PB14b same-account reload: a restored draft is kept');
+    ok(run('u-a', true, 'u-b') === ALL + '|u-b' && run('u-a', false, '') === ALL + '|', 'PB14c a reload that finds another account, or none, clears every analyzer');
+    ok(run('', true, 'u-a') === '|u-a' && run('', false, '') === '|', 'PB14d a signed-out tab keeps its anonymous draft when an account signs in');
+    ok(/formAccountStore\.setItem\(FORM_ACCOUNT_KEY, formAccount\)/.test(mainSrc) && /formAccountStore\.removeItem\(FORM_ACCOUNT_KEY\)/.test(mainSrc)
+       && hmB[1].indexOf('setFormAccount(uidNow)') > hmB[1].indexOf('clearForeignAnalyzer(t)') && hmB[1].indexOf('setFormAccount(uidNow)') < hmB[1].indexOf('dropForeignPipeline()'),
+       'PB14e source: the account is remembered (removed when signed out) after the clear and before the pipeline drop');
+  }
   globalThis.clearNewDeal('rental'); globalThis.clearNewDeal('flip'); globalThis.clearNewDeal('ltr');
   A.signedIn = signedInBefore; A.uid = '';
 }

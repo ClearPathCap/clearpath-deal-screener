@@ -508,12 +508,12 @@ console.log('— §F market pushes only at boot / a genuine sign-in, for the own
   const hm = mj.match(/function (?:hideForeignAccountData|hideForeignMarkets)\(\) \{([\s\S]*?)\r?\n\}/);
   const earlyHook = hm ? new Function('purgeForeignMarketSlots', 'renderAllSlots', 'renderGuideMarketIntel', 'getReviewingDealId', 'getDeals', 'dropForeignPipeline',
     'cancelDealReview', 'renderPipeline', 'updateAccountUI', 'document',
-    'analyzerOwner', 'isSignedIn', 'getUserId', 'clearForeignAnalyzer', hm[1]) : null;   // overnight B: analyzer owner (no analyzer here: empty)
+    'analyzerOwner', 'isSignedIn', 'getUserId', 'clearForeignAnalyzer', 'formAccount', 'setFormAccount', hm[1]) : null;   // overnight B: analyzer owner (no analyzer here: empty); N1124: the tab's form account ('' = nothing to clear)
   const earlyRenders = [], pipeRenders = [], acctRenders = [];
   const docShim = { getElementById: (id) => (id === 'page-pipeline' ? { classList: { contains: () => true } } : null) };   // the pipeline page is open
   if (earlyHook) auth.onAuthChange(() => earlyHook(msync.purgeForeignMarketSlots, () => { earlyRenders.push([0, 1, 2, 3, 4, 5].map(i => tiers.getMarketForSlot(i))); }, () => {},
     () => null, storage.getDeals, storage.dropForeignPipeline || (() => false), () => {}, () => { pipeRenders.push(storage.getDeals().map(d => d.name).join()); },
-    () => { acctRenders.push(auth.getUserId()); }, docShim, {}, auth.isSignedIn, auth.getUserId, () => {}), { beforeEntitlement: true });
+    () => { acctRenders.push(auth.getUserId()); }, docShim, {}, auth.isSignedIn, auth.getUserId, () => {}, '', () => {}), { beforeEntitlement: true });
   const order = [];   // auth ordering, independent of main.js: an early subscriber vs the plan-check answer
   auth.onAuthChange(() => order.push('early'), { beforeEntitlement: true });
   let tierAnswered = false;

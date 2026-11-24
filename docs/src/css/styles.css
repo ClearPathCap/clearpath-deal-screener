@@ -9,31 +9,109 @@
   --info:#57c4ff;--info-dim:rgba(87,196,255,0.1);
   --font:'Syne',sans-serif;--mono:'DM Mono',monospace;
 }
+/* ═══ DEALFIT DESIGN SYSTEM — TOKENS (design-system wave, 2026-11-24) ═════════
+   One source for type, space, shape, touch, layers and motion. The full
+   inventory and usage rules are in DESIGN_SYSTEM.md at the repository root.
+   New and touched components consume these tokens; older rules that tests pin
+   by literal value keep their values (each pinned value equals a token).
+   Colour tokens are the block above (unchanged palette). */
+:root{
+  /* Text roles beyond the palette: secondary text that passes 4.5:1 on --bg and
+     --surface (#9a9a9a was already used ad hoc), and the placeholder tone. */
+  --text-2:#9a9a9a;--placeholder:#8a8a8a;   /* 5.3:1 on --surface; values stay --text in DM Mono */
+  /* Type scale — 8 steps. Syne for UI text, DM Mono for numbers and values. */
+  --fs-eyebrow:10px;   /* uppercase section eyebrows only */
+  --fs-caption:11px;   /* hints, footnotes, tab labels */
+  --fs-footnote:12px;  /* secondary copy */
+  --fs-label:13px;     /* field labels, chips, secondary buttons */
+  --fs-body:14px;      /* body copy, values, primary buttons */
+  --fs-callout:16px;   /* phone input size (never below 16px: iOS zoom) */
+  --fs-title3:18px;    /* sheet titles */
+  --fs-title2:22px;    /* page titles */
+  --fs-title1:26px;    /* verdict headline */
+  --fw-regular:400;--fw-medium:500;--fw-semibold:600;--fw-bold:700;--fw-heavy:800;
+  --lh-tight:1.15;--lh-snug:1.35;--lh-body:1.5;
+  --tr-eyebrow:.12em;--tr-label:.01em;
+  /* Spacing — 4px grid. */
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;--sp-8:32px;--sp-10:40px;--sp-12:48px;
+  --gutter:20px;       /* page side padding */
+  /* Shape */
+  --r-xs:6px;--r-sm:8px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-pill:999px;
+  /* Touch and control sizes */
+  --tap:44px;          /* minimum touch target */
+  --control-h:44px;    /* inputs, secondary buttons */
+  --control-h-lg:52px; /* primary task buttons */
+  --chip-h:34px;
+  /* App chrome */
+  --appbar-h:52px;
+  --tabbar-h:58px;
+  --safe-top:env(safe-area-inset-top,0px);--safe-bottom:env(safe-area-inset-bottom,0px);
+  /* Layers */
+  --z-appbar:20;--z-tabbar:30;--z-sheet:100;--z-toast:200;
+  /* Elevation */
+  --shadow-sheet:0 -12px 40px rgba(0,0,0,.55);
+  --shadow-bar:0 -1px 0 var(--border);
+  /* Motion — short, purposeful, interruptible. Reduced motion sets every
+     duration to ~0 (see the prefers-reduced-motion block at the end). */
+  --dur-instant:90ms;  /* press feedback */
+  --dur-fast:150ms;    /* colour, border, opacity */
+  --dur-base:220ms;    /* page and content changes */
+  --dur-sheet:340ms;   /* sheet present/dismiss */
+  --ease-standard:cubic-bezier(.2,0,0,1);
+  --ease-sheet:cubic-bezier(.32,.72,0,1);  /* iOS sheet curve */
+  --ease-exit:cubic-bezier(.4,0,1,1);
+}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html{background:var(--bg);scroll-padding-top:72px}
-body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;max-width:500px;margin:0 auto;padding-bottom:100px;padding-top:env(safe-area-inset-top)}
+/* Scroll padding keeps a focused field clear of the sticky app bar above and
+   the fixed tab bar below (browser focus-scrolling honours it). */
+html{background:var(--bg);scroll-padding-top:calc(var(--appbar-h) + var(--safe-top) + var(--sp-4));scroll-padding-bottom:calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-4));-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;max-width:500px;margin:0 auto;padding-bottom:calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-10));-webkit-font-smoothing:antialiased}
 
-/* NAV */
-.nav{display:flex;gap:0;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:20}
-/* NAV LOCK INVARIANT (recurring regression — do not relax without updating
-   tests/layout.test.mjs): the nav pins at top:0, UNCONDITIONALLY. Wave 5
-   removed the dev banner and its visible-sibling 26px offset entirely — no
-   selector may reintroduce a nav offset. */
-.nav-btn{flex:1;padding:14px 4px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:all .2s}
-.nav-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+/* APP BAR — the one compact header (design-system wave): brand + account and
+   app actions on a single 52px row. Replaces the old top tabs + utility row +
+   per-page brand row (about 230px of stacked chrome on a phone).
+   APP BAR LOCK INVARIANT (recurring regression — do not relax without updating
+   tests/layout.test.mjs): the app bar pins at top:0, UNCONDITIONALLY, and is
+   the first element in <body>. Wave 5 removed the dev banner and its
+   visible-sibling 26px offset entirely — no selector may reintroduce an
+   offset. The safe-area inset is padding INSIDE the bar, never an offset. */
+.appbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);min-height:calc(var(--appbar-h) + var(--safe-top));padding:var(--safe-top) var(--sp-3) 0;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:20}
+.appbar-brand{display:flex;align-items:center;gap:var(--sp-2);flex-shrink:0}
+.appbar-brand .cpc-logo{height:22px}
+/* The app name reads as a name (DealFit), not as an eyebrow: no transform, no divider. */
+.appbar-brand .app-subtitle{font-size:var(--fs-body);font-weight:var(--fw-heavy);letter-spacing:-.01em;text-transform:none;color:var(--text);border-left:none;padding-left:0}
 
-/* UTILITY ROW — share/install, kept off the wordmark row (Round 2 #3) */
-.util-bar{display:flex;justify-content:flex-end;align-items:center;gap:6px;padding:8px 20px 0}
+/* TAB BAR — primary navigation at the bottom (thumb reach; iOS/Android
+   convention). Fixed inside the 500px app column; the safe-area inset is
+   padding inside the bar. Buttons keep .nav-btn + data-tab, so showPage and
+   connectivity.js focus handling are unchanged. */
+.tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:500px;display:flex;
+  padding:0 var(--sp-2) var(--safe-bottom);background:rgba(10,10,10,.92);-webkit-backdrop-filter:saturate(1.4) blur(18px);backdrop-filter:saturate(1.4) blur(18px);
+  box-shadow:var(--shadow-bar);z-index:30;transition:transform var(--dur-base) var(--ease-standard)}
+.nav-btn{flex:1;min-height:var(--tabbar-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;background:transparent;border:none;color:var(--text-2);font-family:var(--font);font-size:var(--fs-caption);font-weight:var(--fw-semibold);letter-spacing:var(--tr-label);cursor:pointer;transition:color var(--dur-fast) var(--ease-standard),transform var(--dur-instant) var(--ease-standard)}
+.nav-btn .tab-icon{width:22px;height:22px;flex-shrink:0}
+.nav-btn:active{transform:scale(.94)}
+.nav-btn.active{color:var(--accent)}
+.nav-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-4px;border-radius:var(--r-md)}
+/* The keyboard owns the bottom of the screen while a field is being edited
+   (native convention); viewstack.js sets body.kb-open on touch devices. */
+body.kb-open .tabbar{transform:translate(-50%,100%)}
+
+/* UTILITY ROW — auth chip, share and install: now the app bar's action group */
+.util-bar{display:flex;justify-content:flex-end;align-items:center;gap:6px;min-width:0}
+/* Phone widths: the bar must hold brand + Sign in + Share + Get the App on one row
+   with no overlap (measured at 375px); below 360px the app name yields to the mark. */
+@media (max-width:400px){.util-bar{gap:var(--sp-1)}.get-app-btn{padding:0 10px;gap:4px}}
+@media (max-width:359px){.appbar-brand .app-subtitle{display:none}}
 
 /* HEADER */
-.header{padding:16px 0 12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.header{padding:var(--sp-4) 0 var(--sp-2);display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)}
 .header-left{flex:1;min-width:0}
-.header-brand{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .cpc-logo{height:26px;width:auto;max-width:140px;object-fit:contain;flex-shrink:0}
 .app-subtitle{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-left:1px solid var(--border);padding-left:8px;white-space:nowrap}
 .header-meta{margin-bottom:0}
-.header h1,.header h2{font-size:22px;font-weight:800;line-height:1.1;margin-bottom:4px}
-.header p{font-size:12px;color:var(--muted);margin-bottom:0}
+.header h1,.header h2{font-size:var(--fs-title2);font-weight:var(--fw-heavy);line-height:var(--lh-tight);letter-spacing:-.01em}
+.header p{font-size:var(--fs-footnote);color:var(--text-2);line-height:var(--lh-snug);margin-top:var(--sp-1)}
 .header-actions{display:flex;gap:6px;align-items:center;flex-shrink:0;padding-top:2px}
 .tier-badge{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .2s;white-space:nowrap}
 .tier-badge:hover{border-color:var(--accent);color:var(--accent)}
@@ -65,7 +143,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .page.active{display:block}
 
 /* SECTION LABEL */
-.slabel{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:20px 0 10px}
+.slabel{font-size:var(--fs-eyebrow);font-weight:var(--fw-bold);letter-spacing:var(--tr-eyebrow);text-transform:uppercase;color:var(--text-2);margin:var(--sp-5) 0 var(--sp-2)}   /* eyebrow: the ONE uppercase role */
 .slabel:first-child{margin-top:16px}
 
 /* MARKET PRESETS */
@@ -96,8 +174,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .band-notice-warn{background:var(--warn-dim);border:1px solid var(--warn)}
 .band-notice-title{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--warn);margin-bottom:6px}
 .band-notice-body{margin-bottom:10px;color:var(--text)}
-.field label{display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
-.field label span{font-weight:400;text-transform:none;color:var(--muted2)}
+.field label{display:block;font-size:var(--fs-label);font-weight:var(--fw-semibold);color:var(--text-2);letter-spacing:var(--tr-label);line-height:var(--lh-snug);margin-bottom:6px}   /* sentence case — no transform */
+.field label span{font-weight:var(--fw-regular);text-transform:none;color:var(--placeholder)}
 .input-wrap{position:relative}
 .pfx,.sfx{position:absolute;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:13px;color:var(--muted);pointer-events:none}
 .pfx{left:11px}.sfx{right:11px}
@@ -568,8 +646,12 @@ input.input-invalid{border-color:var(--danger)!important}
 /* AUTO-FILLED repair field */
 input.auto-filled{border-color:var(--accent)!important;transition:border-color .3s}
 
-/* PLACEHOLDER COLOR */
-input::placeholder,textarea::placeholder{color:var(--muted)!important;opacity:1}
+/* PLACEHOLDER COLOR — example values must never read as entered values
+   (banked UX item 4): entered values render in DM Mono at --text; analyzer
+   placeholders render in the UI face, regular weight, at --placeholder, and the
+   markup prefixes pure examples with "e.g.". Modals (sign-in) keep their face. */
+input::placeholder,textarea::placeholder{color:var(--placeholder)!important;opacity:1}
+.page input::placeholder,.page textarea::placeholder{font-family:var(--font);font-weight:var(--fw-regular);letter-spacing:0}
 
 /* TOAST */
 .toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-text);padding:12px 24px;border-radius:30px;font-family:var(--font);font-size:13px;font-weight:700;z-index:200;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none}
@@ -818,3 +900,118 @@ button.deal-badge{font-family:var(--font)}
 .net-status-retry:disabled{opacity:.6;cursor:default}
 .net-status-retry:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .gi-offline{font-size:11px;color:var(--warn);line-height:1.45;margin:8px 0 0}
+
+/* ═══ DEALFIT DESIGN SYSTEM — COMPONENT LAYER (design-system wave, 2026-11-24) ══
+   Consumes the tokens at the top of this file. Inventory, roles and rules:
+   DESIGN_SYSTEM.md. This layer sits last so it is the source of truth for the
+   components it names; it never changes a behaviour a test pins (sticky rows,
+   modal sizing, tap targets) — only type, colour, shape and motion. */
+
+/* ── Labels ── sentence case everywhere; a label's own text spans (Guide-mode
+   ARV label) read as the label, not as the dim qualifier span. */
+.field label span.pro-only,.field label span.beginner-only{font-weight:inherit;color:inherit}
+.toggle-label{font-size:var(--fs-label);font-weight:var(--fw-semibold)}
+.toggle-sub,.field-hint{color:var(--text-2)}
+.sqft-row label{font-size:var(--fs-label);color:var(--text-2)}
+
+/* ── Buttons ── ONE hierarchy. Primary = the task's one action (accent fill).
+   Secondary = supporting actions (surface fill, strong border). Tertiary =
+   inline/text actions (accent text, no fill). Destructive = .btn-confirm.
+   New markup uses .btn + .btn--primary|--secondary|--tertiary; the legacy
+   class names below are mapped onto the same three roles. */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);min-height:var(--control-h);padding:0 var(--sp-4);border-radius:var(--r-md);font-family:var(--font);font-size:var(--fs-body);font-weight:var(--fw-bold);letter-spacing:var(--tr-label);line-height:var(--lh-snug);text-align:center;text-decoration:none;white-space:normal;max-width:100%;cursor:pointer;-webkit-user-select:none;user-select:none;
+  transition:opacity var(--dur-fast) var(--ease-standard),transform var(--dur-instant) var(--ease-standard),border-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard)}
+.btn:active{transform:scale(.98)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn--block{display:flex;width:100%}
+.btn--lg{min-height:var(--control-h-lg)}
+.btn--primary{background:var(--accent);border:1px solid var(--accent);color:var(--accent-text);font-weight:var(--fw-heavy)}
+.btn--primary:active{opacity:.9}
+.btn--secondary{background:var(--surface2);border:1px solid var(--border-strong);color:var(--text)}
+.btn--secondary:hover{border-color:var(--accent);color:var(--accent)}
+.btn--tertiary{background:transparent;border:1px solid transparent;color:var(--accent);padding:0 var(--sp-2)}
+.btn--tertiary:hover{text-decoration:underline}
+/* legacy → primary */
+.btn-analyze{font-size:var(--fs-callout);letter-spacing:var(--tr-label);text-transform:none;border-radius:var(--r-md)}
+.btn-analyze:focus-visible,.btn-get-funding:focus-visible,.btn-save:focus-visible,.btn-secondary:focus-visible,.btn-cancel:focus-visible,.btn-confirm:focus-visible,.btn-action:focus-visible,.use-estimate:focus-visible,.picker-back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* legacy → secondary */
+.btn-secondary,.btn-cancel{background:var(--surface2);border-color:var(--border-strong);color:var(--text);font-size:var(--fs-label);font-weight:var(--fw-bold)}
+.btn-secondary:hover,.btn-cancel:hover{border-color:var(--accent);color:var(--accent)}
+.btn-save{min-height:var(--control-h);font-size:var(--fs-label)}
+.btn-confirm{font-size:var(--fs-label)}
+/* legacy → tertiary: text actions get a real touch target */
+.use-estimate,.picker-back{min-height:var(--tap);display:inline-flex;align-items:center;font-size:var(--fs-footnote);font-weight:var(--fw-bold);letter-spacing:var(--tr-label)}
+.use-estimate{color:var(--accent)}
+.picker-back{margin-bottom:0}
+
+/* ── Inputs ── one control height and radius; DM Mono for values. */
+.field select,.field input[type=number],.field input[type=text],.field input[type=tel]{border-radius:var(--r-sm)}
+input:focus-visible,select:focus-visible,textarea:focus-visible{box-shadow:0 0 0 3px var(--accent-dim)}
+
+/* ── Chips ── market slots, presets, filters, market chips: one pill family. */
+.filter-pill,.preset,.market-chip{min-height:var(--chip-h);display:inline-flex;align-items:center;border-radius:var(--r-pill);font-size:var(--fs-footnote)}
+.market-slot{border-radius:var(--r-sm);font-size:var(--fs-footnote)}
+.filter-pill:focus-visible,.preset:focus-visible,.market-chip:focus-visible,.market-slot:focus-visible,.sub-tab:focus-visible,.tier:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Upsell timing (banked UX item 3): only the slots a plan unlocks are drawn;
+   after a first analysis, one quiet line says more regions exist. */
+.slot-more{grid-column:1/-1;justify-self:start;min-height:var(--tap);padding:0 2px;background:none;border:none;color:var(--text-2);font-family:var(--font);font-size:var(--fs-footnote);font-weight:var(--fw-semibold);cursor:pointer;text-align:left}
+.slot-more[hidden]{display:none}
+.slot-more:hover{color:var(--accent)}
+.slot-more:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-xs)}
+
+/* ── Page title row ── the large title with the plan badge and Guide switch. */
+.tier-badge{font-size:var(--fs-eyebrow);padding:4px 10px;border-radius:var(--r-pill);min-height:24px;display:inline-flex;align-items:center}
+.mode-label-beg{font-size:var(--fs-eyebrow)}
+
+/* ── Ground-up construction note (banked UX item 2): no longer above the first
+   input; it sits after the analyzer as a quiet card. */
+.guc-entry{margin:var(--sp-6) 0 0;padding:var(--sp-3) var(--sp-4);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md)}
+
+/* ── States ── one component for empty, loading and error, and a skeleton. */
+.state{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--sp-2);padding:var(--sp-12) 0;color:var(--text-2)}
+.state-icon{font-size:30px;line-height:1;opacity:.55;margin-bottom:var(--sp-1)}
+.state-title{font-size:var(--fs-body);font-weight:var(--fw-bold);color:var(--text)}
+.state-body{font-size:var(--fs-label);line-height:var(--lh-body);max-width:32ch}
+.state-action{margin-top:var(--sp-3);max-width:100%}
+.state--error .state-title{color:var(--warn)}
+.skeleton-list{display:grid;gap:var(--sp-3)}
+.skeleton-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-4);display:grid;gap:var(--sp-2)}
+.skeleton-line{height:12px;border-radius:var(--r-xs);background:linear-gradient(90deg,var(--surface2) 0%,var(--surface3) 50%,var(--surface2) 100%);background-size:200% 100%;animation:df-shimmer 1.4s linear infinite}
+.skeleton-line.w-40{width:40%}.skeleton-line.w-60{width:60%}.skeleton-line.w-80{width:80%}
+@keyframes df-shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
+
+/* ── Sheets ── on a phone every modal presents as a bottom sheet with a grabber
+   (detent = content height up to 92% of the visible viewport). The sign-in /
+   plans sheet (#modal-upgrade) is EXCLUDED in this wave: sign-in is being
+   redesigned in a separate session and keeps its centered presentation. */
+@keyframes df-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes df-sheet-in{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes df-pop-in{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+.modal-backdrop.active{animation:df-fade-in var(--dur-fast) var(--ease-standard)}
+.modal-backdrop.active > .modal{animation:df-pop-in var(--dur-base) var(--ease-standard)}
+.modal h3{font-size:var(--fs-title3)}
+@media (max-width:600px){
+  .modal-backdrop:not(#modal-upgrade){align-items:flex-end;padding:calc(var(--sp-8) + var(--safe-top)) 0 0}
+  .modal-backdrop:not(#modal-upgrade) > .modal{max-width:none;width:100%;border-radius:var(--r-xl) var(--r-xl) 0 0;border-bottom:none;padding-bottom:calc(22px + var(--safe-bottom));box-shadow:var(--shadow-sheet);max-height:92vh}
+  .modal-backdrop:not(#modal-upgrade) > .modal-picker{padding-bottom:var(--safe-bottom)}
+  .modal-backdrop:not(#modal-upgrade).active > .modal{animation:df-sheet-in var(--dur-sheet) var(--ease-sheet)}
+  .modal-backdrop:not(#modal-upgrade) > .modal::before{content:'';display:block;width:36px;height:5px;border-radius:3px;background:var(--border-strong);margin:-10px auto 14px}
+  .modal-backdrop:not(#modal-upgrade) > .modal-picker::before{margin:8px auto 0}
+  #modal-maxoffer .modal-actions{bottom:calc(-22px - var(--safe-bottom));padding-bottom:calc(14px + var(--safe-bottom))}
+}
+@supports (height:1dvh){
+  @media (max-width:600px){ .modal-backdrop:not(#modal-upgrade) > .modal{max-height:92dvh} }
+}
+
+/* ── Toast ── rides above the tab bar. */
+.toast{bottom:calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-3));border-radius:var(--r-pill);max-width:calc(100% - 2 * var(--gutter));text-align:center}
+
+/* ── Motion ── a page change fades its content in; nothing else moves unless
+   the user caused it. */
+@keyframes df-page-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.page.active{animation:df-page-in var(--dur-base) var(--ease-standard)}
+@media (prefers-reduced-motion:reduce){
+  :root{--dur-instant:1ms;--dur-fast:1ms;--dur-base:1ms;--dur-sheet:1ms}
+  *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;transition-duration:1ms!important;scroll-behavior:auto!important}
+  .skeleton-line{animation:none}
+}

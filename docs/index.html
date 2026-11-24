@@ -38,35 +38,48 @@
 </head>
 <body>
 
-<!-- Wave 5 (SR-3): the dev banner is gone with the tier-mutating dev tooling.
-     The nav is unconditionally the first sticky element at top:0 — the nav-lock
-     invariants live in tests/layout.test.mjs and were re-pinned in this commit. -->
-<div class="nav">
-  <button class="nav-btn active" data-tab="flip" onclick="showPage('flip',this)">Fix &amp; Flip</button>
-  <button class="nav-btn" data-tab="rental" onclick="showPage('rental',this)">Rentals</button>
-  <button class="nav-btn" data-tab="pipeline" onclick="showPage('pipeline',this)">Pipeline</button>
-  <button class="nav-btn" data-tab="guide" onclick="showPage('guide',this)">Guide</button>
-</div>
+<!-- Design-system wave (2026-11-24): ONE compact app bar replaces the old top tabs,
+     the utility row and the per-page brand rows (about 230px of stacked chrome on a
+     phone). Primary navigation moved to the bottom tab bar below. The app bar is
+     unconditionally the first sticky element at top:0 — the lock invariants live in
+     tests/layout.test.mjs and were re-pinned in this commit (Wave 5 SR-3 removed the
+     dev banner; nothing may offset the bar). -->
+<header class="appbar">
+  <div class="appbar-brand">
+    <img src="icons/clearpath-mark.png" alt="Clear Path Capital" class="cpc-logo">
+    <div class="app-subtitle">DealFit</div>
+  </div>
+  <!-- Global utility row — share + install, kept off the wordmark (Round 2 #3); now the app bar's action group -->
+  <div class="util-bar">
+    <!-- Wave A1: persistent auth chip — '…' until auth readiness resolves, then
+         Sign in / Signed in. Never shows the email; the account modal does. -->
+    <button class="auth-chip" id="auth-chip" type="button" aria-label="Checking sign-in status" onclick="handleAuthChipClick()" style="height:34px;padding:0 12px;border-radius:17px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;flex-shrink:0">…</button>
+    <button class="icon-btn" title="Share app" onclick="openShareApp()" aria-label="Share app">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+    </button>
+    <!-- INSTALL UX: labeled CTA. Where the browser offers the native PWA prompt
+         this opens a one-question confirm; elsewhere the guided steps. install.js
+         hides it when DealFit is already running installed. -->
+    <button class="get-app-btn" id="btn-get-app" type="button" onclick="openInstall()" aria-label="Get the DealFit app">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+      Get the App
+    </button>
+  </div>
+</header>
 <!-- Mobile Phase 0: truthful connectivity status (src/js/connectivity.js). Hidden until a
      server request actually fails (or the browser reports offline); Retry re-runs READS only. -->
 <div id="net-status" class="net-status" role="status" aria-live="polite" hidden><span class="net-status-msg"></span><button type="button" class="net-status-retry">Retry</button></div>
 
-<!-- Global utility row — share + install, kept off the wordmark row (Round 2 #3) -->
-<div class="util-bar">
-  <!-- Wave A1: persistent auth chip — '…' until auth readiness resolves, then
-       Sign in / Signed in. Never shows the email; the account modal does. -->
-  <button class="auth-chip" id="auth-chip" type="button" aria-label="Checking sign-in status" onclick="handleAuthChipClick()" style="height:34px;padding:0 12px;border-radius:17px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;flex-shrink:0">…</button>
-  <button class="icon-btn" title="Share app" onclick="openShareApp()" aria-label="Share app">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-  </button>
-  <!-- INSTALL UX: labeled CTA. Where the browser offers the native PWA prompt
-       this opens a one-question confirm; elsewhere the guided steps. install.js
-       hides it when DealFit is already running installed. -->
-  <button class="get-app-btn" id="btn-get-app" type="button" onclick="openInstall()" aria-label="Get the DealFit app">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
-    Get the App
-  </button>
-</div>
+<!-- Primary navigation: bottom tab bar (thumb reach; native convention). Same .nav-btn +
+     data-tab + showPage contract as the old top tabs; viewstack.js records each switch in
+     the History API so Back returns to the previous tab. Placed early in the DOM so keyboard
+     and screen-reader order reach it before page content; CSS fixes it to the bottom. -->
+<nav class="tabbar" aria-label="Primary">
+  <button class="nav-btn active" data-tab="flip" aria-current="page" onclick="showPage('flip',this)"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/></svg><span class="tab-label">Fix &amp; Flip</span></button>
+  <button class="nav-btn" data-tab="rental" onclick="showPage('rental',this)"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1"/></svg><span class="tab-label">Rentals</span></button>
+  <button class="nav-btn" data-tab="pipeline" onclick="showPage('pipeline',this)"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><path d="M7 20h10"/></svg><span class="tab-label">Pipeline</span></button>
+  <button class="nav-btn" data-tab="guide" onclick="showPage('guide',this)"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/><path d="M9 7h6"/></svg><span class="tab-label">Guide</span></button>
+</nav>
 
 <!-- ═══════════════════════════════════════
      FIX & FLIP PAGE
@@ -74,10 +87,6 @@
 <div class="page active" id="page-flip">
   <div class="header">
     <div class="header-left">
-      <div class="header-brand">
-        <img src="icons/clearpath-mark.png" alt="Clear Path Capital" class="cpc-logo"><!-- item 1: correct logo -->
-        <div class="app-subtitle">DealFit</div>
-      </div>
       <div class="header-meta">
         <h1>Fix &amp; Flip</h1>
       </div>
@@ -92,14 +101,6 @@
         <span class="mode-label-beg">Guide</span>
       </div>
     </div>
-  </div>
-
-  <!-- POST-IVAN D1-2 (2026-09-27): Ground-Up Construction is its own loan purpose, never a Fix & Flip. DealFit
-       does not analyze or size a build; this hands it to Clear Path Capital as Ground-Up Construction, where a
-       broker reviews it by hand. -->
-  <div class="guc-entry" id="guc-entry" style="font-size:12px;color:#9aa4b2;line-height:1.5;margin:0 0 10px">
-    Building ground-up? DealFit analyzes fix &amp; flip and rental deals and does not size ground-up construction.
-    <a href="https://clearpathcapfunding.com/?src=dealscreener&amp;purpose=ground_up#submit" target="_blank" rel="noopener" class="hint-link" id="guc-entry-link">Send a Ground-Up Construction deal to Clear Path Capital for broker review &rarr;</a>
   </div>
 
   <!-- item 6: MARKET REGIONS label + 6-slot container -->
@@ -118,24 +119,24 @@
   <div class="slabel">Quick Look <span class="slabel-note">— three numbers for a first read</span></div>
   <div class="field-row">
     <div class="field">
-      <label>Asking Price</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-ask" class="has-pfx" placeholder="185,000" data-currency></div>
+      <label>Asking price</label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-ask" class="has-pfx" placeholder="e.g. 185,000" data-currency></div>
       <div class="field-hint beginner-only">The price you'd pay to buy the property</div>
     </div>
     <div class="field">
-      <label><span class="pro-only">ARV</span><span class="beginner-only">ARV (After Repair Value)</span></label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-arv" class="has-pfx" placeholder="340,000" data-currency></div>
+      <label><span class="pro-only">ARV</span><span class="beginner-only">ARV (after-repair value)</span></label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-arv" class="has-pfx" placeholder="e.g. 340,000" data-currency></div>
       <div class="field-hint beginner-only">What the property will be worth after all repairs are done</div>
     </div>
   </div>
   <div class="field-row">
     <div class="field">
-      <label>Repair Costs</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-rep" class="has-pfx" placeholder="60,000" data-currency></div>
+      <label>Repair costs</label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-rep" class="has-pfx" placeholder="e.g. 60,000" data-currency></div>
       <div class="field-hint beginner-only">Your renovation budget — auto-filled from the planning estimate until you enter your contractor's number</div>
     </div>
     <div class="field">
-      <label>Min Profit Target</label>
+      <label>Min profit target</label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-target" class="has-pfx" value="40,000" placeholder="40,000" data-currency></div>
     </div>
   </div>
@@ -210,7 +211,7 @@
     </div>
     <div class="sqft-row">
       <label>Square footage:</label>
-      <div class="input-wrap" style="flex:1"><input type="number" id="sqft" placeholder="1,400" oninput="calcRepair()" style="height:38px"></div>
+      <div class="input-wrap" style="flex:1"><input type="number" id="sqft" placeholder="e.g. 1,400" oninput="calcRepair()" style="height:38px"></div>
     </div>
     <div class="repair-result" id="repair-result" style="display:none">
       <span class="rlabel">Planning estimate range</span>
@@ -227,14 +228,14 @@
     <div class="ms-body">
   <div class="field-row">
     <div class="field">
-      <label>Loan Amount</label>
+      <label>Loan amount</label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-loan" class="has-pfx" placeholder="optional" data-currency></div>
       <div class="field-hint beginner-only">Leave blank for an all-cash view. Enter a loan to see true LTV/LTC and financing cost.</div>
     </div>
   </div>
   <div class="field-row">
     <div class="field">
-      <label>Interest Rate</label>
+      <label>Interest rate</label>
       <div class="input-wrap"><input type="number" id="f-rate" class="has-sfx" value="10" step="0.25" placeholder="10"><span class="sfx">%</span></div>
       <div class="field-hint beginner-only">DealFit starts at 10%, modelled interest-only. Use the rate your lender quotes.</div>
     </div>
@@ -253,12 +254,12 @@
     <div class="ms-body">
   <div class="field-row">
     <div class="field">
-      <label>Hold Period (months)</label>
+      <label>Hold period (months)</label>
       <div class="input-wrap"><input type="number" id="f-hold" class="has-sfx" value="5" placeholder="5" oninput="updateCarryTotal()"><span class="sfx">mo</span></div>
       <div class="field-hint beginner-only">How many months you expect to own it before selling</div>
     </div>
     <div class="field">
-      <label>Monthly Hold Cost</label>
+      <label>Monthly hold cost</label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="f-carry" class="has-pfx" value="900" placeholder="900" data-currency oninput="updateCarryTotal()"></div>
       <div class="field-hint beginner-only">Monthly costs while you own it — taxes, insurance, utilities (excludes loan — modeled in Financing above)</div>
     </div>
@@ -269,12 +270,12 @@
          sell-side are now named plainly; acquisition/disposition stay in the
          helper vocabulary only. Percentages and formulas unchanged. -->
     <div class="field">
-      <label>Buying Costs %</label>
+      <label>Buying costs %</label>
       <div class="input-wrap"><input type="number" id="f-cc1" class="has-sfx" value="2" placeholder="2"><span class="sfx">%</span></div>
       <div class="field-hint beginner-only">Acquisition closing costs — attorney/title, recording, inspections, lender/escrow fees</div>
     </div>
     <div class="field">
-      <label>Selling Costs %</label>
+      <label>Selling costs %</label>
       <div class="input-wrap"><input type="number" id="f-cc2" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
       <div class="field-hint beginner-only">Resale (disposition) costs — agent commissions, seller closing costs, concessions. We use 5% as a conservative market estimate.</div>
     </div>
@@ -292,23 +293,23 @@
     <div class="ms-body">
   <div class="field full">
     <label>Address <span>(optional)</span></label>
-    <input type="text" id="f-addr" placeholder="123 Oak Street, Charlotte NC">
+    <input type="text" id="f-addr" placeholder="e.g. 123 Oak Street, Charlotte NC">
   </div>
   <!-- Wave A · A1 (2026-09-06): structured City / State — auto-filled from the address when the parse is confident, never over the user's own edit; these are what the CPC handoff sends. -->
   <div class="field-row">
     <div class="field">
       <label>City <span>(auto from address)</span></label>
-      <input type="text" id="f-city" placeholder="Charlotte" autocomplete="off">
+      <input type="text" id="f-city" placeholder="e.g. Charlotte" autocomplete="off">
     </div>
     <div class="field">
       <label>State <span>(2-letter)</span></label>
-      <input type="text" id="f-state" placeholder="NC" maxlength="20" autocapitalize="characters" autocomplete="off">
+      <input type="text" id="f-state" placeholder="e.g. NC" maxlength="20" autocapitalize="characters" autocomplete="off">
     </div>
   </div>
   <!-- Wave A · A4 (2026-09-06): optional property facts for the CPC handoff. Blank = unknown — nothing is defaulted, stored or serialized until the user supplies it; no flip computation depends on either. -->
   <div class="field-row">
     <div class="field">
-      <label>Property Type <span>(optional)</span></label>
+      <label>Property type <span>(optional)</span></label>
       <select id="f-ptype">
         <option value="">Not specified</option>
         <option>SFR</option>
@@ -374,6 +375,16 @@
       <button class="btn-secondary" onclick="clearNewDeal('flip')">Clear &amp; New Deal</button>
     </div>
   </div>
+
+  <!-- Design-system wave (banked UX item 2): this note sat above the first input; the first
+       screen is now the task, and the note follows the analyzer.
+       POST-IVAN D1-2 (2026-09-27): Ground-Up Construction is its own loan purpose, never a Fix & Flip. DealFit
+       does not analyze or size a build; this hands it to Clear Path Capital as Ground-Up Construction, where a
+       broker reviews it by hand. -->
+  <div class="guc-entry" id="guc-entry" style="font-size:12px;color:var(--text-2);line-height:1.5">
+    Building ground-up? DealFit analyzes fix &amp; flip and rental deals and does not size ground-up construction.
+    <a href="https://clearpathcapfunding.com/?src=dealscreener&amp;purpose=ground_up#submit" target="_blank" rel="noopener" class="hint-link" id="guc-entry-link">Send a Ground-Up Construction deal to Clear Path Capital for broker review &rarr;</a>
+  </div>
 </div>
 
 <!-- ═══════════════════════════════════════
@@ -382,10 +393,6 @@
 <div class="page" id="page-rental">
   <div class="header">
     <div class="header-left">
-      <div class="header-brand">
-        <img src="icons/clearpath-mark.png" alt="Clear Path Capital" class="cpc-logo"><!-- item 1 -->
-        <div class="app-subtitle">DealFit</div>
-      </div>
       <div class="header-meta">
         <h2>Rentals</h2>
       </div>
@@ -421,23 +428,23 @@
   <div class="slabel">Property Info</div>
   <div class="field full">
     <label>Address <span>(optional)</span></label>
-    <input type="text" id="v-addr" placeholder="6001 South Kings Hwy, Myrtle Beach SC">
+    <input type="text" id="v-addr" placeholder="e.g. 6001 South Kings Hwy, Myrtle Beach SC">
   </div>
   <!-- Wave A · A1 (2026-09-06): structured City / State — auto-filled from the address when the parse is confident, never over the user's own edit; these are what the CPC handoff sends. -->
   <div class="field-row">
     <div class="field">
       <label>City <span>(auto from address)</span></label>
-      <input type="text" id="v-city" placeholder="Myrtle Beach" autocomplete="off">
+      <input type="text" id="v-city" placeholder="e.g. Myrtle Beach" autocomplete="off">
     </div>
     <div class="field">
       <label>State <span>(2-letter)</span></label>
-      <input type="text" id="v-state" placeholder="SC" maxlength="20" autocapitalize="characters" autocomplete="off">
+      <input type="text" id="v-state" placeholder="e.g. SC" maxlength="20" autocapitalize="characters" autocomplete="off">
     </div>
   </div>
   <!-- Wave A · A4 (2026-09-06): optional property facts for the CPC handoff. Blank = unknown — nothing is defaulted, stored or serialized until the user supplies it; no STR computation depends on either. -->
   <div class="field-row">
     <div class="field">
-      <label>Property Type <span>(optional)</span></label>
+      <label>Property type <span>(optional)</span></label>
       <select id="v-ptype">
         <option value="">Not specified</option>
         <option>SFR</option>
@@ -455,26 +462,26 @@
   </div>
   <div class="field-row">
     <div class="field">
-      <label>Purchase Price</label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-price" class="has-pfx" placeholder="420,000" data-currency></div>
+      <label>Purchase price</label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-price" class="has-pfx" placeholder="e.g. 420,000" data-currency></div>
       <div class="field-hint beginner-only">The price you'd pay to buy the property</div>
     </div>
     <div class="field">
-      <label>Down Payment</label>
+      <label>Down payment</label>
       <div class="input-wrap"><input type="number" id="v-down" class="has-sfx" value="20" placeholder="20"><span class="sfx">%</span></div>
       <div class="field-hint beginner-only">DealFit starts at 20%; use the down payment your lender quotes. Clear Path can walk you through your financing options.</div>
     </div>
   </div>
   <div class="field-row">
     <div class="field">
-      <label>Potential Annual Revenue <span>(at 100% occupancy)</span></label>
-      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-rent" class="has-pfx" placeholder="55,000" data-currency oninput="updateEffRevHint()"></div>
+      <label>Potential annual revenue <span>(at 100% occupancy)</span></label>
+      <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-rent" class="has-pfx" placeholder="e.g. 55,000" data-currency oninput="updateEffRevHint()"></div>
       <div class="rent-range-hint" id="rent-range-hint" style="display:none"></div>
       <div class="rent-range-hint" id="eff-rev-hint" style="display:none"></div>
       <div class="field-hint beginner-only">Using AirDNA/Rabbu annual revenue? That number already includes occupancy — enter it here and set Occupancy to 100%, or back into the full-potential number.</div>
     </div>
     <div class="field">
-      <label>Occupancy Rate</label>
+      <label>Occupancy rate</label>
       <div class="input-wrap"><input type="number" id="v-occ" class="has-sfx" value="65" placeholder="65" oninput="updateOccHint()"><span class="sfx">%</span></div>
       <!-- item 12: occupancy guide text — updates dynamically -->
       <div class="field-hint beginner-only" id="occ-guide-hint"></div>
@@ -484,13 +491,13 @@
   <div class="slabel">Annual Expenses</div>
   <div class="field-row">
     <div class="field">
-      <label>Platform Fee <span>(Airbnb/VRBO)</span></label>
+      <label>Platform fee <span>(Airbnb/VRBO)</span></label>
       <div class="input-wrap"><input type="number" id="v-mgmt" class="has-sfx" value="3" placeholder="3"><span class="sfx">%</span></div>
       <div class="field-hint pro-only">Airbnb charges hosts ~3% per booking. Higher guest-side fees (14–20%) may affect your occupancy rate — factor this into your occupancy % above.</div>
       <div class="field-hint beginner-only">Airbnb charges hosts ~3% per booking. Higher guest-side fees (14–20%) may affect your occupancy rate — factor this into your occupancy % above.<br><br><strong>How platform fees work:</strong> The host fee (~3%) is taken from your payout. The guest fee (~14–20%) is added on top for guests. Your 3% is the direct cost. If guest fees price out budget travelers, it shows up as lower occupancy.</div>
     </div>
     <div class="field">
-      <label>Property Manager</label>
+      <label>Property manager</label>
       <div class="self-manage-toggle-row">
         <span class="self-manage-label" id="self-manage-label">Hired property manager — ~8% of revenue</span>
         <label class="toggle toggle-sm">
@@ -507,17 +514,17 @@
   </div>
   <div class="field-row">
     <div class="field">
-      <label>Taxes + Insurance</label>
+      <label>Taxes + insurance</label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-tax" class="has-pfx" value="5,500" placeholder="5,500" data-currency></div>
     </div>
     <div class="field">
-      <label>Maintenance/Yr</label>
+      <label>Maintenance/yr</label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-maint" class="has-pfx" value="3,000" placeholder="3,000" data-currency></div>
     </div>
   </div>
   <div class="field-row">
     <div class="field">
-      <label>Owner-Paid Utilities <span>(annual)</span></label>
+      <label>Owner-paid utilities <span>(annual)</span></label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-util" class="has-pfx" value="0" placeholder="0" data-currency></div>
       <div class="field-hint">Water/sewer, common-area utilities, trash, or other utilities paid by the owner.</div>
     </div>
@@ -530,11 +537,11 @@
   </div>
   <div class="field-row">
     <div class="field">
-      <label>Furnishing/Setup <span>(one-time)</span></label>
+      <label>Furnishing/setup <span>(one-time)</span></label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="v-furnish" class="has-pfx" value="15,000" placeholder="15,000" data-currency></div>
     </div>
     <div class="field">
-      <label>Min Cash-on-Cash</label>
+      <label>Min cash-on-cash</label>
       <div class="input-wrap"><input type="number" id="v-target" class="has-sfx" value="6" placeholder="6"><span class="sfx">%</span></div>
     </div>
   </div>
@@ -542,7 +549,7 @@
   <!-- item 14: Interest Rate field -->
   <div class="field-row">
     <div class="field">
-      <label>Interest Rate</label>
+      <label>Interest rate</label>
       <div class="input-wrap"><input type="number" id="v-interest-rate" class="has-sfx" value="6.75" step="0.125" placeholder="6.75"><span class="sfx">%</span></div>
       <div class="field-hint pro-only">Your rate significantly impacts cash flow. DealFit starts at 6.75%; use the rate your lender quotes.</div>
       <div class="field-hint beginner-only">Your rate significantly impacts cash flow. DealFit starts at 6.75%; use the rate your lender quotes.<br><a href="https://clearpathcapfunding.com/" target="_blank" rel="noopener" class="hint-link" style="display:inline-block;margin-top:5px">→ Check with Clear Path Capital</a></div>
@@ -592,28 +599,28 @@
     <div class="slabel">Property Info</div>
     <div class="field full">
       <label>Address <span>(optional)</span></label>
-      <input type="text" id="l-addr" placeholder="318 Greenwood Ave, Memphis TN">
+      <input type="text" id="l-addr" placeholder="e.g. 318 Greenwood Ave, Memphis TN">
     </div>
     <!-- Wave A · A1 (2026-09-06): structured City / State — auto-filled from the address when the parse is confident, never over the user's own edit; these are what the CPC handoff sends. -->
     <div class="field-row">
       <div class="field">
         <label>City <span>(auto from address)</span></label>
-        <input type="text" id="l-city" placeholder="Memphis" autocomplete="off">
+        <input type="text" id="l-city" placeholder="e.g. Memphis" autocomplete="off">
       </div>
       <div class="field">
         <label>State <span>(2-letter)</span></label>
-        <input type="text" id="l-state" placeholder="TN" maxlength="20" autocapitalize="characters" autocomplete="off">
+        <input type="text" id="l-state" placeholder="e.g. TN" maxlength="20" autocapitalize="characters" autocomplete="off">
       </div>
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Purchase Price</label>
-        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-price" class="has-pfx" placeholder="260,000" data-currency></div>
+        <label>Purchase price</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-price" class="has-pfx" placeholder="e.g. 260,000" data-currency></div>
         <div class="field-hint beginner-only">What you'd pay to buy this rental.</div>
       </div>
       <div class="field">
-        <label id="l-rent-label">Monthly Rent</label>
-        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-rent" class="has-pfx" placeholder="2,100" data-currency></div>
+        <label id="l-rent-label">Monthly rent</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-rent" class="has-pfx" placeholder="e.g. 2,100" data-currency></div>
         <div class="field-hint beginner-only">The monthly lease rent — not annual. Prefilled from your market.</div>
       </div>
     </div>
@@ -627,7 +634,7 @@
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Down Payment</label>
+        <label>Down payment</label>
         <div class="input-wrap"><input type="number" id="l-down" class="has-sfx" value="20" placeholder="20"><span class="sfx">%</span></div>
         <div class="field-hint beginner-only">DealFit starts at 20% (25% for 5–8 units); use the down payment your lender quotes. Putting more down raises DSCR, which can make a thin deal look stronger.</div>
       </div>
@@ -638,7 +645,7 @@
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Property Type</label>
+        <label>Property type</label>
         <select id="l-ptype">
           <option>SFR</option>
           <option>2–4 Unit</option>
@@ -649,7 +656,7 @@
         </select>
       </div>
       <div class="field">
-        <label>Min Cash-on-Cash</label>
+        <label>Min cash-on-cash</label>
         <div class="input-wrap"><input type="number" id="l-target" class="has-sfx" value="8" placeholder="8"><span class="sfx">%</span></div>
       </div>
     </div>
@@ -657,16 +664,16 @@
     <div class="slabel">Operating Expenses <span style="font-weight:400;color:#9aa4b2">(NOI excludes the CapEx reserve)</span></div>
     <div class="field-row">
       <div class="field">
-        <label>Property Taxes <span>(annual)</span></label>
-        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-tax" class="has-pfx" placeholder="2,200" data-currency></div>
+        <label>Property taxes <span>(annual)</span></label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-tax" class="has-pfx" placeholder="e.g. 2,200" data-currency></div>
       </div>
       <div class="field">
         <label>Insurance <span>(annual)</span></label>
-        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-ins" class="has-pfx" placeholder="1,050" data-currency></div>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-ins" class="has-pfx" placeholder="e.g. 1,050" data-currency></div>
       </div>
     </div>
     <div class="field full">
-      <label>Owner-Paid Utilities <span>(annual)</span></label>
+      <label>Owner-paid utilities <span>(annual)</span></label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-util" class="has-pfx" value="0" placeholder="0" data-currency></div>
       <div class="field-hint">Water/sewer, common-area utilities, trash, or other utilities paid by the owner.</div>
     </div>
@@ -676,7 +683,7 @@
         <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="l-hoa" class="has-pfx" value="0" placeholder="0" data-currency></div>
       </div>
       <div class="field">
-        <label>Property Management</label>
+        <label>Property management</label>
         <div class="self-manage-toggle-row">
           <span class="self-manage-label">Self-manage (skip PM fee)</span>
           <label class="toggle toggle-sm"><input type="checkbox" id="l-self-manage-toggle"><div class="toggle-track"></div></label>
@@ -686,11 +693,11 @@
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Maintenance Reserve</label>
+        <label>Maintenance reserve</label>
         <div class="input-wrap"><input type="number" id="l-maint" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
       </div>
       <div class="field">
-        <label>CapEx Reserve</label>
+        <label>CapEx reserve</label>
         <div class="input-wrap"><input type="number" id="l-capex" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
         <div class="field-hint beginner-only">Capital reserve for big-ticket items. DealFit deducts it below NOI, so it lowers cash flow but not DSCR.</div>
       </div>
@@ -699,7 +706,7 @@
     <div class="slabel">DSCR Financing</div>
     <div class="field-row">
       <div class="field">
-        <label>Loan Rate</label>
+        <label>Loan rate</label>
         <div class="input-wrap"><input type="number" id="l-rate" class="has-sfx" value="7.25" step="0.125" placeholder="7.25"><span class="sfx">%</span></div>
         <div class="field-hint beginner-only">DSCR rates run ~0.5–1pt above owner-occupied. Check with Clear Path Capital.</div>
       </div>
@@ -714,7 +721,7 @@
         <div class="input-wrap"><input type="number" id="l-points" class="has-sfx" value="1" step="0.25" placeholder="1"><span class="sfx">%</span></div>
       </div>
       <div class="field">
-        <label>Closing Costs</label>
+        <label>Closing costs</label>
         <div class="input-wrap"><input type="number" id="l-cc" class="has-sfx" value="2" step="0.25" placeholder="2"><span class="sfx">%</span></div>
       </div>
     </div>
@@ -765,57 +772,57 @@
     <div class="slabel">Acquisition</div>
     <div class="field full">
       <label>Address <span>(optional)</span></label>
-      <input type="text" id="b-addr" placeholder="77 Birch St, Indianapolis IN">
+      <input type="text" id="b-addr" placeholder="e.g. 77 Birch St, Indianapolis IN">
     </div>
     <!-- Wave A · A1 (2026-09-06): structured City / State — auto-filled from the address when the parse is confident, never over the user's own edit; these are what the CPC handoff sends. -->
     <div class="field-row">
       <div class="field">
         <label>City <span>(auto from address)</span></label>
-        <input type="text" id="b-city" placeholder="Indianapolis" autocomplete="off">
+        <input type="text" id="b-city" placeholder="e.g. Indianapolis" autocomplete="off">
       </div>
       <div class="field">
         <label>State <span>(2-letter)</span></label>
-        <input type="text" id="b-state" placeholder="IN" maxlength="20" autocapitalize="characters" autocomplete="off">
+        <input type="text" id="b-state" placeholder="e.g. IN" maxlength="20" autocapitalize="characters" autocomplete="off">
       </div>
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Purchase Price</label>
-        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-price" class="has-pfx" placeholder="150,000" data-currency></div>
+        <label>Purchase price</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-price" class="has-pfx" placeholder="e.g. 150,000" data-currency></div>
       </div>
       <div class="field">
-        <label>Rehab Budget</label>
-        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-rehab" class="has-pfx" placeholder="40,000" data-currency></div>
+        <label>Rehab budget</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-rehab" class="has-pfx" placeholder="e.g. 40,000" data-currency></div>
       </div>
     </div>
     <div class="field-row">
       <div class="field">
-        <label>After-Repair Value (ARV)</label>
-        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-arv" class="has-pfx" placeholder="250,000" data-currency></div>
+        <label>After-repair value (ARV)</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-arv" class="has-pfx" placeholder="e.g. 250,000" data-currency></div>
       </div>
       <div class="field">
-        <label>Rehab Contingency</label>
+        <label>Rehab contingency</label>
         <div class="input-wrap"><input type="number" id="b-contingency" class="has-sfx" value="15" placeholder="15"><span class="sfx">%</span></div>
       </div>
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Purchase Costs</label>
+        <label>Purchase costs</label>
         <div class="input-wrap"><input type="number" id="b-cc" class="has-sfx" value="2" step="0.25" placeholder="2"><span class="sfx">%</span></div>
       </div>
       <div class="field">
-        <label>Rehab / Hold Period</label>
+        <label>Rehab / hold period</label>
         <div class="input-wrap"><input type="number" id="b-hold" class="has-sfx" value="6" placeholder="6"><span class="sfx">mo</span></div>
       </div>
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Monthly Holding Cost</label>
+        <label>Monthly holding cost</label>
         <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-carry" class="has-pfx" value="600" placeholder="600" data-currency></div>
         <div class="field-hint beginner-only">Taxes/insurance/utilities during the rehab.</div>
       </div>
       <div class="field">
-        <label>Property Type</label>
+        <label>Property type</label>
         <select id="b-ptype">
           <option>SFR</option>
           <option>2–4 Unit</option>
@@ -828,12 +835,12 @@
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Acquisition Loan <span>(bridge — blank = all-cash)</span></label>
+        <label>Acquisition loan <span>(bridge — blank = all-cash)</span></label>
         <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-acqloan" class="has-pfx" placeholder="all-cash" data-currency></div>
         <div class="field-hint beginner-only">Optional hard-money for the buy. Leave blank if paying cash up front.</div>
       </div>
       <div class="field">
-        <label>Acq. Rate / Points</label>
+        <label>Acq. rate / points</label>
         <div class="field-row" style="gap:8px;margin:0">
           <div class="input-wrap"><input type="number" id="b-acqrate" class="has-sfx" value="10" step="0.25" placeholder="10"><span class="sfx">%</span></div>
           <div class="input-wrap"><input type="number" id="b-acqpoints" class="has-sfx" value="2" step="0.25" placeholder="2"><span class="sfx">pt</span></div>
@@ -849,17 +856,17 @@
         <div class="field-hint beginner-only">New loan = ARV × this. DealFit starts at 75%; use the LTV your refinance lender quotes.</div>
       </div>
       <div class="field">
-        <label>Refi Rate</label>
+        <label>Refi rate</label>
         <div class="input-wrap"><input type="number" id="b-refirate" class="has-sfx" value="7.0" step="0.125" placeholder="7.0"><span class="sfx">%</span></div>
       </div>
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Refi Amortization</label>
+        <label>Refi amortization</label>
         <div class="input-wrap"><input type="number" id="b-refiamort" class="has-sfx" value="30" placeholder="30"><span class="sfx">yr</span></div>
       </div>
       <div class="field">
-        <label>Refi Costs</label>
+        <label>Refi costs</label>
         <div class="input-wrap"><input type="number" id="b-reficost" class="has-sfx" value="3" step="0.25" placeholder="3"><span class="sfx">%</span></div>
       </div>
     </div>
@@ -875,8 +882,8 @@
     <div class="slabel">Rental <span style="font-weight:400;color:#9aa4b2">(post-refi hold)</span></div>
     <div class="field-row">
       <div class="field">
-        <label id="b-rent-label">Monthly Rent</label>
-        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-rent" class="has-pfx" placeholder="2,100" data-currency></div>
+        <label id="b-rent-label">Monthly rent</label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-rent" class="has-pfx" placeholder="e.g. 2,100" data-currency></div>
       </div>
       <div class="field">
         <label>Vacancy</label>
@@ -885,16 +892,16 @@
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Property Taxes <span>(annual)</span></label>
-        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-tax" class="has-pfx" placeholder="2,500" data-currency></div>
+        <label>Property taxes <span>(annual)</span></label>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-tax" class="has-pfx" placeholder="e.g. 2,500" data-currency></div>
       </div>
       <div class="field">
         <label>Insurance <span>(annual)</span></label>
-        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-ins" class="has-pfx" placeholder="1,200" data-currency></div>
+        <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-ins" class="has-pfx" placeholder="e.g. 1,200" data-currency></div>
       </div>
     </div>
     <div class="field full">
-      <label>Owner-Paid Utilities <span>(annual)</span></label>
+      <label>Owner-paid utilities <span>(annual)</span></label>
       <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-util" class="has-pfx" value="0" placeholder="0" data-currency></div>
       <div class="field-hint">Water/sewer, common-area utilities, trash, or other utilities paid by the owner.</div>
     </div>
@@ -904,7 +911,7 @@
         <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" id="b-hoa" class="has-pfx" value="0" placeholder="0" data-currency></div>
       </div>
       <div class="field">
-        <label>Property Management</label>
+        <label>Property management</label>
         <div class="self-manage-toggle-row">
           <span class="self-manage-label">Self-manage (skip PM fee)</span>
           <label class="toggle toggle-sm"><input type="checkbox" id="b-self-manage-toggle"><div class="toggle-track"></div></label>
@@ -914,11 +921,11 @@
     </div>
     <div class="field-row">
       <div class="field">
-        <label>Maintenance Reserve</label>
+        <label>Maintenance reserve</label>
         <div class="input-wrap"><input type="number" id="b-maint" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
       </div>
       <div class="field">
-        <label>CapEx Reserve</label>
+        <label>CapEx reserve</label>
         <div class="input-wrap"><input type="number" id="b-capex" class="has-sfx" value="5" placeholder="5"><span class="sfx">%</span></div>
       </div>
     </div>
@@ -972,10 +979,6 @@
 <div class="page" id="page-pipeline">
   <div class="header">
     <div class="header-left">
-      <div class="header-brand">
-        <img src="icons/clearpath-mark.png" alt="Clear Path Capital" class="cpc-logo"><!-- item 1 -->
-        <div class="app-subtitle">DealFit</div>
-      </div>
       <div class="header-meta">
         <h2>My Pipeline</h2>
         <p>Tap any deal to expand · When signed in, saved pipeline deals are stored with your account.</p>
@@ -1000,10 +1003,6 @@
 <div class="page" id="page-guide">
   <div class="header">
     <div class="header-left">
-      <div class="header-brand">
-        <img src="icons/clearpath-mark.png" alt="Clear Path Capital" class="cpc-logo"><!-- item 1 -->
-        <div class="app-subtitle">DealFit</div>
-      </div>
       <div class="header-meta">
         <h2>Field Guide</h2>
         <p>Updated May 2026</p>

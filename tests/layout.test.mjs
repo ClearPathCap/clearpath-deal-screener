@@ -27,10 +27,16 @@ const html = src("docs/index.html");
 const mainJs = src("docs/src/js/main.js");
 
 // 1. The nav is sticky and locked to the very top of the viewport.
-const navRule = (css.match(/\.nav\{[^}]*\}/) || [""])[0];
+// RE-PINNED in the design-system wave commit (same-commit law, reasoning here):
+// the top tab strip (.nav) became ONE compact app bar (.appbar — brand + auth
+// chip + share + install), and primary navigation moved to a fixed bottom tab
+// bar (.tabbar). The sticky element at the top is now the app bar, so every
+// nav-lock invariant below moves to it UNCHANGED in substance: sticky, top:0,
+// opaque, above content, first in <body>, and no selector may offset it.
+const navRule = (css.match(/\.appbar\{[^}]*\}/) || [""])[0];
 ok("nav rule exists", navRule.length > 0);
 ok("nav is position:sticky", /position:sticky/.test(navRule));
-ok("nav locks at top:0", /(^|;)top:0(;|})/.test(navRule.slice(4)));
+ok("nav locks at top:0", /(^|;)top:0(;|})/.test(navRule.slice(7)));
 ok("nav has an opaque background (content must not bleed through)", /background:var\(--bg\)/.test(navRule));
 ok("nav z-index above page content", /z-index:(1[0-9]|[2-9][0-9])/.test(navRule));
 
@@ -42,14 +48,31 @@ ok("nav z-index above page content", /z-index:(1[0-9]|[2-9][0-9])/.test(navRule)
 //    state can offset the nav at all. If a future banner-like element returns,
 //    these pins force the same-commit re-derivation this suite's header demands.
 ok("no dev-banner selector remains anywhere in CSS", !/\.dev-mode-banner/.test(css));
-ok("no sibling rule offsets the nav (any selector)", !/\+\s*\.nav\s*\{/.test(css));
+ok("no sibling rule offsets the nav (any selector)", !/\+\s*\.(nav|appbar)\s*\{/.test(css));
 ok("no dev-banner element remains in the DOM", !/dev-mode-banner/.test(html));
 ok("the nav is the first element inside <body> (nothing can sit above it)",
-   /^(\s|<!--[\s\S]*?-->)*<div class="nav">/.test(html.slice(html.indexOf("<body>") + 6)));
+   /^(\s|<!--[\s\S]*?-->)*<header class="appbar">/.test(html.slice(html.indexOf("<body>") + 6)));
+// The safe-area inset is padding INSIDE the bar, never a top offset.
+ok("the app bar carries the safe-area inset as padding, not as an offset",
+   /padding:var\(--safe-top\)/.test(navRule) && !/(^|;|\{)top:(var|env|calc)/.test(navRule));
+// The bottom tab bar is the primary navigation: fixed to the bottom inside the
+// 500px app column, the safe-area inset inside it, above page content and
+// below sheets; it keeps the .nav-btn/data-tab/showPage contract.
+const tabRule = (css.match(/\.tabbar\{[^}]*\}/) || [""])[0];
+ok("tab bar is fixed to the bottom of the viewport", /position:fixed;bottom:0/.test(tabRule));
+ok("tab bar stays inside the 500px app column", /max-width:500px/.test(tabRule));
+ok("tab bar pads for the home indicator (safe area inside the bar)", /var\(--safe-bottom\)/.test(tabRule));
+ok("tab bar layers above content and below sheets", /z-index:30/.test(tabRule) && /\.modal-backdrop\{[^}]*z-index:100/.test(css));
+ok("the four primary tabs keep the showPage contract",
+   ['flip', 'rental', 'pipeline', 'guide'].every(t => new RegExp('<button class="nav-btn[^"]*" data-tab="' + t + '"[^>]*onclick="showPage\\(\'' + t + '\',this\\)"').test(html)));
+ok("page content clears the fixed tab bar", /body\{[^}]*padding-bottom:calc\(var\(--tabbar-h\) \+ var\(--safe-bottom\)/.test(css));
 ok("no banner JS remains in main.js", !/dev-mode-banner|updateDevModeIndicator\(/.test(mainJs.replace(/\/\/[^\n]*/g, "")));
 
 // 5. The util-bar stays in normal flow — it must scroll under the locked nav,
 //    never float over it or the wordmark row (Round 2 #3 stays honored).
+//    Design-system wave: the util-bar is now the app bar's action group — still
+//    unpositioned (the bar itself is the sticky element) and still separate
+//    from the wordmark.
 const utilRule = (css.match(/\.util-bar\{[^}]*\}/) || [""])[0];
 ok("util-bar rule exists", utilRule.length > 0);
 ok("util-bar is not positioned (static flow)", !/position:/.test(utilRule));
@@ -190,8 +213,11 @@ ok("the edit affordance has a primary style", /\.btn-action\.primary\{background
 // Beginner-confusing labels renamed; formulas untouched (dealedit.test.mjs pins
 // the math). BRRR's single 'Purchase Costs' field is DELIBERATELY not renamed
 // this wave — flip-scope per dispatch; consistency ruling deferred to A-Aron.
-ok("flip form says Buying Costs %", /<label>Buying Costs %<\/label>/.test(html));
-ok("flip form says Selling Costs %", /<label>Selling Costs %<\/label>/.test(html));
+// RE-PINNED in the design-system wave commit: field labels are sentence case
+// (banked UX item 5 — uppercase is reserved for section eyebrows), so the same
+// renamed labels read "Buying costs %" / "Selling costs %". Wording unchanged.
+ok("flip form says Buying Costs %", /<label>Buying costs %<\/label>/.test(html));
+ok("flip form says Selling Costs %", /<label>Selling costs %<\/label>/.test(html));
 ok("the old flip cost labels are gone",
    !/<label>Purchase Costs %<\/label>/.test(html) && !/<label>Sale Costs %<\/label>/.test(html));
 ok("buy-side helper speaks acquisition closing costs", /Acquisition closing costs — attorney\/title/.test(html));

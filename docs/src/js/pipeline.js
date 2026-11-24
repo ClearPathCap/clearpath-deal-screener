@@ -3,6 +3,7 @@
 import { fmt, pct, escapeHtml, parseComma } from './format.js';
 import { getDeals, saveDeals, hydratePipeline, pipelineLoadState, pipelineLoadFailure, PIPELINE_ALLOWANCE } from './storage.js';
 import { serverUnreachable } from './connectivity.js';
+import { stateHtml, skeletonHtml } from './states.js';   // design-system wave: one empty/loading/error component
 
 // Mobile Phase 0: a failed mutation caused by no connection says so — and says
 // exactly what did NOT happen. The await-then-commit law is unchanged.
@@ -284,18 +285,24 @@ export function renderPipeline() {
   // Pipeline is account-scoped (Option A): signed-out users see a sign-in prompt,
   // not a deal list. Analyzing deals and Get Funding stay login-free elsewhere.
   if (!isSignedIn()) {
-    list.innerHTML = `<div class="empty-state"><div class="ei">🔒</div><p>Your pipeline lives with your free account.<br>Sign in or create one to save deals and<br>track them across all your devices.</p><button class="btn-redeem" style="margin-top:14px" onclick="openUpgrade('save')">Sign in / Create free account</button></div>`;
+    // Design-system wave: the shared state component. Its action wraps inside the
+    // column, closing the 4px overflow the nowrap .btn-redeem caused at 375px.
+    list.innerHTML = stateHtml({ kind: 'empty', icon: '🔒', title: 'Your pipeline lives with your free account',
+      body: 'Sign in or create one to save deals and track them across all your devices.',
+      action: { label: 'Sign in / Create free account', onclick: "openUpgrade('save')" } });
     return;
   }
 
   // Mobile Phase 0: an unloaded pipeline is never shown as an empty one.
   const loadState = pipelineLoadState();
   if (loadState === 'loading') {
-    list.innerHTML = '<div class="empty-state" role="status"><div class="ei">⏳</div><p>Loading your saved deals…</p></div>';
+    list.innerHTML = skeletonHtml({ cards: 3, label: 'Loading your saved deals…' });
     return;
   }
   if (loadState === 'failed') {
-    list.innerHTML = '<div class="empty-state" role="status"><div class="ei">📡</div><p>Couldn’t load your saved deals — ' + (pipelineLoadFailure() === 'server' ? 'DealFit’s server returned an error' : 'no connection to DealFit’s server') + '.<br>Nothing was changed; your deals stay with your account.</p><button class="btn-redeem" style="margin-top:14px" onclick="retryConnection()">Retry</button></div>';
+    list.innerHTML = stateHtml({ kind: 'error', icon: '📡', title: 'Couldn’t load your saved deals',
+      body: (pipelineLoadFailure() === 'server' ? 'DealFit’s server returned an error' : 'No connection to DealFit’s server') + '. Nothing was changed; your deals stay with your account.',
+      action: { label: 'Retry', kind: 'secondary', onclick: 'retryConnection()' } });
     return;
   }
 
@@ -305,7 +312,8 @@ export function renderPipeline() {
   else if (pipelineFilter === 'hot')    deals = deals.filter(d => d.cls === 'hot');
 
   if (!deals.length) {
-    list.innerHTML = `<div class="empty-state"><div class="ei">📋</div><p>No deals saved yet.<br>Analyze a property and hit Save<br>to build your pipeline.</p></div>`;
+    list.innerHTML = stateHtml({ kind: 'empty', icon: '📋', title: 'No deals saved yet',
+      body: 'Analyze a property and tap Save to build your pipeline.' });
     return;
   }
   list.innerHTML = deals.map(d => buildDealCard(d)).join('');
@@ -611,13 +619,13 @@ function buildFlipEditForm(d) {
       <div class="field full"><label>Deal name</label>
         <input type="text" data-pe="name" value="${escapeHtml(d.name)}"></div>
       <div class="field-row">
-        <div class="field"><label>Asking Price</label>
+        <div class="field"><label>Asking price</label>
           <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="ask" value="${money(data.ask)}"></div></div>
         <div class="field"><label>ARV</label>
           <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="arv" value="${money(data.arv)}"></div></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Repair Costs</label>
+        <div class="field"><label>Repair costs</label>
           <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="rep"
             data-rep-owned="${owned}" data-rep-legacy="${isLegacy && owned !== 'estimator' ? '1' : ''}"
             oninput="this.dataset.repOwned='manual';this.dataset.repLegacy='';dealEditRepTouched(${d.id})" value="${money(data.rep)}"></div>
@@ -627,25 +635,25 @@ function buildFlipEditForm(d) {
           <div class="input-wrap"><input type="number" data-pe="hold" value="${data.hold ?? 5}"><span class="sfx">mo</span></div></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Buying Costs %</label>
+        <div class="field"><label>Buying costs %</label>
           <div class="input-wrap"><input type="number" class="has-sfx" data-pe="cc1" value="${data.cc1 ?? 2}"><span class="sfx">%</span></div></div>
-        <div class="field"><label>Selling Costs %</label>
+        <div class="field"><label>Selling costs %</label>
           <div class="input-wrap"><input type="number" class="has-sfx" data-pe="cc2" value="${data.cc2 ?? 5}"><span class="sfx">%</span></div></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Carrying Cost / mo</label>
+        <div class="field"><label>Carrying cost / mo</label>
           <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="carry" value="${money(data.carry)}"></div></div>
-        <div class="field"><label>Min Profit Target</label>
+        <div class="field"><label>Min profit target</label>
           <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="target" value="${money(data.target)}"></div></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Loan Amount <span>(blank = all-cash)</span></label>
+        <div class="field"><label>Loan amount <span>(blank = all-cash)</span></label>
           <div class="input-wrap"><span class="pfx">$</span><input type="text" inputmode="numeric" class="has-pfx" data-pe="loan" value="${data.loan ? money(data.loan) : ''}"></div></div>
-        <div class="field"><label>Square Footage</label>
+        <div class="field"><label>Square footage</label>
           <div class="input-wrap"><input type="text" inputmode="numeric" data-pe="sqft" value="${data.sqft ? (+data.sqft).toLocaleString() : ''}"></div></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Interest Rate %</label>
+        <div class="field"><label>Interest rate %</label>
           <div class="input-wrap"><input type="number" step="0.1" class="has-sfx" data-pe="rate" value="${ratePct}"><span class="sfx">%</span></div></div>
         <div class="field"><label>Points %</label>
           <div class="input-wrap"><input type="number" step="0.1" class="has-sfx" data-pe="points" value="${pointsPct}"><span class="sfx">%</span></div></div>

@@ -16,6 +16,8 @@ import { saveDeal as _saveDeal, renderPipeline,
          dealEditMarketChanged, dealEditRepTouched,
          beginDealReview, endDealReview, getReviewingDealId, onDealReviewEnded } from './pipeline.js';
 import { openShareApp, shareDeal }                                   from './share.js';
+import { initViewStack, recordPage, recordSheetOpen, recordSheetClose, haptic } from './viewstack.js';   // design-system wave: History-API view stack
+import { stateHtml }                                               from './states.js';      // design-system wave: one empty/loading/error component
 import { openInstall, triggerInstall, initInstallHint }             from './install.js';
 import { consumeInstallLink, openInstallFromLink }                   from './install.js';   // business-card ?install=1
 import { consumeToolLink }                                            from './toolLink.js';  // public tool pages: /?tool=<name>
@@ -796,10 +798,15 @@ function renderMarketSlots(containerId, tabType) {
         const placeholder = i === 0 ? 'Pick Market' : 'Region ' + (i + 1);
         html.push(`<button class="market-slot slot-empty" onclick="handleSlotClick(${i},'')" data-slot="${i}">${placeholder}</button>`);
       }
-    } else {
-      // Locked — upgrade required (no pointer-events:none; click is handled in JS)
-      html.push(`<button class="market-slot slot-locked" onclick="handleLockedSlot(${i + 1})">🔒 Region ${i + 1}</button>`);
     }
+    // Design-system wave (banked UX item 3, upsell timing): slots the plan does
+    // not unlock are no longer drawn as locked tiles. A starter used to meet four
+    // "🔒 Region" tiles before using the product at all.
+  }
+  // One quiet line instead, and only after the visitor has run a first analysis.
+  // It opens the same region upgrade path the locked tiles did (handleLockedSlot).
+  if (unlocked < 6) {
+    html.push(`<button type="button" class="slot-more" onclick="handleLockedSlot(${unlocked + 1})"${hasAnalyzedOnce() ? '' : ' hidden'}>More regions with ${getActiveTier() === 'investor' ? 'Pro' : 'Investor'}</button>`);
   }
 
   container.innerHTML = html.join('');
@@ -829,6 +836,17 @@ function renderMarketSlots(containerId, tabType) {
     // Calling it with null on the empty path makes that reset reachable.
     updateRepairRangesForMarket(null);
   }
+}
+
+// First-analysis marker for upsell timing — app-feature copy only (more market
+// regions); nothing about funding, loan access or terms depends on it.
+function hasAnalyzedOnce() {
+  try { return localStorage.getItem('df.analyzedOnce') === '1'; } catch { return false; }
+}
+function markAnalyzedOnce(result) {
+  if (!result || hasAnalyzedOnce()) return;
+  try { localStorage.setItem('df.analyzedOnce', '1'); } catch {}
+  document.querySelectorAll('.slot-more').forEach(b => { b.hidden = false; });
 }
 
 // Render the shared market slots into every analyzer's container (hidden ones are
@@ -1295,6 +1313,7 @@ function analyzeFlipValidated() {
   if (validateRequiredFields('flip')) {
     analyzeFlip();
     syncStaleWatch('flip', getLastFlipResult());
+    markAnalyzedOnce(getLastFlipResult());
     maybeDefaultDealName('flip-deal-name', 'f-addr');
   }
 }
@@ -1306,6 +1325,7 @@ function analyzeRentalValidated() {
   if (validateRequiredFields('rental')) {
     analyzeRental();
     syncStaleWatch('rental', getLastRentalResult());
+    markAnalyzedOnce(getLastRentalResult());
     maybeDefaultDealName('rental-deal-name', 'v-addr');
   }
 }
@@ -1314,6 +1334,7 @@ function analyzeLtrValidated() {
   if (validateRequiredFields('ltr')) {
     analyzeLtr();
     syncStaleWatch('ltr', getLastLtrResult());
+    markAnalyzedOnce(getLastLtrResult());
     maybeDefaultDealName('ltr-deal-name', 'l-addr');
   }
 }
@@ -1321,6 +1342,7 @@ function analyzeBrrrValidated() {
   if (validateRequiredFields('brrr')) {
     analyzeBrrr();
     syncStaleWatch('brrr', getLastBrrrResult());
+    markAnalyzedOnce(getLastBrrrResult());
     maybeDefaultDealName('brrr-deal-name', 'b-addr');
   }
 }
@@ -1351,13 +1373,24 @@ function updateSelfReno() {
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
+// Design-system wave: the tab bar owns the active state (aria-current for
+// assistive tech), and every switch is a History entry (viewstack.js) so Back
+// returns to the previous tab. A caller that passes no button (tool links,
+// review flows, Back itself) still lights the matching tab.
 function showPage(id, btn) {
+  const prev = currentPageId(), prevY = window.scrollY || 0;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => { b.classList.remove('active'); if (b.removeAttribute) b.removeAttribute('aria-current'); });
   document.getElementById('page-' + id).classList.add('active');
-  if (btn) btn.classList.add('active');
+  const tab = btn || (document.querySelector && document.querySelector('.nav-btn[data-tab="' + id + '"]'));
+  if (tab) { tab.classList.add('active'); if (tab.setAttribute) tab.setAttribute('aria-current', 'page'); }
   if (id === 'pipeline') renderPipeline();
+  if (prev !== id) { recordPage(id, prevY); haptic(); }
   window.scrollTo(0, 0);
+}
+function currentPageId() {
+  const p = document.querySelector && document.querySelector('.page.active');
+  return p && p.id ? p.id.replace(/^page-/, '') : 'flip';
 }
 
 // ─── Modals ───────────────────────────────────────────────────────────────────
@@ -1387,6 +1420,7 @@ function openModal(id)  {
       b.left = '0'; b.right = '0'; b.width = '100%';
     }
     _openModalCount++;
+    recordSheetOpen(id);                        // design-system wave: Back / Escape close the top sheet
   }
   el.classList.add('active');
   const surface = el.querySelector('.modal, .modal-picker');
@@ -1395,7 +1429,8 @@ function openModal(id)  {
 function closeModal(id) {
   const el = document.getElementById(id);
   if (!el) return;
-  if (el.classList.contains('active')) {
+  const wasOpen = el.classList.contains('active');
+  if (wasOpen) {
     _openModalCount = Math.max(0, _openModalCount - 1);
     if (_openModalCount === 0) {
       const b = document.body.style;
@@ -1404,6 +1439,7 @@ function closeModal(id) {
     }
   }
   el.classList.remove('active');
+  if (wasOpen) recordSheetClose(id);            // design-system wave: consumes this sheet's History entry
 }
 
 // ─── What-if / DealFit Guidance modal (NON-MUTATING, ONE renderer) ────────────
@@ -2314,7 +2350,9 @@ async function renderGuideMarketIntel() {
   const paint = (intelMap, detailsUnavailable = false) => {
     let html;
     if (!slugs.length) {
-      html = '<div class="guide-item"><div class="gi-note">Pick a market region on the Fix &amp; Flip or Rentals tab to see its benchmarks here.</div></div>';
+      // Design-system wave: the shared empty state (states.js), same guidance copy.
+      html = stateHtml({ kind: 'empty', icon: '📍', title: 'No market regions yet',
+        body: 'Pick a market region on the Fix &amp; Flip or Rentals tab to see its benchmarks here.' });
     } else {
       html = slugs.map(s => buildRegionIntel(s, tier, intelMap && intelMap.get(s))).filter(Boolean).join('');
       // Mobile Phase 0: say so when the paid details could not load — the numbers above are
@@ -2495,6 +2533,15 @@ if (toolLink) {
   if (toolLink.view) switchRentalView(toolLink.view, document.getElementById('subtab-' + toolLink.view));
 }
 takeAuthLinkFromUrl();   // overnight A: an emailed sign-in token never lingers in the address bar (and the picker waits)
+// Design-system wave: the History-API view stack starts AFTER the URL clean-ups
+// above (each replaces the entry) and a tool link's page choice (which becomes
+// the root entry), and BEFORE anything can open a sheet.
+initViewStack({
+  showPage: (id) => showPage(id),
+  closeModal: (id) => closeModal(id),
+  currentPage: currentPageId,
+  isRequired: (id) => { const m = document.getElementById(id); return !!(m && m.dataset && m.dataset.required); },
+});
 initOnboarding();
 openInstallFromLink();      // business-card QR: open "Get the App" after load
 

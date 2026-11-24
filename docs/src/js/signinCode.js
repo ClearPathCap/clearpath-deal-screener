@@ -91,6 +91,18 @@ export function readAuthLink(href) {
 export const SESSION_URL_PARAMS = ['access_token', 'refresh_token', 'expires_in', 'expires_at', 'token_type', 'provider_token', 'provider_refresh_token'];
 function hasSessionFragment(h) { return SESSION_URL_PARAMS.some(k => h.has(k)) || h.has('error_code') || h.has('error_description'); }
 const PROVIDER_ERROR_PARAMS = ['error', 'error_code', 'error_description'];
+// Was the visitor sent here by a Supabase sign-in LINK (a session in the fragment, or a provider
+// error such as an expired link)? DealFit never uses it (code-only sign-in), so the visitor is told
+// what to do instead of landing silently signed out. Template-independent (owner check R8,
+// 2026-11-24: the live template bodies are not readable through the CLI).
+export function sessionLinkKind(href) {
+  let u; try { u = new URL(href); } catch { return null; }
+  const h = new URLSearchParams(u.hash.replace(/^#/, ''));
+  if (SESSION_URL_PARAMS.some(k => h.has(k))) return 'session';
+  if (h.has('error_code') || h.has('error_description') || u.searchParams.has('error_code')) return 'error';
+  return null;
+}
+export const LINK_NOT_USED_MSG = 'DealFit signs you in with the code from the email, not the link. Enter your email to get a code.';
 export function hasAuthLinkParams(href) {
   let u; try { u = new URL(href); } catch { return false; }
   const h = new URLSearchParams(u.hash.replace(/^#/, ''));

@@ -89,6 +89,19 @@ console.log('— §L no session from the page address (login CSRF) ─');
      && S.hasAuthLinkParams('https://x.test/?error=x&error_code=otp_expired'), 'L4 review R9: a non key=value fragment is kept byte for byte; a query-form provider error is removed too');
 }
 
+{ const L = S.sessionLinkKind;
+  ok(L('https://x.test/#access_token=a.b.c&refresh_token=r&type=magiclink') === 'session' && L('https://x.test/#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid') === 'error'
+     && L('https://x.test/?error=x&error_code=otp_expired') === 'error' && L('https://x.test/#keep=1') === null && L('https://x.test/?tool=flip') === null && L('not a url') === null,
+     'L5 a Supabase sign-in link (session or expired-link error) is recognised before its token is removed');
+  const t = fnBody('takeAuthLinkFromUrl'), n = fnBody('showLinkNotice');
+  ok(t.indexOf('_linkNotice = sessionLinkKind(href);') > 0 && t.indexOf('_linkNotice = sessionLinkKind(href);') < t.indexOf('history.replaceState')
+     && /if \(!kind \|\| isSignedIn\(\)\) return false;/.test(n) && /LINK_NOT_USED_MSG/.test(n) && /if \(!p\) return showLinkNotice\(\);/.test(fnBody('resumePendingSignIn'))
+     && !/verifyOtp|setSession|getSessionFromUrl/.test(n), 'L6 an opened sign-in link is explained ("use the code") instead of a silent signed-out landing; its token is never used; nothing shows when already signed in');
+  ok(S.extractOtp('Your DealFit code is 4829 1377').code === '48291377' && S.extractOtp('48291377').confident && S.clipboardLooksLikeCode('4829 1377')
+     && S.clipboardLooksLikeCode('Your Deal Screener sign-in code is 48291377') && S.looksComplete('48291377'),
+     'L7 the LIVE code length is 8 (auth.email.otp_length, read 2026-11-24): 8-digit codes, plain or split 4+4, are found, complete and auto-verify');
+}
+
 console.log('— §B behaviour: the real sign-in functions from main.js against a fake page (review R7) ─');
 { const names = ['showRedeemMsg', 'canPasteCode', 'setSigninFocus', 'refreshSheetAfterSignIn', 'codeStepOpen', 'closeCodeStep', 'showCodeStep', 'renderResendState',
                  'sendSignInCode', 'resendSignInCode', 'changeSignInEmail', 'verifySignInCode', 'applyPastedCode', 'pasteSignInCode', 'openUpgrade', 'resetStaleCodeStep'];

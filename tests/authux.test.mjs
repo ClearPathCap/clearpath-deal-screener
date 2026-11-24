@@ -119,8 +119,10 @@ ok(/id="signin-code" inputmode="numeric" pattern="\[0-9\]\*" autocomplete="one-t
 ok(/addEventListener\('paste'/.test(mj) && /shouldAutoVerify\(\{ inputType: e\.inputType/.test(mj) && /if \(_verifyInFlight\) return \{ status: 'busy' \};/.test(mj)
    && /opts\.auto && \(code === _lastTriedCode/.test(mj), 'U2 paste / autofill verify once; one verification at a time; a failed code is never re-sent automatically');
 ok(/takeAuthLinkFromUrl\(\);/.test(mj) && mj.indexOf('takeAuthLinkFromUrl();') < mj.indexOf('\ninitOnboarding();') && mj.indexOf('takeAuthLinkFromUrl();') < mj.indexOf('initAuthAndEntitlement().then')
-   && /history\.replaceState\(history\.state, '', stripAuthLink/.test(mj) && /if \(_pendingAuthLink \|\| readPending\(_signinStore\)\) return;/.test(mj),
+   && /history\.replaceState\(history\.state, '', stripAuthLink/.test(mj) && /if \(_pendingAuthLink \|\| _linkNotice \|\| readPending\(_signinStore\)\) return;/.test(mj),
    'U3 an emailed token leaves the address bar before anything else (and the first-visit picker waits); it is spent only by the button');
+// Re-pinned 2026-11-24 (template-independence): the picker also waits when a Supabase sign-in link was opened (_linkNotice),
+// because that visit shows the "use the code" explanation instead.
 ok(/#signin-email\{text-transform:none\}/.test(rd('docs/src/css/styles.css')), 'U5 the email field shows the address as typed (not in capitals)');
 ok(/writePending\(_signinStore, email, now\)/.test(mj) && /if \(!showPendingAuthLink\(\)\) resumePendingSignIn\(\);/.test(mj) && /clearPending\(_signinStore\)/.test(mj),
    'U4 a sent code is remembered for this tab; a reloaded page reopens the code step; success forgets it');

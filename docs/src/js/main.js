@@ -47,7 +47,7 @@ import { initConnectivity, retryNow } from './connectivity.js';
 import { normalizeOtp, extractOtp, looksComplete, shouldAutoVerify, readAuthLink, stripAuthLink, hasAuthLinkParams,
          AUTH_LINK_ENABLED, readPending, writePending, clearPending, resendWaitSeconds,
          looksLikeEmail, clipboardReadable, codeSentMessage, PASTE_NO_CODE_MSG, PASTE_UNREADABLE_MSG,
-         clipboardLooksLikeCode, PASTE_CHECK_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
+         clipboardLooksLikeCode, PASTE_CHECK_MSG, sessionLinkKind, LINK_NOT_USED_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline } from './storage.js';
@@ -1858,6 +1858,7 @@ async function redeemTierCode() {
 const _signinStore = (() => { try { return window.sessionStorage; } catch { return null; } })();
 let _verifyInFlight = false, _sendInFlight = false, _lastTriedCode = '', _codePrevLen = 0, _resendTick = 0, _codeSentAt = 0;
 let _pendingAuthLink = null;
+let _linkNotice = null;   // a Supabase sign-in link was opened here (session or error) — explained, never used
 let _sendGen = 0;   // review R3: bumped by "Use a different email"; a send from an older generation is ignored
 
 // iPhone UAT follow-up (owner, real iPhone + Gmail): the code step owns the sheet while a code is
@@ -2067,12 +2068,23 @@ function wireSigninCodeField() {
 function resumePendingSignIn() {
   if (isSignedIn()) { clearPending(_signinStore); return false; }
   const p = readPending(_signinStore);
-  if (!p) return false;
+  if (!p) return showLinkNotice();
   openUpgrade('general');   // first: opening the sheet refreshes the account block
   const em = document.getElementById('signin-email'); if (em) em.value = p.email;
   showCodeStep(p.email, p.sentAt);
   showRedeemMsg(document.getElementById('signin-msg'), { ok: true, msg: 'Enter the code we emailed to ' + p.email + '.' });
   document.getElementById('signin-code')?.focus();
+  return true;
+}
+
+// A Supabase sign-in link (e.g. {{ .ConfirmationURL }} in an email template) was opened here. Its token
+// was removed unused (detectSessionInUrl is off); say how to sign in instead of leaving the visitor
+// silently signed out. Nothing is shown to someone who is already signed in.
+function showLinkNotice() {
+  const kind = _linkNotice; _linkNotice = null;
+  if (!kind || isSignedIn()) return false;
+  openUpgrade('general');
+  showRedeemMsg(document.getElementById('signin-msg'), { ok: false, msg: LINK_NOT_USED_MSG });
   return true;
 }
 
@@ -2082,6 +2094,7 @@ function resumePendingSignIn() {
 function takeAuthLinkFromUrl() {
   const href = (typeof location !== 'undefined' && location && location.href) || '';
   if (!href || !hasAuthLinkParams(href)) return;
+  _linkNotice = sessionLinkKind(href);
   try { history.replaceState(history.state, '', stripAuthLink(href)); } catch {}   // always removed
   if (!AUTH_LINK_ENABLED) return;   // N24 review F1: switched off until the owner activates it
   const link = readAuthLink(href);
@@ -2358,7 +2371,7 @@ function initOnboarding() {
   // Overnight A (browser finding): a visit that is finishing a sign-in (an emailed link, or a
   // code sent from this tab) is about that; the picker would cover the sign-in step. It waits
   // for the next visit (nothing is stored, so it simply reappears).
-  if (_pendingAuthLink || readPending(_signinStore)) return;
+  if (_pendingAuthLink || _linkNotice || readPending(_signinStore)) return;
   if (localStorage.getItem('primaryMarket') || localStorage.getItem('onboardingSkipped')) return;
   openMarketPicker(0, true /* isFirstLaunch */);
 }

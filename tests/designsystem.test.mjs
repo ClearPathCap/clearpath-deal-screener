@@ -267,9 +267,26 @@ openModal('modal-z'); await settle();
 swallowGo = true; closeModal('modal-z'); openModal('modal-w');
 await new Promise(r => setTimeout(r, 3200));
 swallowGo = false;
-ok(top().sheet === 'modal-w' && app.open.join() === 'modal-w', 'D21g after the safety timeout new entries reach history directly (no stall until reload)');
+ok(top().sheet === 'modal-w' && app.open.join() === 'modal-w', 'D21g after the safety timeout the queued entry is flushed');
+openModal('modal-v');
+ok(top().sheet === 'modal-v' && app.open.join() === 'modal-w,modal-v', 'D21g2 an entry opened AFTER the safety timeout reaches history at once (round-2 N2: no stall until reload)');
+closeModal('modal-v'); await settle();
 await pressBack(); await pressBack();
 ok(app.open.length === 0, 'D21h at most one Back press is absorbed by the late allowance; the sheet then closes');
+// Round-3 review R3-2: the first of two in-flight traversals never reports; the
+// second's landing retires both expectations, so the user's next Back is honoured.
+await settle(); await new Promise(r => setTimeout(r, 3100));
+openModal('modal-p'); await settle(); openModal('modal-q'); await settle();
+let dropFirst = true; const go0 = history.go;
+history.go = function (d) { if (dropFirst) { dropFirst = false; traversals++; idx += d; return; } return go0.call(this, d); };
+closeModal('modal-q');
+await new Promise(r => setTimeout(r, 5));
+closeModal('modal-p');
+await settle();
+history.go = go0;
+openModal('modal-r'); await settle();
+await pressBack();
+ok(app.open.length === 0 && !top().sheet, 'D21h2 a traversal whose popstate never came is retired by the next landing; the user’s Back then closes the sheet');
 // Reload support: pagehide keeps the current entry's scroll position.
 await settle();
 sY = 333; fire('window', 'pagehide', {});
@@ -315,6 +332,20 @@ kbDoc.activeElement = null; w.focusOut();
   ok(shown && !bodyClasses.has('kb-open'), 'D28a resizes-content engines: the keyboard is detected against the tallest height seen, and its hiding brings the tab bar back');
   rc.innerWidth = 812; rc.innerHeight = 375; rc.visualViewport.height = 375; w3.viewport();
   ok(!bodyClasses.has('kb-open'), 'D28b a rotation is not mistaken for a keyboard (each width keeps its own reference)');
+// Round-3 review R3-5: a window made shorter while no field is focused becomes the new reference.
+{
+  const rs = { innerWidth: 600, innerHeight: 900, visualViewport: { height: 900, offsetTop: 0, scale: 1 } };
+  const d3 = { body: kbDoc.body, activeElement: null };
+  bodyClasses.clear();
+  const w4 = vs.makeKeyboardWatcher(rs, d3);
+  rs.innerHeight = 600; rs.visualViewport.height = 600; w4.viewport();
+  d3.activeElement = field; w4.focusIn(field);
+  rs.visualViewport.height = 300; w4.viewport();
+  const upNow = bodyClasses.has('kb-open');
+  rs.visualViewport.height = 600; w4.viewport();
+  ok(upNow && !bodyClasses.has('kb-open'), 'D28c a window made shorter while no field is focused is the new reference: the keyboard hiding still brings the tab bar back');
+  d3.activeElement = null; w4.focusOut();
+}
   doc2.activeElement = null; w3.focusOut();
 }
 ok(!bodyClasses.has('kb-open'), 'D28 leaving the field clears the state');

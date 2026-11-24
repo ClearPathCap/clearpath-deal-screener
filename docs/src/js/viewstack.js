@@ -148,9 +148,12 @@ export function topSheet() { return _open.length ? _open[_open.length - 1] : nul
 const shown = (s) => !s.dead && !(s.sheet && !_open.includes(s.sheet));
 function onPop(e) {
   const st = e && e.state;
-  // A traversal we issued: identified by the entry it lands on.
-  if (_expect.length && st && st.n === _expect[0]) {
-    _expect.shift();
+  // A traversal we issued: identified by the entry it lands on. Traversals land
+  // in order, so a landing also retires every earlier expectation (one whose
+  // popstate never came) — no stale expectation can later swallow the user's Back.
+  const hit = st ? _expect.indexOf(st.n) : -1;
+  if (hit > -1) {
+    _expect.splice(0, hit + 1);
     if (!_expect.length) { clearTimeout(_timer); flushQueue(); }
     return;
   }
@@ -257,11 +260,12 @@ function keepClearOfKeyboard(el, vv) {
 export function makeKeyboardWatcher(win, doc) {
   let up = false;
   const tallest = new Map();             // width → tallest viewport height seen
-  const observe = () => {
+  const observe = (idle) => {
     const vv = win.visualViewport, w = win.innerWidth || 0;
     if (!vv || (vv.scale && vv.scale > 1.01)) return tallest.get(w) || 0;
     const h = Math.max(win.innerHeight || 0, vv.height || 0);
-    if (!up && h > (tallest.get(w) || 0)) tallest.set(w, h);   // never learn a height while the keyboard is up
+    if (idle) tallest.set(w, h);                               // no field focused: no keyboard, the window itself is this tall
+    else if (!up && h > (tallest.get(w) || 0)) tallest.set(w, h);   // never learn a height while the keyboard is up
     return tallest.get(w) || h;
   };
   const set = (on) => { const b = doc.body; if (b && b.classList) b.classList[on ? 'add' : 'remove']('kb-open'); };
@@ -278,8 +282,9 @@ export function makeKeyboardWatcher(win, doc) {
       up = false; set(false);
     },
     viewport() {
-      const now = keyboardUp(win, observe()), el = doc.activeElement;
-      if (!isTextEntry(el)) { up = false; set(false); return; }
+      const el = doc.activeElement;
+      if (!isTextEntry(el)) { observe(true); up = false; set(false); return; }
+      const now = keyboardUp(win, observe());
       if (now && !up) { up = true; set(true); keepClearOfKeyboard(el, win.visualViewport); }
       else if (!now && up) { up = false; set(false); }
     },

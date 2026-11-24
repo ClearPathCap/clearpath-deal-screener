@@ -149,11 +149,14 @@ Add these only when the Apple Team ID and Android signing fingerprint exist (own
     false`, so they are only removed from the address.
   
   `?install` and `?checkout` are dropped in the app.
-  - Every applied link is remembered for the app session. The launch-URL read applies its link only once (Android's
-    `getLaunchUrl` returns the process's first link for its whole life), so it never overrides a later warm link. A warm
-    link is the user's latest tap and is always applied.
+  - The launch-URL read keeps its link under its own session key and applies it only once, after that key is confirmed
+    written. Android's `getLaunchUrl` returns the process's first link for its whole life, so this read never overrides a
+    later warm link.
+  - A warm link is the user's latest tap: it is always applied, and kept in a 20-entry list so that iOS (whose launch read
+    returns the newest link) does not apply it twice.
   - A link to the page already showing is ignored.
-  - Without `sessionStorage`, a launch link is never re-applied (no reload loop; the link is dropped in that rare case).
+  - If `sessionStorage` is missing or full, a launch link is not applied at all: no reload loop, and the link is dropped
+    in that rare case. Warm links still open.
   - The share token must match the viewer's own shape (32 hex); otherwise the link opens the app home.
   Opening a link replaces the current page, so unsaved analyzer input is lost, as with any navigation (device-check the
   UX).

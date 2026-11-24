@@ -314,6 +314,24 @@ ok(loc.replaced.length === 2, 'C19 a link for another host is ignored');
   for (let i = 0; i < 2; i++) { P._resetForTests(); P.initPlatform({ canStepBack: () => false, authParams: [] }); await tick(); await tick(); }   // B's page loads (launch read still says A)
   ok(loc.href === 'https://localhost/shared.html?d=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' && loc.replaced.length === n0 + 2,
     'C19 Android: a warm link is never overridden by the link that launched the app (the launch read applies once)');
+  // A long session: more warm links than the warm list keeps — still no return to A (review round 3, R3-1).
+  for (let i = 0; i < 22; i++) callbacks['App:appUrlOpen']({ url: 'https://dealfit.clearpathcapfunding.com/shared.html?d=' + String(i).padStart(32, 'c') });
+  const before22 = loc.replaced.length;
+  P._resetForTests(); P.initPlatform({ canStepBack: () => false, authParams: [] }); await tick(); await tick();
+  ok(loc.replaced.length === before22 && ssMap.get('df.launchApplied') === A && JSON.parse(ssMap.get('df.appliedLinks')).length === 20,
+    'C19 after more than 20 warm links the launch link is still never re-applied (it has its own key)');
+  launchUrl = null;
+}
+// sessionStorage that reads but cannot write (full): a ?tool= launch link must not reload forever (R3-2).
+{
+  const ro = { getItem: () => null, setItem: () => { throw new Error('QuotaExceededError'); }, removeItem: () => {} };
+  const keep = globalThis.sessionStorage;
+  Object.defineProperty(globalThis, 'sessionStorage', { value: ro, configurable: true, writable: true });
+  loc.href = 'https://localhost/index.html'; launchUrl = 'https://dealfit.clearpathcapfunding.com/?tool=ltr';
+  const n1 = loc.replaced.length;
+  for (let i = 0; i < 3; i++) { P._resetForTests(); P.initPlatform({ canStepBack: () => false, authParams: [] }); await tick(); await tick(); }
+  ok(loc.replaced.length === n1, 'C19 a launch link that cannot be recorded is never applied (no reload loop when sessionStorage is full)');
+  Object.defineProperty(globalThis, 'sessionStorage', { value: keep, configurable: true, writable: true });
   launchUrl = null;
 }
 // window.open shim: the analyzers' exact call now lands in the in-app browser

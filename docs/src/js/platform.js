@@ -262,26 +262,34 @@ function setUp(h) {
     if (!t || t === here()) return;
     try { w.location.replace(new URL(t, w.location.href).href); } catch {}
   };
-  // Every applied link is remembered for this app session. The launch-URL read
-  // applies its link only once: Android's getLaunchUrl keeps returning the link
-  // that STARTED the process for its whole life, so it must never override a
-  // later warm link. A warm link (appUrlOpen) is the user's latest tap and is
-  // always applied (unless that page is already showing).
-  const APPLIED = 'df.appliedLinks';
-  const applied = () => { try { const v = JSON.parse(w.sessionStorage.getItem(APPLIED) || '[]'); return Array.isArray(v) ? v : []; } catch { return null; } };
-  const remember = (url) => { try { const v = applied() || []; if (!v.includes(url)) { v.push(url); w.sessionStorage.setItem(APPLIED, JSON.stringify(v.slice(-20))); } } catch {} };
+  // Links already applied in this app session. Android's getLaunchUrl keeps
+  // returning the link that STARTED the process for its whole life, so the
+  // launch read keeps that link under its OWN key (never dropped, never shared
+  // with warm links) and applies it once, only after that key is confirmed
+  // written: no override of a later warm link, and no reload loop when
+  // sessionStorage is missing or full. A warm link (appUrlOpen) is the user's
+  // latest tap: it is always applied (unless that page is already showing) and
+  // remembered in a short list, so iOS — whose launch read returns the newest
+  // link — does not apply it twice.
+  const LAUNCH = 'df.launchApplied', WARM = 'df.appliedLinks';
+  const ss = () => { try { return w.sessionStorage || null; } catch { return null; } };
+  const warmList = () => { try { const v = JSON.parse(ss().getItem(WARM) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
   listen(App, 'appUrlOpen', (ev) => {
     const url = ev && ev.url;
     if (!url) return;
-    remember(url);
+    try { const v = warmList().filter(x => x !== url); v.push(url); ss().setItem(WARM, JSON.stringify(v.slice(-20))); } catch {}
     go(url);
   });
   call(App, 'getLaunchUrl').then((r) => {
     const url = r && r.url;
     if (!url) return;
-    const v = applied();
-    if (v === null || v.includes(url)) return;   // no sessionStorage → never re-apply (no reload loop)
-    remember(url);
+    const st = ss();
+    try {
+      if (!st || st.getItem(LAUNCH) === url) return;
+      st.setItem(LAUNCH, url);
+      if (st.getItem(LAUNCH) !== url) return;                 // could not record it → never apply (no loop)
+    } catch { return; }
+    if (warmList().includes(url)) return;                     // iOS: already applied as a warm link
     go(url);
   }).catch(() => {});
 

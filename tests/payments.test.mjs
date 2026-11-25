@@ -301,17 +301,39 @@ for (const t of ['starter', 'admin', '', undefined]) {
   nativeAnswer = () => ({});
 }
 {
-  // A store sheet that never answers releases the guard after the timeout (review R2-1).
+  // Non-interactive calls are bounded; interactive ones are not (reviews R2-1, R3-1, R3-3).
   capValue = bridge('ios'); calls.length = 0;
   PAY.setNativeCallTimeout?.(30);
-  nativeAnswer = (p, m) => (m === 'purchase' ? new Promise(() => {}) : {});
-  const d = mkDeps({ 'store-account-token': { data: { token: 't' } } });
-  const hung = await Promise.race([PAY.nativePayment('purchase', 'pro', d, IOS, PRODUCTS), new Promise(res => setTimeout(() => res({ reason: 'still-hung' }), 500))]);
-  ok(hung.status === 'error' && hung.message === PAY.PAYMENT_MESSAGES.error && !d.invokes.some(i => i[0] === 'store-verify'), 'P3 a store sheet that never answers ends as an error after the timeout (nothing verified)');
+  nativeAnswer = (p, m) => (m === 'currentEntitlements' ? new Promise(() => {}) : {});
+  const dh = mkDeps();
+  const hung = await Promise.race([PAY.nativePayment('restore', null, dh, IOS, PRODUCTS), new Promise(res => setTimeout(() => res({ reason: 'still-hung' }), 500))]);
+  ok(hung.status === 'error' && hung.message === PAY.PAYMENT_MESSAGES.restoreError, 'P3 a non-interactive call that never answers (currentEntitlements) ends as an error after the timeout');
   nativeAnswer = (p, m) => (m === 'currentEntitlements' ? { signedTransactions: [] } : {});
   const next = await PAY.nativePayment('restore', null, mkDeps(), IOS, PRODUCTS);
   ok(next.reason !== 'busy' && next.ok, 'P3 … and the one-operation guard is free again (not stuck for the session)');
+  // A purchase sheet open far longer than the timeout is NOT cut off: its late proof is verified.
+  nativeAnswer = (p, m) => (m === 'purchase' ? new Promise(res => setTimeout(() => res({ status: 'purchased', signedTransaction: 'late.jws' }), 120)) : {});
+  const dl = mkDeps({ 'store-account-token': { data: { token: 't' } }, 'store-verify': { data: { ok: true } } });
+  const slow = await PAY.nativePayment('purchase', 'pro', dl, IOS, PRODUCTS);
+  ok(slow.ok && slow.status === 'submitted' && dl.invokes.some(i => i[0] === 'store-verify' && i[1].signedTransaction === 'late.jws') && dl.syncs === 1,
+    'P3 a purchase sheet open past the timeout is not cut off: the late proof goes to store-verify, then a tier re-read');
+  // …and while it is open, a second tap is refused (no second sheet, no second charge).
+  let release2; const g2 = new Promise(res => { release2 = res; });
+  nativeAnswer = (p, m) => (m === 'purchase' ? g2.then(() => ({ status: 'cancelled' })) : {});
+  const d2 = mkDeps({ 'store-account-token': { data: { token: 't' } } });
+  const open = PAY.nativePayment('purchase', 'pro', d2, IOS, PRODUCTS);
+  await new Promise(res => setTimeout(res, 80));   // well past the 30 ms bound
+  const tap2 = await PAY.nativePayment('purchase', 'investor', d2, IOS, PRODUCTS);
+  ok(tap2.reason === 'busy' && d2.invokes.filter(i => i[0] === 'store-account-token').length === 1, 'P3 … and past the timeout a second purchase is still refused while the sheet is open');
+  release2(); await open;
+  nativeAnswer = (p, m) => (m === 'showManageSubscriptions' ? new Promise(res => setTimeout(() => res({}), 120)) : {});
+  const mg = await PAY.nativePayment('manage', null, mkDeps(), IOS, PRODUCTS);
+  ok(mg.ok && mg.status === 'opened', 'P3 the manage sheet kept open past the timeout is not reported as an error');
   PAY.setNativeCallTimeout?.(120000);
+  for (const bad of [undefined, 0, -5, NaN, Infinity, '30']) PAY.setNativeCallTimeout?.(bad);
+  nativeAnswer = (p, m) => (m === 'currentEntitlements' ? new Promise(res => setTimeout(() => res({ signedTransactions: [] }), 40)) : {});
+  const ok40 = await PAY.nativePayment('restore', null, mkDeps(), IOS, PRODUCTS);
+  ok(ok40.ok, 'P3 setNativeCallTimeout ignores invalid values (undefined / 0 / negative / NaN / Infinity / string)');
   nativeAnswer = () => ({});
 }
 {

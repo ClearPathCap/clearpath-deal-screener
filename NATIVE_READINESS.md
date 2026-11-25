@@ -277,7 +277,7 @@ product ids are `REPLACE_…` placeholders.
   showed before this module (`Plans can’t be changed in the app yet.`). Both gates hold independently: `nativePayment`
   refuses a disabled adapter, and each adapter refuses itself.
 - `main.js` loads `payments.js` only through `appPayment` (a dynamic import), called only from its two `if (!paymentsInApp())` guards, which never run on the web. The web never requests the module. Each guard is pinned as the whole line, so nothing else can run on it.
-- In the app: a store purchase or restore refuses a signed-out user before any call ("Sign in first"); one operation runs at a time, and every native call is bounded (120 s), so a store sheet that never answers cannot hold that guard; each operation has its own failure copy. A link-out restore is a server re-read.
+- In the app: a store purchase or restore refuses a signed-out user before any call ("Sign in first"); one operation runs at a time. Non-interactive native calls (storefront, entitlement queries, opening a URL) are bounded at 120 s, so one that never answers cannot hold that guard. The purchase and manage **sheets are never timed out**: they can stay open for minutes (Face ID, a password, a card update), and a late purchase is still verified. Each operation has its own failure copy. A link-out restore is a server re-read.
 
 **What enabling a store adapter needs (none exists; each is a provider change under its own authorization):**
 1. store products (App Store Connect subscription group; Play subscription + base plan) and their ids in `STORE_PRODUCTS`;
@@ -299,6 +299,13 @@ product ids are `REPLACE_…` placeholders.
    already has a Stripe plan sees "managed on the web", and the server refuses a store purchase for an entitled user,
    like `checkout`'s `already_entitled`;
 6. a Restore Purchases control in the plans sheet (Apple requires one with IAP);
+   - **unfinished transactions:** at every launch the shell plugin must deliver transactions the app never finished
+     (StoreKit `Transaction.updates`; Play `onPurchasesUpdated` plus `queryPurchases`) to `store-verify`. That covers
+     a purchase that completed while the app was closed or crashed. Google refunds a purchase not acknowledged within
+     3 days;
+   - **no second store subscription:** the server refuses a purchase for an already-entitled user, and a tier change
+     uses the store's own upgrade flow (one App Store subscription group; Play subscription replacement), never a
+     second concurrent subscription;
 7. flipping `NATIVE_PAYMENT_CHOICE` and re-pinning P1 in the same commit. Offering IAP **and** a link-out together on
    iOS needs a small extension first: today the choice holds one adapter per platform.
 

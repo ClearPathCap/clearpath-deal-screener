@@ -115,19 +115,30 @@ async function verifyWithServer(deps, platform, proof) {
 }
 async function settle(deps) { try { await deps.sync(); } catch { /* the next load re-reads the tier */ } }
 
-// Every native call is bounded (review R2-1): a store sheet or bridge that never answers must not
-// hold the one-operation guard for the rest of the session. A timeout is an error result; if the
-// store later completes the purchase, the server learns it from the store's own notification and
-// Restore re-verifies it — the app never assumes a grant.
+// Non-interactive native calls are bounded (review R2-1): storefront, currentEntitlements /
+// queryPurchases and openUrl answer without the user, so one that never answers is a fault and
+// must not hold the one-operation guard for the session. A timeout is an error result.
+// INTERACTIVE calls are NOT bounded (review R3-1): a purchase sheet (Face ID, password, card
+// update) or the manage sheet can legitimately stay open for minutes. Timing one out would tell
+// the user "nothing changed" while the store may still charge them, discard the proof the late
+// answer carries, and free the guard for a second purchase. Their result is always processed when
+// it arrives (the proof goes to store-verify), however late.
 let NATIVE_CALL_TIMEOUT_MS = 120000;
-export function setNativeCallTimeout(ms) { NATIVE_CALL_TIMEOUT_MS = ms; }   // tests
+export function setNativeCallTimeout(ms) {   // tests; ignores anything but a positive finite number
+  if (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) NATIVE_CALL_TIMEOUT_MS = ms;
+}
 const TIMED_OUT = Symbol('timed-out');
 async function bounded(P, method, opts) {
   let timer = null;
-  const out = await Promise.race([call(P, method, opts), new Promise(r => { timer = setTimeout(() => r(TIMED_OUT), NATIVE_CALL_TIMEOUT_MS); })]);
-  clearTimeout(timer);
-  if (out === TIMED_OUT) throw new Error('native call timed out');
-  return out;
+  const pending = call(P, method, opts);
+  pending.catch(() => {});   // a late rejection after a timeout is not an unhandled rejection
+  try {
+    const out = await Promise.race([pending, new Promise(r => { timer = setTimeout(() => r(TIMED_OUT), NATIVE_CALL_TIMEOUT_MS); })]);
+    if (out === TIMED_OUT) throw new Error('native call timed out');
+    return out;
+  } finally {
+    clearTimeout(timer);   // also when the call rejects (review R3-2)
+  }
 }
 
 function storeAdapter(id, store, enabled, products) {
@@ -147,7 +158,7 @@ function storeAdapter(id, store, enabled, products) {
       const token = tok && !tok.error && tok.data && typeof tok.data.token === 'string' ? tok.data.token : null;
       if (!token) return result(false, 'error', 'no-account-token', 'purchase');
       const opts = store === 'apple' ? { productId, appAccountToken: token } : { productId, obfuscatedAccountId: token };
-      const out = await bounded(P(), 'purchase', opts);
+      const out = await call(P(), 'purchase', opts);   // interactive: never timed out (R3-1)
       if (!out || out.status === 'cancelled') return result(false, 'cancelled', 'user-cancelled', 'purchase');
       if (out.status === 'pending') return result(false, 'pending', 'store-pending', 'purchase');
       const proof = out[proofKey];
@@ -174,7 +185,7 @@ function storeAdapter(id, store, enabled, products) {
       if (!enabled) return REFUSED('not-enabled', 'manage');
       if (store === 'apple') {
         if (!ready()) return REFUSED('no-plugin', 'manage');
-        await bounded(P(), 'showManageSubscriptions', {});
+        await call(P(), 'showManageSubscriptions', {});   // interactive: resolves when the user closes the sheet (R3-3)
         return result(true, 'opened', 'store-manage', 'manage');
       }
       return openSystem(PLAY_SUBSCRIPTIONS_URL, 'manage');

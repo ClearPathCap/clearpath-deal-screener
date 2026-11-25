@@ -17,7 +17,7 @@ import { getLastLtrResult } from './ltr.js';
 import { getLastBrrrResult } from './brrr.js';
 import { getPipelineFundingButtonHTML } from './clearpath.js';
 import { getActiveTier, getActiveMarketId, getMarketLabel } from './tiers.js';
-import { pendingSave, RESUME_SAVED_MSG } from './resumeIntent.js';
+import { pendingSave, RESUME_SAVED_MSG, sameAnalysis } from './resumeIntent.js';
 import { ALL_MARKETS } from './markets.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
 import { computeFlip, computeFlipStress, flipVerdict, validateInputs, flipProfitClass,
@@ -154,7 +154,10 @@ export async function saveDeal(type, opts = {}) {
   // duplicate, and nothing else in the pipeline moves.
   const reviewing = reviewingDealId != null ? deals.find(d => d.id === reviewingDealId) : null;
   if (resume && reviewingDealId != null) return { status: 'refused-review' };
-  if (resume && deals.some(d => d && d.id === resume.dealId)) return { status: 'saved', mode: 'already' };
+  // R3-N8: a deal already holding the fixed id is a repeat only if it is this analysis; otherwise the
+  // resume saves under a fresh id that no deal holds (ids stay unique — delete/edit key on them).
+  const idClash = resume ? deals.find(d => d && d.id === resume.dealId) : null;
+  if (idClash && sameAnalysis(idClash.data, result)) return { status: 'saved', mode: 'already' };
 
   // Commercial C1: a blank name no longer stops the save with a browser alert (a dead end on
   // the way to the first saved deal). Updating a reviewed deal keeps its saved name; a new deal
@@ -208,7 +211,7 @@ export async function saveDeal(type, opts = {}) {
       data:    result,
       stats:   buildDealStats(type, result),
     };
-    if (resume) deal.id = resume.dealId;   // C2: the pending save's fixed id — a repeat is a no-op, never a duplicate
+    if (resume) deal.id = idClash ? Math.max(Date.now(), ...deals.map(d => Number(d && d.id) || 0)) + 1 : resume.dealId;   // C2: fixed id — a repeat is a no-op, never a duplicate
     candidate = [deal, ...deals];
     onOk = () => {
       // Keep fields intact — only show brief confirmation (Section 5g)

@@ -26,13 +26,23 @@ export const RESUMABLE_PLANS = ['investor', 'pro'];
 
 const fresh = (at, t) => Number.isFinite(at) && t - at >= 0 && t - at < RESUME_TTL_MS;
 
+// Review R3-N8: the same analysis by CONTENT (a saved copy has been through JSON on the way to the
+// server and back, so it is a different object with the same serialization).
+export function sameAnalysis(a, b) {
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+}
+
 export function createSaveIntent(now = () => Date.now()) {
-  let cur = null;
+  let cur = null, lastId = 0;
   return {
-    // A save with nothing analyzed yet has nothing to finish.
+    // A save with nothing analyzed yet has nothing to finish. The fixed deal id is unique within the
+    // page (review R3-N8: two notes in one millisecond never share an id).
     note(type, result) {
       const t = now();
-      cur = (type && result && typeof result === 'object') ? { type, result, at: t, dealId: t } : null;
+      if (!(type && result && typeof result === 'object')) { cur = null; return null; }
+      const dealId = Math.max(t, lastId + 1);
+      lastId = dealId;
+      cur = { type, result, at: t, dealId };
       return cur;
     },
     peek() { if (cur && !fresh(cur.at, now())) cur = null; return cur; },
@@ -78,7 +88,9 @@ export function saveResumeDecision(intent, s) {
   const deals = Array.isArray(s.deals) ? s.deals : [];
   // Review R1-F1: the same analysis OBJECT already in this session's cache (saved by any path) is a duplicate.
   // After a re-load the cache holds the server's copies, so the fixed id is the durable check (R2-N3).
-  if (deals.some(d => d && (d.id === intent.dealId || d.data === intent.result))) return { action: 'drop', reason: 'already-saved' };
+  // R3-N8: an id match counts only when it really is this analysis (an unrelated deal that happens to hold the
+  // same millisecond id is not "already saved"; pipeline.js then gives the new deal a fresh id).
+  if (deals.some(d => d && (d.data === intent.result || (d.id === intent.dealId && sameAnalysis(d.data, intent.result))))) return { action: 'drop', reason: 'already-saved' };
   if (deals.length >= s.allowance) return { action: 'drop', reason: 'full' };
   return { action: 'save' };
 }

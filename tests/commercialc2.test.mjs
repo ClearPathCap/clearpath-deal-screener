@@ -145,7 +145,7 @@ console.log('— §R resumeIntent law —');
   ok(D({ owner: 'u-x' }).reason === 'owned', 'R20 the form holds an account\'s saved deal → drop');
   ok(D({ reviewing: true }).reason === 'review', 'R21 a saved deal is under review → drop (never an overwrite)');
   ok(D({ currentResult: { verdict: 'x' } }).reason === 'changed', 'R22 a different analysis object (even with equal fields) → drop');
-  ok(D({ deals: [{ id: 77 }] }).reason === 'already-saved', 'R23 the fixed id is already saved → drop (no duplicate)');
+  ok(D({ deals: [{ id: 77, data: JSON.parse(JSON.stringify(R)) }] }).reason === 'already-saved' && D({ deals: [{ id: 77 }] }).action === 'save', 'R23 the fixed id holding this analysis (a server copy) → drop; the same id on another deal is not a repeat');
   ok(D({ deals: Array.from({ length: 25 }, (_, i) => ({ id: i })) }).reason === 'full', 'R24 pipeline at the uniform allowance → drop');
   ok(D({}).action === 'save', 'R25 otherwise → save');
   ok(Object.values(RI.RESUME_DROP_MSG).concat(RI.RESUME_WAIT_MSG, RI.RESUME_SAVED_MSG).every((m) => !/upgrade|plan|subscribe|unlimited|\$|investor|pro\b/i.test(m)),
@@ -432,6 +432,22 @@ reset(); signInAs('u-i'); await storage.hydratePipeline();
 { const saved = storage.getDeals().find((d) => same(d, R10));
   const d = RI.saveResumeDecision({ type: 'ltr', result: R10, dealId: saved.id }, { signedIn: true, loadState: 'ok', uid: 'u-i', armedUid: 'u-i', currentResult: R10, owner: '', reviewing: false, deals: storage.getDeals(), allowance: 25 });
   ok(saved.data !== R10 && d.reason === 'already-saved', 'J47 after a re-load the cache holds server copies; the fixed id is what blocks a duplicate'); }
+
+// ── Review round 3 regression (N8) ──
+console.log('— §J review round 3 —');
+{ let t = 5000; const si = RI.createSaveIntent(() => t);
+  const a1 = si.note('ltr', { n: 'a' }), a2 = si.note('ltr', { n: 'b' });
+  ok(a1.dealId === 5000 && a2.dealId === 5001, 'J48 two notes in one millisecond never share a fixed id');
+  const other = { id: 7000, type: 'ltr', data: { n: 'unrelated' } };
+  const d = RI.saveResumeDecision({ type: 'ltr', result: { n: 'mine' }, dealId: 7000 }, { signedIn: true, loadState: 'ok', uid: 'u', armedUid: 'u', currentResult: null, owner: '', reviewing: false, deals: [other], allowance: 25 });
+  ok(d.reason !== 'already-saved', 'J49 an unrelated deal that happens to hold the same id is not "already saved"'); }
+reset(); signOut(); server['u-j'] = [{ id: 424242, name: 'old', type: 'ltr', verdict: 'v', cls: 'warm', data: { n: 'old' }, stats: [], date: '', notes: '' }];
+{ const R11 = { n: 11, verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R11;
+  signInAs('u-j'); await storage.hydratePipeline();
+  const r = await pipeline.saveDeal('ltr', { resume: { type: 'ltr', result: R11, dealId: 424242 } });
+  const ids = server['u-j'].map((d) => d.id);
+  ok(r.status === 'saved' && server['u-j'].length === 2 && new Set(ids).size === 2 && server['u-j'].some((d) => same(d, R11)) && server['u-j'].some((d) => d.name === 'old'),
+     'J50 …the resume saves under a fresh id: both deals kept, ids unique'); }
 
 // ═══ §S source pins ════════════════════════════════════════════════════════════
 console.log('— §S source pins —');

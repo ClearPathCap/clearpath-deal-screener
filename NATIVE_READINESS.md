@@ -203,7 +203,7 @@ Audited in a local browser at 375 × 812 against the stacked candidate.
 on every image.
 
 **Not measured:** VoiceOver / TalkBack reading order on a device, dynamic type (iOS text-size settings do not reach a
-WKWebView's CSS px without extra work; see §8), and real-device cold start inside the shell.
+WKWebView's CSS px without extra work; see §11), and real-device cold start inside the shell.
 
 ## 7. App Store / Google Play readiness checklist
 
@@ -212,9 +212,9 @@ WKWebView's CSS px without extra work; see §8), and real-device cold start insi
 | E1 vendored SDK + fonts | **done** (live) | no remote runtime code |
 | E2 Capacitor project + plugins + shell polish | **web side built here**; native projects not created | plugins: app, share, browser, haptics, status-bar, keyboard, secure storage |
 | E3 Universal / App Links | **`.nojekyll` built; files planned** (§5) | needs Team ID / signing fingerprint |
-| E4 in-app account deletion | **not built** | backend + Stripe + CRM tombstone; owner design decision |
+| E4 in-app account deletion | **not built; designed in §9.1** (flow, scope, draft copy) | backend + Stripe + CRM event (0017); owner design decision |
 | E5 offline states | done (live) | |
-| E6 CI builds, signing, metadata | not started | GitHub Actions macOS/Android; signing secrets only in CI secrets |
+| E6 CI builds, signing, metadata | not started; services evaluated (§10) | public repo: signing secrets never in GitHub Actions; Codemagic recommended (owner decision) |
 | App icon | the 1024 px mark exists, **RGBA** | the App Store icon must have **no alpha**: export a flattened 1024 px on the brand background. Android adaptive icon: foreground layer within the 66 dp safe zone. Play listing icon 512 px (`icon-512.png` exists, RGBA is allowed there) |
 | Screenshots | not made | iPhone 6.9" set; Play phone set and a 1024 × 500 feature graphic (verify current sizes at submission). Every financial figure in a screenshot is "(est.)"; no approval or guarantee language |
 | Privacy label / Data safety | draft below | |
@@ -252,9 +252,154 @@ No location, contacts, photos, device identifiers or diagnostics are collected. 
 - **Demo account:** an owner decision, tracked with the store decisions outside this repository. A reviewer cannot read a
   DealFit sign-in email, and no review-only sign-in bypass will be built.
 
-## 8. Proven here vs device-only
+## 8. Payment adapters and the one tier source of truth (built, inert)
 
-- **Proven (Node, this branch):** web identity of every seam and of session storage (real client and SDK); the
+`docs/src/js/payments.js` defines one adapter interface per platform. **Nothing is enabled:**
+`NATIVE_PAYMENT_CHOICE = { ios: null, android: null }` (frozen, pinned by `tests/payments.test.mjs` P1), and the store
+product ids are `REPLACE_…` placeholders.
+
+| Adapter | Platform | When enabled it… | Today |
+|---|---|---|---|
+| `web-stripe` | web | is a descriptor only: the web path stays `main.js` `startCheckout` → `checkout` Edge Function → Stripe page, `manageSubscription` → `portal`, `handleCheckoutReturn` → `reconcile` → server tier. Byte-identical to `b24b95d` (P1) | live path, unchanged |
+| `ios-storekit` | iOS | gets a server-issued account token (`store-account-token`), buys the tier's StoreKit product with it as `appAccountToken`, sends the **signed transaction** to `store-verify`, then re-reads the tier; restore re-verifies `currentEntitlements`; manage opens the system subscription sheet | **refused** |
+| `android-play-billing` | Android | the same with Play Billing (`obfuscatedAccountId`, **purchase token**, `queryPurchases`); manage opens Play's subscriptions page in the system browser | **refused** |
+| `ios-external-link` / `android-external-link` | both (U.S.) | open the public web app in the **system** browser (never the in-app browser); the purchase happens on the web; the app learns the tier from the server on its next read | **refused** |
+
+**Entitlement law (pinned):**
+- The tier is whatever the server reports: `auth.js` `syncEntitlement` → `current_tier` RPC; `tiers.js` `setCachedTier`
+  stays its only writer. `payments.js` never imports `tiers.js` and never touches storage.
+- No adapter result has a tier field (`{ok, status, reason, message}` only). A plugin or server answer naming a tier
+  changes nothing on the client (P3).
+- A store purchase is only a **proof** for the server. Nothing is granted until `store-verify` verifies it with Apple /
+  Google and writes `entitlement_grants`; the app then calls `syncEntitlement`.
+- Refusals happen **before** any plugin call, server call, storage write or request (P2), with the message the app
+  showed before this module (`Plans can’t be changed in the app yet.`). Both gates hold independently: `nativePayment`
+  refuses a disabled adapter, and each adapter refuses itself.
+- `main.js` reaches `nativePayment` only inside its two `if (!paymentsInApp())` guards, which never run on the web.
+
+**What enabling a store adapter needs (none exists; each is a provider change under its own authorization):**
+1. store products (App Store Connect subscription group; Play subscription + base plan) and their ids in `STORE_PRODUCTS`;
+2. the shell plugin (`DealFitStoreKit` / `DealFitPlayBilling` contracts in `payments.js`, or a vetted third-party
+   plugin mapped to the same contract), plus `AppLauncher` for system-browser links;
+3. Edge Functions `store-account-token` (a per-user UUID stored server-side) and `store-verify`:
+   - Apple: verify the JWS with the App Store Server API / Apple root certificates, check bundle id, product and
+     `appAccountToken`;
+   - Google: Play Developer API `purchases.subscriptionsv2.get`, then **acknowledge within 3 days** or Google refunds it;
+4. server-to-server renewals and cancellations: App Store Server Notifications V2 and Play Real-time Developer
+   Notifications (Pub/Sub) into the same grant table, idempotent like `stripe_events`;
+5. a `source` on each grant (`stripe` / `apple` / `google` / `comp`), so one person cannot be double-billed. A user who
+   already has a Stripe plan sees "managed on the web", and the server refuses a store purchase for an entitled user,
+   like `checkout`'s `already_entitled`;
+6. a Restore Purchases control in the plans sheet (Apple requires one with IAP);
+7. flipping `NATIVE_PAYMENT_CHOICE` and re-pinning P1 in the same commit.
+
+## 9. Account lifecycle (plan and draft copy; nothing live)
+
+### 9.1 Deletion — the in-app path
+
+**Where:** Account sheet → **Delete account** (below Sign out), signed-in only. The same flow is served on the web for
+Google Play's required deletion URL.
+
+**Steps:**
+1. **Confirm sheet:** what is deleted, what is kept, and the plan consequence (copy below).
+2. **Fresh code:** the app sends a new email code (the existing `signInWithOtp` flow); `verifyOtp` gives a fresh session.
+3. **Call** a new Edge Function `delete-account` with that session. The server refuses unless the JWT's `amr` `otp` entry
+   is under about 5 minutes old (verify the claim shape on the live project before building). It then:
+   1. cancels any active Stripe subscription **immediately** (no further charge; refund per owner policy);
+   2. deletes `comp_redeem_failures` rows for the user (no foreign key);
+   3. deletes the auth user (admin API, service role, server-side only). The `on delete cascade` tables go with it, and
+      migration 0017's trigger records the CRM `account_deleted` event **in the same transaction, fail-closed** (branch
+      `product/n1125-crm-deletion`; 0016 and 0017 must be applied together before this ships).
+4. **Client:** `supabase.auth.signOut({ scope: 'local' })`, which clears the Keychain/Keystore session through
+   `sessionStore.js`, then removes DealFit's local keys (pipeline cache, market slots, drafts) and shows the signed-out
+   app.
+
+**Order and failure:** Stripe first, then the user. If the user delete fails after the cancel, the account stays
+(signed in, no plan), the error is shown, and a retry is safe: the cancel is idempotent and 0017 aborts the whole delete
+rather than leave CPC holding the email.
+
+**Scope** (from migrations 0001–0017):
+
+| Removed | Kept, and why |
+|---|---|
+| the account (`auth.users`) and, by cascade: `entitlements`, `entitlement_grants`, `redemptions`, `redemptions_v2`, `user_markets`, `user_pipeline`, `stripe_customers`, `checkout_attempts`, `deal_share_links` (open share links stop working); `comp_redeem_failures` explicitly; the CRM `account_verified` row (by 0017) | **Stripe's** customer, invoices and payment records: tax/accounting obligations; Stripe holds them under its own policy, no longer linked to a DealFit account |
+| this device's session and DealFit's local data | `stripe_events` ids (no user id; idempotency) |
+| | the CRM `account_deleted` row (user id only, no email) until delivered; CPC's tombstone redacts the email to a non-identifying hash |
+| | any funding request the user already sent Clear Path Capital: a CPC business record under CPC's privacy policy, deletable on request there |
+| | provider operational logs (Supabase auth/function logs) for the provider's retention period; **verify the exact retention** before writing the privacy text |
+
+No backups exist to purge (Supabase has no PITR on this project). `privacy.html` needs a deletion section saying all of
+this, and its Effective Date changes at publication.
+
+**Draft copy** (plain, no legal conclusions; counsel to review before publication):
+
+> **Delete your DealFit account?**
+> This permanently deletes your account and everything saved to it: your saved deals and notes, your market choices,
+> and your share links (people you shared a deal with won't be able to open it). This can't be undone.
+>
+> *[Stripe plan]* Your **{Investor/Pro}** plan ends now and you won't be charged again. *[refund sentence: owner policy]*
+>
+> *[App Store / Google Play plan, if store billing is ever used]* Deleting your account doesn't cancel a subscription
+> bought through **{the App Store / Google Play}**. Cancel it in **{Settings → your name → Subscriptions / Google Play →
+> Payments & subscriptions}** first.
+>
+> **What we keep:** payment records our payment processor must keep for tax and accounting, and a record that this
+> account was deleted, with no email, so Clear Path Capital's systems remove your email too. A funding request you
+> already sent to Clear Path Capital stays part of their records; ask them to delete it.
+>
+> To confirm, we'll email a code to **{a•••@example.com}**. — buttons: **Send code** · **Cancel**
+>
+> *(code entered)* — button: **Delete account permanently**
+>
+> Done: **Your account was deleted.** · Error: **Your account wasn't deleted — nothing was removed. Try again.**
+
+### 9.2 Cancelling a subscription, per platform
+
+| Bought through | Where to cancel | In the app |
+|---|---|---|
+| Stripe (web; also the U.S. link-out) | Account → **Manage subscription** → Stripe Customer Portal (period-end cancellation, already live on the web) | the app hides that button today; under the link-out option it reads "Your plan is managed on the web" and opens the site in the system browser |
+| App Store (only if StoreKit is chosen) | iPhone Settings → your name → Subscriptions → DealFit | Manage subscription → the system sheet (`showManageSubscriptions`) |
+| Google Play (only if Play Billing is chosen) | Google Play → profile → Payments & subscriptions → Subscriptions | Manage subscription → `play.google.com/store/account/subscriptions` |
+
+Cancellation never deletes the account, and deleting the account cancels only a Stripe plan. A store subscription is
+the store's, and the deletion copy says so.
+
+### 9.3 Recovery and sessions
+
+- The account **is** the email address. Recovery means a new email code; there is no password.
+- Device loss: deals and markets are server-held, so signing in on a new device restores them. The Keychain/Keystore item
+  is this-device-only (§2).
+- Lost mailbox: support only (`support@clearpathcapfunding.com`). Never move an account to a new address on an unverified
+  request. Email change (`updateUser({ email })` with double confirmation) is a later item.
+- Session storage in the app: Keychain/Keystore via `sessionStore.js`. Sign-out (even offline) and account switch leave
+  no token behind (§2; `native.test.mjs` §D).
+
+## 10. Cloud builds (evaluated; nothing enrolled)
+
+The repository is **public**: GitHub Actions logs are readable by anyone signed in, and file-style secrets (a base64
+keystore or `.p12`) are not reliably redacted. **Signing material never goes into GitHub Actions secrets.**
+
+| Service | Fit for this project (2026-11) |
+|---|---|
+| Ionic Appflow | closed to new customers since 2025-02 |
+| **Codemagic (recommended)** | documents Capacitor builds for both platforms; can create the iOS distribution certificate from an App Store Connect API key (no Mac needed); the keystore cannot be downloaded back out; secrets are encrypted at rest and masked in logs; 500 free macOS minutes a month on the individual plan, pay-as-you-go after that |
+| Bitrise | free Hobby tier; secrets never reach pull-request builds on public projects; but the iOS certificate must be exported and uploaded, which needs a Mac |
+| Expo EAS | built around React Native; no Capacitor documentation |
+| GitHub Actions macOS | free for public repositories, but public logs and do-it-yourself signing; use it **only** for secret-free checks (the Node suites, `cap sync`), never `pull_request_target` |
+| Xcode Cloud | iOS only; the first workflow must be set up in Xcode on a Mac |
+
+Setup rules if Codemagic is chosen:
+- `codemagic.yaml` names secret groups only;
+- builds run manually or on `main` / tags, with pull-request builds off;
+- use a least-privilege App Store Connect API key;
+- turn on Play App Signing, so Codemagic holds only the upload key.
+
+Sources and dates are in the owner's feasibility record.
+
+## 11. Proven here vs device-only
+
+- **Proven (Node, this branch):** web identity of every seam and of session storage (real client and SDK); the payment
+  adapters (inert on the web, refused in the app, server-only tier when enabled — `payments.test.mjs`); the
   native-side logic on a scripted bridge (plugin proxies, share, browser, payment refusal, install hidden, Back into the
   view stack, deep-link mapping and loop guard, status bar and keyboard calls); the secure adapter including the real
   SDK's sign-out and account switch; the `.nojekyll` served-set delta; the accessibility markup; the cold-start asset.

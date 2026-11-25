@@ -100,7 +100,9 @@ ok(P.initPlatform({ canStepBack: () => true }) === false && globalThis.open === 
   'A8 initPlatform on the web: no window.open shim, no click listener, no attribute, no style');
 const shWeb = await import('../docs/src/js/share.js?fresh=web');
 ok(typeof shWeb.openShareApp === 'function' && /const APP_URL = isNative\(\) \? PUBLIC_ORIGIN/.test(src('docs/src/js/share.js')), 'A8 share.js still imports cleanly on the web');
-ok((mainJs.match(/if \(!paymentsInApp\(\)\) \{ showToast\(NATIVE_PAYMENT_MESSAGE\); return; \}/g) || []).length === 2 && P.paymentsInApp() === true, 'A8 the in-app payment gate is a no-op on the web (paymentsInApp() is true)');
+// RE-PINNED (release prep, payment adapters): the app-only gate now asks payments.js nativePayment(), which
+// refuses before any effect while no adapter is enabled (tests/payments.test.mjs §P2).
+ok((mainJs.match(/if \(!paymentsInApp\(\)\) \{ showToast\(\(await nativePayment\('(purchase|manage)', [^)]*\)\)\.message\); return; \}/g) || []).length === 2 && P.paymentsInApp() === true, 'A8 the in-app payment gate is a no-op on the web (paymentsInApp() is true)');
 ok(JSON.stringify(S.authStorageOption()) === '{}' && Object.keys(S.authStorageOption()).length === 0, 'A9 web session option adds no key at all');
 
 // Source pins: every named call site routes through the layer.
@@ -240,7 +242,7 @@ ok(P.openPaymentPage('https://checkout.stripe.com/c/pay/x') === false && loc.hre
   'C10 no Stripe page opens inside the app (store payment model is an owner decision)');
 ok(!/stripe|web|site|browser|cheaper|discount/i.test(P.NATIVE_PAYMENT_MESSAGE), 'C10 the in-app refusal names no other place to pay (no steering copy)');
 const fnBody = (name) => { const i = mainJs.indexOf('async function ' + name + '('); return mainJs.slice(i, mainJs.indexOf('\n}', i)); };
-const gate = "if (!paymentsInApp()) { showToast(NATIVE_PAYMENT_MESSAGE); return; }";
+const gate = "if (!paymentsInApp()) { showToast((await nativePayment(";   // re-pinned with the payment adapters (A8)
 for (const f of ['startCheckout', 'manageSubscription']) {
   const b = fnBody(f);
   ok(b.indexOf(gate) > -1 && b.indexOf(gate) < b.indexOf('supabase.functions.invoke'), `C10 ${f}: the app stops BEFORE any checkout / portal request (no Stripe session is created)`);

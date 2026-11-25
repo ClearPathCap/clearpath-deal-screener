@@ -1224,6 +1224,11 @@
          still sits with the plans it qualifies. Hidden in the signed-in view,
          where the same sentence remains the subhead. -->
     <p id="upgrade-plans-lead" style="display:none;margin-bottom:12px"></p>
+    <!-- Commercial C2: the plan picked before signing in. Shown only to a signed-in Starter; tapping
+         it opens the secure checkout page, where the purchase is confirmed. Never automatic. -->
+    <div id="upgrade-continue" style="display:none;margin-bottom:14px">
+      <button class="btn-upgrade btn-upgrade-investor" id="upgrade-continue-btn" onclick="continuePlanCheckout()">Continue to checkout</button>
+    </div>
     <div class="tier-compare" id="upgrade-compare">
       <div class="tier-card" id="upgrade-col-investor">
         <div class="tc-name">INVESTOR</div>

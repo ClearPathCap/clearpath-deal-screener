@@ -97,9 +97,13 @@ console.log('— §1 LTR (Orange Street, utilities $1,200) —');
   eq(p.annualTaxes, '8000', 'taxes unchanged'); eq(p.annualInsurance, '2358', 'insurance unchanged'); eq(p.vacancyPct, '7', 'vacancy unchanged');
   eq(p.purpose, 'dscr', 'purpose unchanged'); eq(p.exit, 'hold', 'exit unchanged'); eq(p.city, 'Bridgeport', 'city parsed'); eq(p.state, 'CT', 'state parsed');
   eq(p.hoaStatus, 'none', 'LTR handoff states the HOA basis: $0 analyzed → none (contract 2026-09-06)');
-  eq(Object.keys(p).length, 34, 'LTR key count is the banked 32 + annualUtilities + hoaStatus');
+  // RE-PINNED in Commercial C2 (C2-6, same-commit law): the funding handoff no longer sends `tier` — a paid
+  // DealFit plan buys app features only, and the plan must not travel with a funding request. CPC reads
+  // `tier` as optional provenance (absent -> "Source: DealFit"; lead source keys off `src`). Every key
+  // set below is the previous contract minus `tier`, and nothing else; pinned positively in commercialc2.
+  eq(Object.keys(p).length, 33, 'LTR key count is the banked 32 + annualUtilities + hoaStatus, minus tier (C2)');
   ok(u.endsWith('#submit'), 'hash #submit retained');
-  ok(u.startsWith('https://clearpathcapfunding.com/?src=dealscreener&tier=starter&'), 'origin/src/tier prefix unchanged');
+  ok(u.startsWith('https://clearpathcapfunding.com/?src=dealscreener&') && p.tier === undefined, 'origin/src prefix unchanged; no tier (C2)');
   // Pipeline path produces the identical URL for the same saved data.
   eq(viaPipeline(r), u, 'pipeline card path builds the identical URL');
   // Baseline at $0: screenerNoi 47,645 and annualUtilities "0" (explicit zero travels).
@@ -144,7 +148,7 @@ console.log('— §3 STR —');
   const p = paramsOf(u);
   eq(p.annualUtilities, '1200', '3: STR handoff carries annualUtilities=1200');
   eq(p.purpose, 'str', 'purpose str'); eq(p.exit, 'hold', 'exit hold');
-  eq(keysOf(u), 'addr,annualUtilities,city,exit,loan,pp,purpose,src,state,tier', 'STR key set = banked set + annualUtilities only (no other economics added)');
+  eq(keysOf(u), 'addr,annualUtilities,city,exit,loan,pp,purpose,src,state', 'STR key set = banked set + annualUtilities only (no other economics added)');
   eq(viaPipeline(r, 3), u, 'STR pipeline path identical');
   eq(Math.round(s.util), 1200, 'STR engine carried util (canonical expense calc)');
 }
@@ -156,8 +160,8 @@ console.log('— §4 F&F contract unchanged —');
   const u = viaAnalyzer(r);
   const p = paramsOf(u);
   eq(p.annualUtilities, undefined, '4: F&F never carries annualUtilities');
-  eq(keysOf(u), 'addr,arv,city,exit,loan,pp,purpose,rehab,src,state,tier', '4: F&F keeps the banked 11-key contract exactly');
-  eq(Object.keys(p).length, 11, '4: F&F key count 11');
+  eq(keysOf(u), 'addr,arv,city,exit,loan,pp,purpose,rehab,src,state', '4: F&F keeps the banked 11-key contract minus tier (C2)');
+  eq(Object.keys(p).length, 10, '4: F&F key count 10 (11 minus tier, C2)');
 }
 
 console.log('— §5/§6/§7 zero · malformed · legacy —');
@@ -181,7 +185,7 @@ console.log('— §5/§6/§7 zero · malformed · legacy —');
   ok(!('util' in legacy), 'legacy fixture has no util key');
   const pl = paramsOf(viaPipeline(legacy, 7));
   eq(pl.annualUtilities, undefined, '7: legacy record omits annualUtilities (CPC normalizes → $0)');
-  eq(Object.keys(pl).length, 33, '7: legacy record (no util key) keeps the banked 32-key LTR shape + hoaStatus (its hoa 0 is a confirmed figure)');
+  eq(Object.keys(pl).length, 32, '7: legacy record (no util key) keeps the banked 32-key LTR shape + hoaStatus, minus tier (C2)');
   eq(pl.screenerNoi, '47645', '7: legacy record NOI = $0-utilities engine NOI');
 }
 
@@ -261,7 +265,7 @@ console.log('— §11 Wave A · A2: STR states its HOA basis (2026-09-06) —');
   const p0 = paramsOf(viaAnalyzer(strRec(0)));
   eq(p0.hoaStatus, 'none', '§11 [A2] a $0-HOA STR analysis states none (confirmed zero — the explicit default)');
   eq(p0.monthlyHoa, '0', '§11 [A2] monthlyHoa travels as "0" (same wire as LTR/BRRRR)');
-  eq(keysOf(viaAnalyzer(strRec(0))), 'addr,annualUtilities,city,exit,hoaStatus,loan,monthlyHoa,pp,purpose,src,state,tier', '§11 [A2] STR key set = banked 10 + monthlyHoa + hoaStatus, nothing else');
+  eq(keysOf(viaAnalyzer(strRec(0))), 'addr,annualUtilities,city,exit,hoaStatus,loan,monthlyHoa,pp,purpose,src,state', '§11 [A2] STR key set = banked 10 + monthlyHoa + hoaStatus, nothing else');
   const p150 = paramsOf(viaPipeline(strRec(150), 40));
   eq(p150.hoaStatus, 'applies', '§11 [A2] a positive STR HOA states applies'); eq(p150.monthlyHoa, '150', '§11 [A2] the monthly amount travels (CPC converts ×12 once)');
   eq(viaPipeline(strRec(150), 40), viaAnalyzer(strRec(150)), '§11 [A2] analyzer and pipeline paths build the identical STR URL');
@@ -274,7 +278,7 @@ console.log('— §11 Wave A · A2: STR states its HOA basis (2026-09-06) —');
   const lNeg = ltrResult({ ...ORANGE_IN, down: 25, util: 0 }); lNeg.hoa = -5;
   ok(!('monthlyHoa' in paramsOf(viaPipeline(lNeg, 46))), '§11 [A2] the same law now holds for LTR / BRRRR: a negative saved HOA ships no amount');
   const pLegacy = paramsOf(viaPipeline(strRec(undefined), 42));
-  eq(pLegacy.hoaStatus, undefined, '§11 [A2] legacy STR record: no token'); eq(keysOf(viaPipeline(strRec(undefined), 42)), 'addr,annualUtilities,city,exit,loan,pp,purpose,src,state,tier', '§11 [A2] legacy STR key set is byte-identical to the pre-A2 contract');
+  eq(pLegacy.hoaStatus, undefined, '§11 [A2] legacy STR record: no token'); eq(keysOf(viaPipeline(strRec(undefined), 42)), 'addr,annualUtilities,city,exit,loan,pp,purpose,src,state', '§11 [A2] legacy STR key set is byte-identical to the pre-A2 contract');
   const s150 = STR.computeStr({ price: 400000, rent: 90000, down: 0.2, occ: 0.65, mgmt: 0.03, pm: 0.08, tax: 4000, maint: 2000, furnish: 15000, tgtCoc: 6, interestRate: 0.0675, util: 0, hoa: 150 });
   const s0 = STR.computeStr({ price: 400000, rent: 90000, down: 0.2, occ: 0.65, mgmt: 0.03, pm: 0.08, tax: 4000, maint: 2000, furnish: 15000, tgtCoc: 6, interestRate: 0.0675, util: 0 });
   ok(Math.abs((s0.noi - s150.noi) - 1800) < 1e-9, '§11 [A2] the engine charges HOA exactly once, annualized (150 × 12 = 1,800 off NOI)');
@@ -288,10 +292,10 @@ console.log('— §12 Wave A · A4: optional property facts on STR / F&F — unk
   // Blank facts (the analyzer stores null) → no keys, never a default.
   const pS = paramsOf(viaAnalyzer(strRec({ ptype: null, units: null })));
   ok(!('ptype' in pS) && !('units' in pS) && !('band' in pS), '§12 [A4] STR with unknown type / units sends no ptype, units or band (never SFR / 1)');
-  eq(keysOf(viaAnalyzer(strRec({ ptype: null, units: null }))), 'addr,annualUtilities,city,exit,hoaStatus,loan,monthlyHoa,pp,purpose,src,state,tier', '§12 [A4] STR key set unchanged when the facts are unknown');
+  eq(keysOf(viaAnalyzer(strRec({ ptype: null, units: null }))), 'addr,annualUtilities,city,exit,hoaStatus,loan,monthlyHoa,pp,purpose,src,state', '§12 [A4] STR key set unchanged when the facts are unknown');
   const pF = paramsOf(viaAnalyzer(flipRec({ ptype: null, units: null })));
   ok(!('ptype' in pF) && !('units' in pF) && !('band' in pF), '§12 [A4] F&F with unknown type / units sends no ptype, units or band');
-  eq(keysOf(viaAnalyzer(flipRec({ ptype: null, units: null }))), 'addr,arv,city,exit,loan,pp,purpose,rehab,src,state,tier', '§12 [A4] F&F 11-key contract unchanged when the facts are unknown');
+  eq(keysOf(viaAnalyzer(flipRec({ ptype: null, units: null }))), 'addr,arv,city,exit,loan,pp,purpose,rehab,src,state', '§12 [A4] F&F contract (minus tier, C2) unchanged when the facts are unknown');
   // Supplied facts travel verbatim; the 5–8 / 9+ options translate to CPC's Multifamily (LTR / BRRRR law).
   const pS2 = paramsOf(viaPipeline(strRec({ ptype: '2–4 Unit', units: 3 }), 50));
   eq(pS2.ptype, '2–4 Unit', '§12 [A4] a supplied STR type travels verbatim'); eq(pS2.units, '3', '§12 [A4] a supplied STR unit count travels'); ok(!('band' in pS2), '§12 [A4] no band is emitted for STR (CPC derives it from units)');
@@ -303,7 +307,7 @@ console.log('— §12 Wave A · A4: optional property facts on STR / F&F — unk
   ok(!('ptype' in paramsOf(viaPipeline(strRec({ ptype: '   ' }), 56))), '§12 [A4] a whitespace type is omitted');
   // Pre-A4 records (no keys at all) behave exactly as before.
   const legacy = strRec({}); delete legacy.ptype; delete legacy.units;
-  eq(keysOf(viaPipeline(legacy, 57)), 'addr,annualUtilities,city,exit,hoaStatus,loan,monthlyHoa,pp,purpose,src,state,tier', '§12 [A4] a pre-A4 STR record keeps its key set');
+  eq(keysOf(viaPipeline(legacy, 57)), 'addr,annualUtilities,city,exit,hoaStatus,loan,monthlyHoa,pp,purpose,src,state', '§12 [A4] a pre-A4 STR record keeps its key set');
   // LTR / BRRRR are untouched by A4 (their type / units law was already in force).
   const pL = paramsOf(viaPipeline(ltrResult({ ...ORANGE_IN, down: 25, util: 0 }), 58));
   eq(pL.ptype, 'SFR', '§12 [A4] LTR still sends its selected type'); eq(pL.units, '1', '§12 [A4] LTR still sends its unit count'); eq(pL.band, '1-4', '§12 [A4] LTR still sends band');

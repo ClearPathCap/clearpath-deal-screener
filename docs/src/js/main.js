@@ -52,7 +52,11 @@ import { normalizeOtp, extractOtp, looksComplete, shouldAutoVerify, readAuthLink
          looksLikeEmail, codeSentMessage, PASTE_NO_CODE_MSG, sessionLinkKind, LINK_NOT_USED_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
-import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline } from './storage.js';
+import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline,
+         pipelineLoadState, PIPELINE_ALLOWANCE } from './storage.js';
+import { currentResultFor } from './pipeline.js';
+import { pendingSave, createPlanIntent, saveResumeDecision,
+         RESUME_DROP_MSG, RESUME_WAIT_MSG } from './resumeIntent.js';   // Commercial C2: finish the task that needed sign-in
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -173,7 +177,7 @@ function saveButtonUI(status) {
     : { label: null, saved: false };
 }
 
-async function saveDeal(type) {
+async function saveDeal(type, opts) {
   // Stale-result law: a result that no longer matches the form is never saved
   // or used to update a snapshot — analyze again first.
   if (isStale(type)) { showToast('Inputs changed — analyze again before saving'); return { status: 'refused-stale' }; }
@@ -187,7 +191,7 @@ async function saveDeal(type) {
 
   let outcome;
   try {
-    outcome = await _saveDeal(type);
+    outcome = await _saveDeal(type, opts);
   } catch (e) {
     // Unexpected failure — pipeline.js owns expected-path feedback; never leave
     // the button disabled or stuck on 'Saving…' (finally below restores it).
@@ -1432,6 +1436,11 @@ function openModal(id)  {
   if (surface) surface.scrollTop = 0;           // no stale scroll on reopen
   sheetOpened(el, id);                          // design-system wave (a11y): focus moves into the sheet
 }
+// Commercial C2 state (declared before closeModal, which reads it; law in resumeIntent.js).
+const planIntent = createPlanIntent((() => { try { return window.sessionStorage; } catch { return null; } })());
+const PLAN_NAME = { investor: 'Investor', pro: 'Pro' };
+let _resumeArmed = false, _resumeRunning = false, _resumeWarned = false, _closingForResume = false;
+
 function closeModal(id) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -1445,6 +1454,10 @@ function closeModal(id) {
     }
   }
   el.classList.remove('active');
+  if (wasOpen && id === 'modal-upgrade' && !_closingForResume) {   // Commercial C2
+    if (!isSignedIn()) pendingSave.cancel();
+    planIntent.cancel();
+  }
   if (wasOpen) sheetClosed(el, id);             // design-system wave (a11y): focus returns to the opener
   if (wasOpen) recordSheetClose(id);            // design-system wave: consumes this sheet's History entry
 }
@@ -1674,6 +1687,60 @@ function applyAccountPriority(accountFirst) {
 
 // trigger: 'region' | 'save' | 'cap' | 'general'
 let _lastUpgradeTrigger = 'general';
+
+// ─── Commercial C2 — resume the task that needed sign-in ─────────────────────
+// See resumeIntent.js for the law. Only a sign-in completed in THIS tab arms a resume
+// (another tab's sign-in, a restored session or a token refresh never does).
+// (state declared above closeModal, which reads it)
+
+function armResumeAfterSignIn() {
+  _resumeArmed = !!pendingSave.peek();
+  _resumeWarned = false;
+  if (!_resumeArmed) return;
+  // Back to the analysis the person was saving — no plan pitch in this moment.
+  _closingForResume = true;
+  try { closeModal('modal-upgrade'); } finally { _closingForResume = false; }
+  resumeAfterSignIn();
+}
+
+async function resumeAfterSignIn() {
+  if (!_resumeArmed || _resumeRunning) return;
+  const intent = pendingSave.peek();
+  if (!intent) { _resumeArmed = false; return; }
+  const d = saveResumeDecision(intent, {
+    signedIn: isSignedIn(), loadState: pipelineLoadState(),
+    currentResult: currentResultFor(intent.type), owner: analyzerOwner[intent.type] || '',
+    reviewing: getReviewingDealId() != null, deals: getDeals(), allowance: PIPELINE_ALLOWANCE,
+  });
+  if (d.action === 'wait') {   // the account's pipeline is still loading (or unreachable): try on the next load
+    if (d.reason === 'unreachable' && !_resumeWarned) { _resumeWarned = true; showToast(RESUME_WAIT_MSG, 4200); }
+    return;
+  }
+  pendingSave.cancel(); _resumeArmed = false;   // single use, before any await
+  if (d.action === 'drop') { showToast(RESUME_DROP_MSG[d.reason] || RESUME_DROP_MSG.owned, 4200); return; }
+  _resumeRunning = true;
+  let out = null;
+  try { out = await saveDeal(intent.type, { resume: intent }); }
+  finally { _resumeRunning = false; }
+  // Optional offers only AFTER the save is confirmed: a plan chosen before sign-in.
+  if (out && out.status === 'saved' && planIntent.peek()) openUpgrade('plan');
+}
+
+// The remembered plan's button: a further explicit tap is the only thing that starts checkout.
+function continuePlanCheckout() {
+  const p = planIntent.peek();
+  planIntent.cancel();
+  if (!p || !isSignedIn()) { configureUpgradeModal(_lastUpgradeTrigger); return { status: 'none' }; }
+  startCheckout(p.tier);
+  return { status: 'checkout', tier: p.tier };
+}
+
+function renderPlanContinue(plan) {
+  const box = document.getElementById('upgrade-continue');
+  const btn = document.getElementById('upgrade-continue-btn');
+  if (box) box.style.display = plan ? '' : 'none';
+  if (btn && plan) btn.textContent = 'Continue to ' + PLAN_NAME[plan.tier] + ' checkout';
+}
 // Review R1 (re-verification): the code-only view belongs to a PENDING code. Every way of opening the
 // sheet configures it here (openUpgrade, the locked market slot, the tier badge), so with no code
 // pending (expired after 15 minutes, or never sent) it always starts from the email step.
@@ -1707,6 +1774,7 @@ function configureUpgradeModal(trigger) {
   }
 
   // Reset visibility defaults
+  renderPlanContinue(null);   // Commercial C2: the remembered-plan button shows only when it applies
   if (compare) compare.style.display = '';
   if (colInv)  colInv.style.display = '';
   if (colPro)  colPro.style.display = '';
@@ -1720,6 +1788,14 @@ function configureUpgradeModal(trigger) {
   // cache can never stand a signed-out visitor in front of "You're on Investor"
   // with no way to sign in. The plan cards stay visible — available, below.
   if (!isSignedIn()) return;
+
+  if (tier === 'pro' || tier === 'investor') planIntent.cancel();   // C2: a paid account has nothing to continue to
+  const plan = (tier === 'pro' || tier === 'investor') ? null : planIntent.peek();
+  if (plan) {
+    renderPlanContinue(plan);
+    if (title)   title.textContent = 'Continue to ' + PLAN_NAME[plan.tier] + ' checkout';
+    if (subhead) subhead.textContent = 'You picked ' + PLAN_NAME[plan.tier] + ' before signing in. Nothing is charged until you confirm on the secure checkout page.';
+  }
 
   if (tier === 'pro') {
     // Already top tier — nothing to sell
@@ -1770,7 +1846,10 @@ function logFunctionsFailure(op, error) {
 }
 
 async function startCheckout(tierName) {
-  if (!isSignedIn()) { openUpgrade('general'); showToast('Sign in first — your plan attaches to your account.'); return; }
+  if (!isSignedIn()) {
+    planIntent.note(tierName);   // Commercial C2: remembered through sign-in; never a charge by itself
+    openUpgrade('general'); showToast('Sign in first — your plan attaches to your account.'); return;
+  }
   showToast('Opening secure checkout…');
   try {
     const { data, error } = await supabase.functions.invoke('checkout', { body: { tier: tierName } });
@@ -2035,6 +2114,7 @@ async function verifySignInCode(opts = {}) {
     if (input) input.value = '';
     _lastTriedCode = ''; _codePrevLen = 0;
     refreshSheetAfterSignIn();
+    armResumeAfterSignIn();   // Commercial C2: finish the save this sign-in was for
   } else if (input) { input.focus(); try { input.select(); } catch {} }
   return { status: result.ok ? 'signed-in' : 'failed' };
 }
@@ -2139,13 +2219,14 @@ async function finishLinkSignIn() {
   let result;
   try { result = await verifyOtpCode('', '', { tokenHash: link.tokenHash, type: link.type }); } finally { _verifyInFlight = false; }
   showRedeemMsg(msgEl, result);
-  if (result.ok) { clearPending(_signinStore); refreshSheetAfterSignIn(); }
+  if (result.ok) { clearPending(_signinStore); refreshSheetAfterSignIn(); armResumeAfterSignIn(); }
   return { status: result.ok ? 'signed-in' : 'failed' };
 }
 
 async function doSignOut() {
   await signOutAccount();
   try { purgeForeignMarketSlots(''); } catch (e) { console.warn(e); }   // E2: no account's server-held markets stay on a signed-out device (R3: never blocks the reload)
+  pendingSave.cancel(); planIntent.cancel();   // Commercial C2: nothing carries past a sign-out
   updateAccountUI();
   location.reload();
 }
@@ -2438,6 +2519,7 @@ Object.assign(window, {
   // Stale-result law: estimator writes count as input changes.
   setRepairTier: (name, el) => { setRepairTier(name, el); refreshStale('flip'); },
   startCheckout,
+  continuePlanCheckout,
   manageSubscription,
   calcRepair,
   useRepairEstimate: (...a) => { const r = useRepairEstimate(...a); refreshStale('flip'); return r; },
@@ -2632,6 +2714,7 @@ async function syncPipelineOnAuth() {
   if (document.getElementById('page-pipeline')?.classList.contains('active')) {
     renderPipeline();
   }
+  resumeAfterSignIn();   // Commercial C2: a save waiting for this account's pipeline
 }
 
 // UX wave finding 3: pull the account's market slots down (and push local-only

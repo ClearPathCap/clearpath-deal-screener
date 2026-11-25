@@ -1,7 +1,6 @@
 // ─── CPC funding bridge — pre-fill URL builder + qualification box ────────────
 // Implements the Deal Screener side of CPC_INTEGRATION_SPEC.md.
 
-import { getActiveTier } from './tiers.js';
 import { CPC_BROKER_MIN, qualifiesForCpcLtr, qualifiesForCpcBrrr, propertyBand, BAND_RULES } from './finance.js';
 
 // DSCR (LTR) + BRRR funnel gates live in finance.js (pure/testable); re-export so
@@ -16,7 +15,9 @@ const CPC_BASE = 'https://clearpathcapfunding.com/';
 export function buildCpcUrl(deal) {
   const p = new URLSearchParams();
   p.set('src', 'dealscreener');
-  p.set('tier', getActiveTier());            // starter | investor | pro
+  // Commercial C2 (C2-6): the plan is NOT sent. A paid DealFit plan buys app features only, never
+  // funding treatment; sending it with a funding request invites the opposite reading. CPC reads
+  // `tier` as optional provenance only (absent → "Source: DealFit"; lead source keys off `src`).
   const map = { pp:'pp', rehab:'rehab', arv:'arv', loan:'loan', ltv:'ltv', dscr:'dscr',
                 addr:'addr', city:'city', state:'state', ptype:'ptype', purpose:'purpose', exit:'exit',
                 units:'units', band:'band',

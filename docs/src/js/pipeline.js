@@ -17,6 +17,7 @@ import { getLastLtrResult } from './ltr.js';
 import { getLastBrrrResult } from './brrr.js';
 import { getPipelineFundingButtonHTML } from './clearpath.js';
 import { getActiveTier, getActiveMarketId, getMarketLabel } from './tiers.js';
+import { pendingSave, RESUME_SAVED_MSG } from './resumeIntent.js';
 import { ALL_MARKETS } from './markets.js';
 import { resultInsuranceStatus, resultTaxStatus, pendingPresentationFor } from './insuranceReadiness.js';
 import { computeFlip, computeFlipStress, flipVerdict, validateInputs, flipProfitClass,
@@ -102,10 +103,25 @@ export function defaultDealName(type, when) {
   return stamp ? label + ' · ' + stamp : label;
 }
 
-export async function saveDeal(type) {
+// The analysis currently on screen for an analyzer (null before the first Analyze).
+export function currentResultFor(type) {
+  return type === 'flip' ? getLastFlipResult()
+    : type === 'ltr'  ? getLastLtrResult()
+    : type === 'brrr' ? getLastBrrrResult()
+    : getLastRentalResult();
+}
+
+// opts.resume (Commercial C2): the pending save noted before sign-in (resumeIntent.js), finished
+// by main.js after this tab's sign-in. It may only ADD that exact analysis as a NEW deal under its
+// fixed id: it never updates a reviewed deal, never runs on a different analysis, and a second
+// attempt for an id already in the pipeline is a no-op (no duplicate).
+export async function saveDeal(type, opts = {}) {
+  const resume = opts && opts.resume ? opts.resume : null;
   // Pipeline requires a free account (Option A) — anonymous users can analyze a
   // deal and request funding, but SAVING prompts sign-in / account creation.
   if (!isSignedIn()) {
+    // C2: remember WHICH analysis this tap meant to save, so it can finish after sign-in.
+    if (!resume) pendingSave.note(type, currentResultFor(type));
     window.showToast && window.showToast('Create a free account to save deals');
     window.openUpgrade && window.openUpgrade('save');
     return { status: 'refused-auth' };
@@ -113,10 +129,8 @@ export async function saveDeal(type) {
 
   const nameId  = type + '-deal-name';
   const notesId = type + '-notes';
-  const result = type === 'flip' ? getLastFlipResult()
-    : type === 'ltr'  ? getLastLtrResult()
-    : type === 'brrr' ? getLastBrrrResult()
-    : getLastRentalResult();
+  const result = currentResultFor(type);
+  if (resume && (resume.type !== type || resume.result !== result)) return { status: 'refused-changed' };
   if (!result) { alert('Analyze the deal first, then save.'); return { status: 'refused-result' }; }
 
   const deals = getDeals();
@@ -128,6 +142,8 @@ export async function saveDeal(type) {
   // the reviewed raw inputs + fresh derived outputs, updated stamps. No
   // duplicate, and nothing else in the pipeline moves.
   const reviewing = reviewingDealId != null ? deals.find(d => d.id === reviewingDealId) : null;
+  if (resume && reviewingDealId != null) return { status: 'refused-review' };
+  if (resume && deals.some(d => d && d.id === resume.dealId)) return { status: 'saved', mode: 'already' };
 
   // Commercial C1: a blank name no longer stops the save with a browser alert (a dead end on
   // the way to the first saved deal). Updating a reviewed deal keeps its saved name; a new deal
@@ -181,10 +197,11 @@ export async function saveDeal(type) {
       data:    result,
       stats:   buildDealStats(type, result),
     };
+    if (resume) deal.id = resume.dealId;   // C2: the pending save's fixed id — a repeat is a no-op, never a duplicate
     candidate = [deal, ...deals];
     onOk = () => {
       // Keep fields intact — only show brief confirmation (Section 5g)
-      window.showToast && window.showToast('Deal saved to pipeline');
+      window.showToast && window.showToast(resume ? RESUME_SAVED_MSG : 'Deal saved to pipeline');
       return { status: 'saved' };
     };
   }

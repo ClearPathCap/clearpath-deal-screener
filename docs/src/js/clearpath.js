@@ -1,6 +1,5 @@
 // ─── Clear Path Capital integration ──────────────────────────────────────────
 
-import { getActiveTier } from './tiers.js';
 import { getDeals } from './storage.js';
 import { buildCpcUrl, qualifiesForCpc, qualifiesForCpcLtr, qualifiesForCpcBrrr, CPC_BROKER_MIN, propertyBand, BAND_RULES } from './funding.js';
 import { resultInsuranceStatus, insuranceReady, insuranceSummaryWarning, insurancePresentation, resultTaxStatus, taxReady, incomePresentation, incomeDependentHandoff, taxSummaryWarning, strExpensePresentation, strExpenseSummaryWarning, INS_MISSING, INS_EXPLICIT_ZERO } from './insuranceReadiness.js';
@@ -274,7 +273,7 @@ function econHandoff(r) {
   // states produce the IDENTICAL omission set. With screenerDscr absent, CPC's
   // existing missing-data guard (gated on screenerDscr > 0, page.tsx) fires and shows
   // "Pending — incomplete". Raw rent/taxes/HOA and the % assumptions still travel
-  // (not insurance-contaminated); src/tier attribution is in buildCpcUrl, untouched.
+  // (not insurance-contaminated); src attribution is in buildCpcUrl, untouched (C2: no tier).
   // F-5: the tax gate joins the insurance gate — blank taxes omit annualTaxes AND
   // the same screener-metric set (a blank field never ships a fabricated $0).
   const incomeFields = incomeDependentHandoff(r);
@@ -418,14 +417,12 @@ function getTierConfig() {
   // B6b — neutral funding CTA across ALL tiers: the user-facing label/toast make
   // no tier-conditioned claims about loan treatment (the old paid-benefit button
   // copy was removed then; the Wave 5 tier/funding-law suite now pins the whole
-  // app). The tier still flows internally for tracking — via the per-tier tag
-  // (clipboard summary) and the `tier` query param in buildCpcUrl (→ HubSpot).
-  const tier = getActiveTier();
-  const tagByTier = { pro: '[Pro Submission]', investor: '[Investor Submission]' };
+  // app). Commercial C2 (C2-6): the plan no longer travels at all — one neutral
+  // tag for every account, and no `tier` query param in buildCpcUrl.
   return {
     // CTA simplification (owner decision 2026-09-05): the button label no longer
     // carries a "— Clear Path Capital" suffix or the CPC mark — see getFundingLabel.
-    tag:   tagByTier[tier] || '[Starter Submission]',
+    tag:   '[DealFit Submission]',
     toast: 'Form pre-filled on the Clear Path page — review and submit. Summary also copied as backup.',
   };
 }

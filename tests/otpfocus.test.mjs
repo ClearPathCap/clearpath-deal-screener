@@ -126,6 +126,10 @@ console.log('— §B behaviour: the real sign-in functions from main.js against 
       sendOtpCode: (email) => { const d = deferred(); st.sends.push({ email, focusAtSend: doc.activeElement && doc.activeElement.id, d }); log.push('send:' + email); return d.p; },
       verifyOtpCode: async (email, code) => { st.verifies.push(code); return code === '000000' ? { ok: false, msg: 'That code didn’t work' } : { ok: true, msg: 'Signed in' }; },
       configureUpgradeModal: (t) => { st.configured.push(t); st.api.resetStaleCodeStep(); }, openModal: () => {},
+      // Commercial C2: verifySignInCode now calls the resume hook after a successful sign-in (it finishes a
+      // pending save; behaviour pinned in tests/commercialc2). Counted here so the sign-in suite still runs
+      // the real verifySignInCode unchanged otherwise.
+      armResumeAfterSignIn: () => { st.armed = (st.armed || 0) + 1; },
       _signinStore: store, setInterval: () => 0, clearInterval: () => {},
       extractOtp: S.extractOtp, normalizeOtp: S.normalizeOtp, looksComplete: S.looksComplete, looksLikeEmail: S.looksLikeEmail,
       codeSentMessage: S.codeSentMessage, readPending: S.readPending, writePending: S.writePending, clearPending: S.clearPending, resendWaitSeconds: S.resendWaitSeconds,

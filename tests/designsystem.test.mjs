@@ -410,6 +410,14 @@ if (base) {
     ' Business-purpose, non-owner-occupied investment property only. Clear Path Capital is a broker.\',',
     ' Business-purpose, non-owner-occupied investment property only.',
   ];
+  const C2_SWAPS = [
+    ['// ─── Clear Path Capital integration ──────────────────────────────────────────\n\nimport { getDeals }',
+     '// ─── Clear Path Capital integration ──────────────────────────────────────────\n\nimport { getActiveTier } from \'./tiers.js\';\nimport { getDeals }'],
+    ['src attribution is in buildCpcUrl, untouched (C2: no tier).', 'src/tier attribution is in buildCpcUrl, untouched.'],
+    ['  // app). Commercial C2 (C2-6): the plan no longer travels at all — one neutral\n  // tag for every account, and no `tier` query param in buildCpcUrl.\n',
+     '  // app). The tier still flows internally for tracking — via the per-tier tag\n  // (clipboard summary) and the `tier` query param in buildCpcUrl (→ HubSpot).\n  const tier = getActiveTier();\n  const tagByTier = { pro: \'[Pro Submission]\', investor: \'[Investor Submission]\' };\n'],
+    ["    tag:   '[DealFit Submission]',", "    tag:   tagByTier[tier] || '[Starter Submission]',"],
+  ];
   const c1Only = (f) => {
     if (!/\/clearpath\.js$/.test(f)) return false;
     const norm = (t) => t.replace(/\r\n/g, '\n');
@@ -418,6 +426,9 @@ if (base) {
     cur = cur.split(C1_INSERTS[0]).join('');
     cur = cur.split(C1_INSERTS[1]).join('\',');
     cur = cur.split(C1_INSERTS[2]).join('');
+    // RE-PINNED in Commercial C2 (C2-6): the plan no longer travels with a funding request — the tier import,
+    // the per-tier clipboard tag and two comments are swapped back here; anything else must still equal production.
+    for (const [now, was] of C2_SWAPS) cur = cur.split(now).join(was);
     return cur === prod;
   };
   const forbiddenNow = forbidden.filter(f => !c1Only(f));

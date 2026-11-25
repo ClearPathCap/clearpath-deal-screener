@@ -25,6 +25,9 @@ globalThis.__uid = '';
 globalThis.__lastResults = { flip: null, rental: null, ltr: null, brrr: null };
 globalThis.__tier = 'starter';
 const server = {};            // synthetic accounts: uid -> saved deals (what get_pipeline / save_pipeline see)
+// Postgres jsonb does not keep object key order: it returns keys shortest first, then by bytes (review R4-P1).
+const jsonb = (v) => JSON.parse(JSON.stringify(v), (k, x) => (x && typeof x === 'object' && !Array.isArray(x))
+  ? Object.fromEntries(Object.keys(x).sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0)).map((q) => [q, x[q]])) : x);
 let rpcLog = [];
 let rpcFail = null;           // 'get' | 'save' | null
 globalThis.__supabaseStub = {
@@ -33,11 +36,11 @@ globalThis.__supabaseStub = {
     rpcLog.push({ name, uid });
     if (name === 'get_pipeline') {
       if (rpcFail === 'get') return { data: null, error: { message: 'unreachable' }, status: 503 };
-      return { data: JSON.parse(JSON.stringify(server[uid] || [])), error: null, status: 200 };   // fresh objects, as over the wire (review R2-N3)
+      return { data: jsonb(server[uid] || []), error: null, status: 200 };   // fresh objects in jsonb key order, as from the real server (R2-N3, R4-P1)
     }
     if (name === 'save_pipeline') {
       if (rpcFail === 'save') return { data: null, error: { message: 'server error' }, status: 500 };
-      server[uid] = JSON.parse(JSON.stringify(args.p_deals));
+      server[uid] = jsonb(args.p_deals);
       return { data: null, error: null, status: 200 };
     }
     return { data: null, error: null, status: 200 };
@@ -208,7 +211,7 @@ const signOut = () => { globalThis.__authState.signedIn = false; globalThis.__ui
 const signInAs = (uid) => { globalThis.__authState.signedIn = true; globalThis.__uid = uid; storage.dropForeignPipeline(); };
 const openSheet = () => el('modal-upgrade').classList.add('active');
 const sheetOpen = () => el('modal-upgrade').classList.contains('active');
-const same = (d, R) => !!d && JSON.stringify(d.data) === JSON.stringify(R);
+const same = (d, R) => !!d && RI.sameAnalysis(d.data, R);
 const deal = (i, extra) => ({ id: 1000 + i, name: 'existing ' + i, type: 'ltr', verdict: 'v', cls: 'warm', data: {}, stats: [], date: '', notes: '', ...extra });
 
 server['u-a'] = [deal(1), deal(2)];
@@ -430,8 +433,8 @@ api.closeModal('modal-upgrade');
 // N3: after a re-load (fresh objects) a resume's fixed id still prevents a duplicate
 reset(); signInAs('u-i'); await storage.hydratePipeline();
 { const saved = storage.getDeals().find((d) => same(d, R10));
-  const d = RI.saveResumeDecision({ type: 'ltr', result: R10, dealId: saved.id }, { signedIn: true, loadState: 'ok', uid: 'u-i', armedUid: 'u-i', currentResult: R10, owner: '', reviewing: false, deals: storage.getDeals(), allowance: 25 });
-  ok(saved.data !== R10 && d.reason === 'already-saved', 'J47 after a re-load the cache holds server copies; the fixed id is what blocks a duplicate'); }
+  const d = RI.saveResumeDecision({ type: 'ltr', result: R10, dealId: saved ? saved.id : -1 }, { signedIn: true, loadState: 'ok', uid: 'u-i', armedUid: 'u-i', currentResult: R10, owner: '', reviewing: false, deals: storage.getDeals(), allowance: 25 });
+  ok(!!saved && saved.data !== R10 && d.reason === 'already-saved', 'J47 after a re-load the cache holds server copies; the fixed id is what blocks a duplicate'); }
 
 // ── Review round 3 regression (N8) ──
 console.log('— §J review round 3 —');
@@ -439,8 +442,9 @@ console.log('— §J review round 3 —');
   const a1 = si.note('ltr', { n: 'a' }), a2 = si.note('ltr', { n: 'b' });
   ok(a1.dealId === 5000 && a2.dealId === 5001, 'J48 two notes in one millisecond never share a fixed id');
   const other = { id: 7000, type: 'ltr', data: { n: 'unrelated' } };
-  const d = RI.saveResumeDecision({ type: 'ltr', result: { n: 'mine' }, dealId: 7000 }, { signedIn: true, loadState: 'ok', uid: 'u', armedUid: 'u', currentResult: null, owner: '', reviewing: false, deals: [other], allowance: 25 });
-  ok(d.reason !== 'already-saved', 'J49 an unrelated deal that happens to hold the same id is not "already saved"'); }
+  const mine = { n: 'mine' };
+  const d = RI.saveResumeDecision({ type: 'ltr', result: mine, dealId: 7000 }, { signedIn: true, loadState: 'ok', uid: 'u', armedUid: 'u', currentResult: mine, owner: '', reviewing: false, deals: [other], allowance: 25 });
+  ok(d.action === 'save', 'J49 an unrelated deal that happens to hold the same id is not "already saved"'); }
 reset(); signOut(); server['u-j'] = [{ id: 424242, name: 'old', type: 'ltr', verdict: 'v', cls: 'warm', data: { n: 'old' }, stats: [], date: '', notes: '' }];
 { const R11 = { n: 11, verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R11;
   signInAs('u-j'); await storage.hydratePipeline();
@@ -448,6 +452,11 @@ reset(); signOut(); server['u-j'] = [{ id: 424242, name: 'old', type: 'ltr', ver
   const ids = server['u-j'].map((d) => d.id);
   ok(r.status === 'saved' && server['u-j'].length === 2 && new Set(ids).size === 2 && server['u-j'].some((d) => same(d, R11)) && server['u-j'].some((d) => d.name === 'old'),
      'J50 …the resume saves under a fresh id: both deals kept, ids unique'); }
+
+// ── Review round 4 regression (P1) ──
+{ const A = { verdict: 'Pass', cls: 'good', stats: { cap: 7.1, dscr: 1.3 }, list: [{ b: 1, a: 2 }] };
+  ok(RI.sameAnalysis(A, jsonb(A)) && JSON.stringify(A) !== JSON.stringify(jsonb(A)), 'J51 a server (jsonb-ordered) copy of an analysis is recognised as the same analysis');
+  ok(!RI.sameAnalysis(A, { ...A, verdict: 'Fail' }) && !RI.sameAnalysis({ list: [1, 2] }, { list: [2, 1] }), 'J52 …while different values, or a reordered ARRAY, are not'); }
 
 // ═══ §S source pins ════════════════════════════════════════════════════════════
 console.log('— §S source pins —');

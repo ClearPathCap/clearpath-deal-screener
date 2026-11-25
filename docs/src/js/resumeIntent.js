@@ -26,10 +26,13 @@ export const RESUMABLE_PLANS = ['investor', 'pro'];
 
 const fresh = (at, t) => Number.isFinite(at) && t - at >= 0 && t - at < RESUME_TTL_MS;
 
-// Review R3-N8: the same analysis by CONTENT (a saved copy has been through JSON on the way to the
-// server and back, so it is a different object with the same serialization).
+// Review R3-N8 / R4-P1: the same analysis by CONTENT. A saved copy comes back from the server as a new
+// object, and Postgres jsonb does not keep object key order — so compare with keys sorted at every level.
+const canon = (v) => JSON.stringify(v, (k, x) =>
+  (x && typeof x === 'object' && !Array.isArray(x))
+    ? Object.fromEntries(Object.keys(x).sort().map((q) => [q, x[q]])) : x);
 export function sameAnalysis(a, b) {
-  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+  try { return canon(a) === canon(b); } catch { return false; }
 }
 
 export function createSaveIntent(now = () => Date.now()) {

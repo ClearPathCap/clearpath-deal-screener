@@ -9,6 +9,8 @@ import { supabase } from './supabaseClient.js';
 import { isNetworkFailure } from './connectivity.js';
 import { fmt, pct, escapeHtml } from './format.js';
 import { flipProfitClass } from './finance.js';
+import { initPlatform } from './platform.js';          // native-readiness: in the app, links open in the in-app browser and Back works here too
+import { AUTH_LINK_PARAMS } from './signinCode.js';
 
 const money = (v) => (v == null ? '—' : fmt(v));
 const perc  = (v) => (v == null ? '—' : pct(v));
@@ -91,4 +93,7 @@ async function load() {
   } catch (e) { if (isNetworkFailure(e)) offline(); else fail(); }
 }
 
-if (typeof document !== 'undefined' && document.getElementById('shared-loading')) load();
+if (typeof document !== 'undefined' && document.getElementById('shared-loading')) {
+  try { initPlatform({ canStepBack: () => false, requiredSheetOpen: () => false, authParams: AUTH_LINK_PARAMS }); } catch {}
+  load();
+}

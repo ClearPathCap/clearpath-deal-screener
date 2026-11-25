@@ -51,6 +51,10 @@ import { normalizeOtp, extractOtp, looksComplete, shouldAutoVerify, readAuthLink
          AUTH_LINK_ENABLED, readPending, writePending, clearPending, resendWaitSeconds,
          looksLikeEmail, codeSentMessage, PASTE_NO_CODE_MSG, sessionLinkKind, LINK_NOT_USED_MSG } from './signinCode.js';   // overnight A   // Mobile Phase 0: truthful offline states
 import { supabase } from './supabaseClient.js';
+import { initA11y } from './a11y.js';   // native-readiness: keyboard activation for role="button" rows
+import { initPlatform, openPaymentPage, paymentsInApp, NATIVE_PAYMENT_MESSAGE } from './platform.js';   // native-readiness: web unchanged; the app's shell seam
+import { canStepBack, topSheet } from './viewstack.js';   // native-readiness: Android Back reads the view stack's model (kept below the engine imports)
+import { AUTH_LINK_PARAMS } from './signinCode.js';   // native-readiness: an app deep link carries the same sign-in link parameters a browser visit would
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline,
          pipelineLoadState, PIPELINE_ALLOWANCE } from './storage.js';
@@ -1054,14 +1058,14 @@ function _pickerRenderStateList(codes) {
   if (!codes.length) { list.innerHTML = '<div class="picker-item disabled"><div class="picker-item-label">No results found</div></div>'; return; }
   list.innerHTML = codes.map(code => {
     const count = map[code].length;
-    return `<div class="picker-item picker-state-btn" onclick="pickerSelectState('${code}')"><div class="picker-item-label">${code} (${count})</div><div class="picker-item-arrow">&#8250;</div></div>`;
+    return `<div class="picker-item picker-state-btn" role="button" tabindex="0" onclick="pickerSelectState('${code}')"><div class="picker-item-label">${code} (${count})</div><div class="picker-item-arrow">&#8250;</div></div>`;
   }).join('');
 }
 function _pickerRenderMarkets(markets) {
   const list = document.getElementById('picker-results');
   if (!list) return;
   list.innerHTML = markets.map(m =>
-    `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')"><div class="picker-item-label">${pickerMarketDisplay(m)}</div><div class="picker-item-arrow">&#10003;</div></div>`
+    `<div class="picker-item" role="button" tabindex="0" onclick="pickerSelectMarket('${m.id}')"><div class="picker-item-label">${pickerMarketDisplay(m)}</div><div class="picker-item-arrow">&#10003;</div></div>`
   ).join('');
 }
 function _pickerRenderSearchResults(markets) {
@@ -1070,7 +1074,7 @@ function _pickerRenderSearchResults(markets) {
   list.innerHTML = markets
     .sort((a, b) => pickerMarketDisplay(a).localeCompare(pickerMarketDisplay(b)))
     .map(m =>
-      `<div class="picker-item" onclick="pickerSelectMarket('${m.id}')"><div><div class="picker-item-label">${pickerMarketDisplay(m)}</div><div class="picker-item-sub">${marketStateCode(m)}</div></div><div class="picker-item-arrow">&#10003;</div></div>`
+      `<div class="picker-item" role="button" tabindex="0" onclick="pickerSelectMarket('${m.id}')"><div><div class="picker-item-label">${pickerMarketDisplay(m)}</div><div class="picker-item-sub">${marketStateCode(m)}</div></div><div class="picker-item-arrow">&#10003;</div></div>`
     ).join('');
 }
 
@@ -1860,7 +1864,21 @@ function logFunctionsFailure(op, error) {
   catch { /* diagnostics must never break the flow */ }
 }
 
+// App-only payments (release prep, native). payments.js is loaded ONLY here, inside the two
+// if (!paymentsInApp()) guards, so the web never requests it. Every adapter is refused until the
+// owner enables one. The server is the only source of a tier: an adapter may hand a store proof to
+// a server function and then re-read the tier — it never sets one.
+const PAYMENT_DEPS = {
+  invoke: (name, body) => supabase.functions.invoke(name, { body }),
+  sync: () => syncEntitlement().then(() => refreshTierUI()),
+  isSignedIn: () => isSignedIn(),
+};
+async function appPayment(op, tier) {
+  try { const m = await import('./payments.js'); return (await m.nativePayment(op, tier, PAYMENT_DEPS)).message; }
+  catch { return NATIVE_PAYMENT_MESSAGE; }
+}
 async function startCheckout(tierName) {
+  if (!paymentsInApp()) { showToast(await appPayment('purchase', tierName)); return; }   // native-readiness: no Stripe checkout request from the app; the app's adapter (refused until enabled) answers
   if (!isSignedIn()) {
     planIntent.note(tierName);   // Commercial C2: remembered through sign-in; never a charge by itself
     openUpgrade('general'); showToast('Sign in first — your plan attaches to your account.'); return;
@@ -1883,7 +1901,7 @@ async function startCheckout(tierName) {
       showToast('Checkout is unavailable right now. Nothing was charged.');
       return;
     }
-    if (data.url) { location.href = data.url; return; }
+    if (data.url) { if (openPaymentPage(data.url)) return; showToast(NATIVE_PAYMENT_MESSAGE); return; }
     logFunctionsFailure('checkout', { name: 'MalformedResponse', message: 'success response carried no url' });
     showToast('Checkout is unavailable right now. Nothing was charged.');
   } catch (e) {
@@ -1897,11 +1915,12 @@ async function startCheckout(tierName) {
 // off). One activation = one portal invocation; a comp-only paid tier has no
 // stripe_customers mapping and gets the truthful no_subscription answer.
 async function manageSubscription() {
+  if (!paymentsInApp()) { showToast(await appPayment('manage', null)); return; }   // native-readiness: no Stripe portal request from the app; the app's adapter (refused until enabled) answers
   if (manageSubscription._busy) return;
   manageSubscription._busy = true;
   try {
     const { data, error } = await supabase.functions.invoke('portal', { body: {} });
-    if (!error && data?.url) { location.href = data.url; return; }
+    if (!error && data?.url) { if (openPaymentPage(data.url)) return; showToast(NATIVE_PAYMENT_MESSAGE); return; }
     let code = null;
     try { code = (await error?.context?.clone()?.json())?.error ?? null; } catch { /* non-JSON or no body */ }
     if (code === 'no_subscription') { showToast('No Stripe subscription is linked to this account.'); return; }
@@ -2652,6 +2671,17 @@ initViewStack({
   isRequired: (id) => { const m = document.getElementById(id); return !!(m && m.dataset && m.dataset.required); },
 });
 initSheetFocus();   // design-system wave (a11y): Tab stays inside the top open sheet
+// Native-readiness wave: inside the Capacitor app only (a no-op on the web) —
+// Android Back steps the view stack above, links open in the in-app browser,
+// deep links map to a bundled page, status bar and keyboard are configured.
+try {
+  initPlatform({
+    canStepBack,
+    requiredSheetOpen: () => { const t = topSheet(); const m = t && document.getElementById(t); return !!(m && m.dataset && m.dataset.required); },
+    authParams: AUTH_LINK_PARAMS,
+  });
+} catch (e) { console.warn(e); }   // never stops the boot below
+try { initA11y(); } catch (e) { console.warn(e); }
 // Design-system wave (review finding 6): ltr.js and brrr.js (protected engine
 // files, unchanged this wave) still write the Title Case 'Monthly Rent' into the
 // rent label on every analysis. Keep the label sentence case without touching

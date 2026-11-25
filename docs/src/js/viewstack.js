@@ -143,6 +143,11 @@ export function recordSheetClose(id) {
   stepBack(steps);
 }
 export function topSheet() { return _open.length ? _open[_open.length - 1] : null; }
+// Native-readiness wave (additive): true when Back has somewhere to go inside
+// this page load (a sheet or a previous tab above the root entry). Android's
+// hardware Back uses it to step back here, and to background the app at the root
+// instead of walking into entries from an earlier page load.
+export function canStepBack() { return !!_hooks && _pos > 0; }
 
 // ── Back / Forward ───────────────────────────────────────────────────────────
 const shown = (s) => !s.dead && !(s.sheet && !_open.includes(s.sheet));

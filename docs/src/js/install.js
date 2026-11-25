@@ -17,7 +17,16 @@ let nativePromptInFlight  = false;
 const openModal  = id => (window.openModal  || (i => document.getElementById(i).classList.add('active')))(id);
 const closeModal = id => (window.closeModal || (i => document.getElementById(i).classList.remove('active')))(id);
 
+// Native-readiness wave: inside the Capacitor app there is nothing to install. The
+// test is platform.js isNative() verbatim, inlined because this module stays
+// import-free (the install suite loads it on its own).
+const isInstalledApp = () => {
+  try { return !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform() === true); }
+  catch { return false; }
+};
+
 const isStandalone = () =>
+  isInstalledApp() ||
   (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
   window.navigator.standalone === true;
 

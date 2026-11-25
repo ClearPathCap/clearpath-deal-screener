@@ -103,6 +103,10 @@ globalThis.openUpgrade = (t) => pipelineOpenUpgrade.push(t);
 const RI = await import(JS + 'resumeIntent.js');
 const storage = await import(JS + 'storage.js');
 const pipeline = await import(JS + 'pipeline.js');
+// Native-readiness integration (product/native-on-c2): startCheckout now begins with the app-only guard and
+// redirects through platform.js. The sandbox gets the REAL web answer of that seam (no Capacitor here, so
+// paymentsInApp() is true); appPayment must never run on the web, so reaching it fails the journey.
+const platform = await import(JS + 'platform.js');
 
 // ═══ §R pure law ═══════════════════════════════════════════════════════════════
 console.log('— §R resumeIntent law —');
@@ -198,6 +202,9 @@ const env = {
   sheetClosed: () => {}, recordSheetClose: () => {},
   supabase: { functions: { invoke: async (name, body) => { checkoutInvokes.push({ name, body }); log.push('checkout:' + body.body.tier); return { data: { url: 'https://checkout.stripe.test/x' }, error: null }; } } },
   logFunctionsFailure: () => {}, location: { href: '' },
+  paymentsInApp: platform.paymentsInApp, NATIVE_PAYMENT_MESSAGE: platform.NATIVE_PAYMENT_MESSAGE,
+  appPayment: async () => { throw new Error('appPayment reached on the web'); },
+  openPaymentPage: (url) => { env.location.href = url; return true; },   // platform.openPaymentPage's web branch, on the sandbox location
 };
 const api = holder.api = new Function(...Object.keys(env), sandboxSrc)(...Object.values(env));
 pipeline.onPipelineReloaded(api.resumeAfterSignIn);   // as main.js does (pinned in §S)

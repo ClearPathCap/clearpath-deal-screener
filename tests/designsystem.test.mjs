@@ -400,7 +400,10 @@ const PROD_BASE = 'dfb7a4d086a16b9b340201ea7c30810c760c9262';
 try { execFileSync('git', ['-C', root, 'cat-file', '-e', PROD_BASE + '^{commit}'], { stdio: 'ignore' }); base = PROD_BASE; } catch {}
 if (base) {
   const changed = execFileSync('git', ['-C', root, 'diff', '--name-only', base, '--', 'docs', 'supabase'], { encoding: 'utf8' }).split('\n').filter(Boolean);
-  const forbidden = changed.filter(f => /\/(finance|flip|ltr|brrr|strFinance|rental|auth|signinCode|supabaseClient|tiers|storage|marketSync|clearpath)\.js$/.test(f) || /^supabase\//.test(f) || /^docs\/vendor\//.test(f) || /(privacy|terms)\.html$/.test(f));
+  // Native-readiness wave (merged onto Commercial C1): supabaseClient.js gains ONLY the secure
+  // session-storage option, empty on the web — that additive-only diff and the identical web
+  // storage are pinned in tests/native.test.mjs (§B, E9), so it is exempt here. Both exemptions apply.
+  const forbidden = changed.filter(f => f !== 'docs/src/js/supabaseClient.js').filter(f => /\/(finance|flip|ltr|brrr|strFinance|rental|auth|signinCode|supabaseClient|tiers|storage|marketSync|clearpath)\.js$/.test(f) || /^supabase\//.test(f) || /^docs\/vendor\//.test(f) || /(privacy|terms)\.html$/.test(f));
   // RE-PINNED in Commercial C1 (same-commit law; review R1-5): clearpath.js may differ from production ONLY by
   // the C1 compliance copy — the business-purpose statement on every funding handoff (button captions and
   // clipboard summaries) and the broker line added to the flip/STR summaries (pinned by tests/commercialc1 F*).

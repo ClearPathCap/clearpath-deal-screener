@@ -54,33 +54,57 @@ const isPlaceholder = (id) => typeof id !== 'string' || !id || id.startsWith('RE
 //   DealFitStoreKit   purchase({productId, appAccountToken}) → {status:'purchased'|'cancelled'|'pending', signedTransaction?}
 //                     currentEntitlements() → {signedTransactions: string[]}
 //                     showManageSubscriptions() → {}
+//                     storefront() → {countryCode}   (StoreKit Storefront; 'USA' for the U.S. storefront)
 //   DealFitPlayBilling purchase({productId, obfuscatedAccountId}) → {status, purchaseToken?}
 //                     queryPurchases() → {purchaseTokens: string[]}
 //   AppLauncher       openUrl({url}) — the SYSTEM browser (a link-out leaves the app).
 export const STORE_PLUGIN = Object.freeze({ apple: 'DealFitStoreKit', google: 'DealFitPlayBilling' });
 export const SYSTEM_BROWSER_PLUGIN = 'AppLauncher';
-// Server functions an enabled adapter would call (NONE exists today):
-//   store-account-token — returns an opaque per-user token the server binds to the
+// Server functions an enabled adapter would call (NONE exists today). The SERVER
+// owns account binding — the client cannot enforce it (NATIVE_READINESS.md §8):
+//   store-account-token — returns an opaque per-user token the server stores for the
 //                         signed-in account (Apple appAccountToken / Play
-//                         obfuscatedAccountId), so store notifications map to the user;
-//   store-verify        — verifies a proof with Apple / Google and writes the grant.
+//                         obfuscatedAccountId);
+//   store-verify        — verifies a proof with Apple / Google, REQUIRES the proof's
+//                         account token to equal the caller's stored token, binds the
+//                         original transaction / purchase token to ONE user (unique) and
+//                         refuses any other user, then writes the grant.
 export const SERVER_FN = Object.freeze({ accountToken: 'store-account-token', verify: 'store-verify' });
-// Where a link-out goes: the public web app, where the user signs in and uses the
-// existing Stripe checkout. Opened in the system browser, never the in-app one.
+// Where a link-out goes: the public web app (its plans sheet), where the user signs
+// in and uses the existing Stripe checkout. System browser, never the in-app one.
 export const EXTERNAL_PLANS_URL = 'https://dealfit.clearpathcapfunding.com/';
 const PLAY_SUBSCRIPTIONS_URL = 'https://play.google.com/store/account/subscriptions';
+// Link-out readiness per store. Google's U.S. external-content-links program needs
+// Play Billing Library 8.2.1+, a fresh external-link token and Google's information
+// screen before EVERY link-out, per-app enrollment and transaction reporting — none
+// of which exists in this shell contract. So the Android link-out is refused even
+// when chosen, until that contract is built and this flag is re-pinned (payments P2).
+// Apple's U.S. link-out needs no entitlement, but only on the U.S. storefront: the
+// adapter checks StoreKit's storefront before opening anything.
+export const LINK_PROGRAM_READY = Object.freeze({ apple: true, google: false });
 
 export const PAYMENT_MESSAGES = Object.freeze({
   refused: NATIVE_PAYMENT_MESSAGE,
+  signedOut: 'Sign in first — your plan attaches to your account.',
+  busy: 'One moment — that’s already open.',
   opened: 'Opening DealFit on the web…',
   submitted: 'Checking your plan…',
   cancelled: 'Purchase canceled — your plan hasn’t changed.',
   pending: 'Purchase pending approval — your plan will update once it’s approved.',
   error: 'The purchase didn’t finish. Your plan hasn’t changed.',
+  manageError: 'Subscription management isn’t available right now.',
+  restoreError: 'Purchases couldn’t be restored. Your plan hasn’t changed.',
 });
 // Every adapter answer has exactly this shape — and never a tier.
-const result = (ok, status, reason) => Object.freeze({ ok, status, reason, message: PAYMENT_MESSAGES[status] || PAYMENT_MESSAGES.error });
-const REFUSED = (reason) => result(false, 'refused', reason);
+const messageFor = (status, reason, op) => {
+  if (status === 'refused') return reason === 'signed-out' ? PAYMENT_MESSAGES.signedOut : reason === 'busy' ? PAYMENT_MESSAGES.busy : PAYMENT_MESSAGES.refused;
+  if (status === 'error') return op === 'manage' ? PAYMENT_MESSAGES.manageError : op === 'restore' ? PAYMENT_MESSAGES.restoreError : PAYMENT_MESSAGES.error;
+  return PAYMENT_MESSAGES[status] || PAYMENT_MESSAGES.error;
+};
+const result = (ok, status, reason, op) => Object.freeze({ ok, status, reason, message: messageFor(status, reason, op) });
+const REFUSED = (reason, op) => result(false, 'refused', reason, op);
+// Fail closed: a missing isSignedIn dependency counts as signed out.
+const signedIn = (deps) => { try { return !!(deps && typeof deps.isSignedIn === 'function' && deps.isSignedIn()); } catch { return false; } };
 
 // Server verification, then the server-truth re-read. The response body is never
 // read for a tier or any other entitlement field: only "did the call fail".
@@ -98,57 +122,74 @@ function storeAdapter(id, store, enabled, products) {
   return Object.freeze({
     id, kind: 'store', store, enabled,
     async purchase(tier, deps) {
-      if (!enabled) return REFUSED('not-enabled');
-      if (!PAID_TIERS.includes(tier)) return REFUSED('unknown-tier');
+      if (!enabled) return REFUSED('not-enabled', 'purchase');
+      if (!PAID_TIERS.includes(tier)) return REFUSED('unknown-tier', 'purchase');
       const productId = products && products[tier] ? products[tier][store] : null;
-      if (isPlaceholder(productId)) return REFUSED('no-product');
-      if (!ready()) return REFUSED('no-plugin');
+      if (isPlaceholder(productId)) return REFUSED('no-product', 'purchase');
+      if (!signedIn(deps)) return REFUSED('signed-out', 'purchase');
+      if (!ready()) return REFUSED('no-plugin', 'purchase');
       const tok = await deps.invoke(SERVER_FN.accountToken, { platform: store });
       const token = tok && !tok.error && tok.data && typeof tok.data.token === 'string' ? tok.data.token : null;
-      if (!token) return result(false, 'error', 'no-account-token');
+      if (!token) return result(false, 'error', 'no-account-token', 'purchase');
       const opts = store === 'apple' ? { productId, appAccountToken: token } : { productId, obfuscatedAccountId: token };
       const out = await call(P(), 'purchase', opts);
-      if (!out || out.status === 'cancelled') return result(false, 'cancelled', 'user-cancelled');
-      if (out.status === 'pending') return result(false, 'pending', 'store-pending');
+      if (!out || out.status === 'cancelled') return result(false, 'cancelled', 'user-cancelled', 'purchase');
+      if (out.status === 'pending') return result(false, 'pending', 'store-pending', 'purchase');
       const proof = out[proofKey];
-      if (out.status !== 'purchased' || typeof proof !== 'string' || !proof) return result(false, 'error', 'no-proof');
+      if (out.status !== 'purchased' || typeof proof !== 'string' || !proof) return result(false, 'error', 'no-proof', 'purchase');
       const verified = await verifyWithServer(deps, store, { [proofKey]: proof });
       await settle(deps);
-      return verified ? result(true, 'submitted', 'server-verifying') : result(false, 'error', 'verify-failed');
+      return verified ? result(true, 'submitted', 'server-verifying', 'purchase') : result(false, 'error', 'verify-failed', 'purchase');
     },
+    // Restore sends the store's proofs for the SIGNED-IN account; store-verify grants
+    // only a proof whose account token is this caller's (a shared Apple ID / Google
+    // account cannot carry a plan into a second DealFit account).
     async restore(deps) {
-      if (!enabled) return REFUSED('not-enabled');
-      if (!ready()) return REFUSED('no-plugin');
+      if (!enabled) return REFUSED('not-enabled', 'restore');
+      if (!signedIn(deps)) return REFUSED('signed-out', 'restore');
+      if (!ready()) return REFUSED('no-plugin', 'restore');
       const out = await call(P(), store === 'apple' ? 'currentEntitlements' : 'queryPurchases', {});
       const list = out && Array.isArray(out[proofKey + 's']) ? out[proofKey + 's'].filter(s => typeof s === 'string' && s) : [];
       let anyFailed = false;
       for (const p of list) { if (!(await verifyWithServer(deps, store, { [proofKey]: p }))) anyFailed = true; }
       await settle(deps);
-      return anyFailed ? result(false, 'error', 'verify-failed') : result(true, 'submitted', list.length ? 'server-verifying' : 'nothing-to-restore');
+      return anyFailed ? result(false, 'error', 'verify-failed', 'restore') : result(true, 'submitted', list.length ? 'server-verifying' : 'nothing-to-restore', 'restore');
     },
     async manage() {
-      if (!enabled) return REFUSED('not-enabled');
+      if (!enabled) return REFUSED('not-enabled', 'manage');
       if (store === 'apple') {
-        if (!ready()) return REFUSED('no-plugin');
+        if (!ready()) return REFUSED('no-plugin', 'manage');
         await call(P(), 'showManageSubscriptions', {});
-        return result(true, 'opened', 'store-manage');
+        return result(true, 'opened', 'store-manage', 'manage');
       }
-      return openSystem(PLAY_SUBSCRIPTIONS_URL);
+      return openSystem(PLAY_SUBSCRIPTIONS_URL, 'manage');
     },
   });
 }
 
-async function openSystem(url) {
+async function openSystem(url, op) {
   const L = plugin(SYSTEM_BROWSER_PLUGIN);
-  if (!L) return REFUSED('no-plugin');
+  if (!L) return REFUSED('no-plugin', op);
   await call(L, 'openUrl', { url });
-  return result(true, 'opened', 'system-browser');
+  return result(true, 'opened', 'system-browser', op);
 }
-function linkAdapter(id, enabled) {
-  const go = async () => (enabled ? openSystem(EXTERNAL_PLANS_URL) : REFUSED('not-enabled'));
+function linkAdapter(id, store, enabled) {
+  const go = (op) => async () => {
+    if (!enabled) return REFUSED('not-enabled', op);
+    if (!LINK_PROGRAM_READY[store]) return REFUSED('program-not-integrated', op);
+    if (store === 'apple') {
+      const S = plugin(STORE_PLUGIN.apple);
+      const sf = S ? await call(S, 'storefront', {}) : null;
+      if (!sf || sf.countryCode !== 'USA') return REFUSED('not-us-storefront', op);
+    }
+    return openSystem(EXTERNAL_PLANS_URL, op);
+  };
   // A link-out buys on the web; the app learns the result from the server on its
   // next entitlement read (resume / sign-in), never from the link.
-  return Object.freeze({ id, kind: 'external-link', enabled, purchase: go, manage: go, restore: async () => (enabled ? result(true, 'submitted', 'server-read') : REFUSED('not-enabled')) });
+  return Object.freeze({
+    id, kind: 'external-link', store, enabled, purchase: go('purchase'), manage: go('manage'),
+    restore: async () => (!enabled ? REFUSED('not-enabled', 'restore') : !LINK_PROGRAM_READY[store] ? REFUSED('program-not-integrated', 'restore') : result(true, 'submitted', 'server-read', 'restore')),
+  });
 }
 
 // The web descriptor: main.js keeps the Stripe path; nothing routes the web here.
@@ -162,8 +203,8 @@ export function buildAdapter(id, enabled, products = STORE_PRODUCTS) {
   switch (id) {
     case ADAPTER.IOS_STOREKIT: return storeAdapter(id, 'apple', !!enabled, products);
     case ADAPTER.ANDROID_PLAY_BILLING: return storeAdapter(id, 'google', !!enabled, products);
-    case ADAPTER.IOS_EXTERNAL_LINK:
-    case ADAPTER.ANDROID_EXTERNAL_LINK: return linkAdapter(id, !!enabled);
+    case ADAPTER.IOS_EXTERNAL_LINK: return linkAdapter(id, 'apple', !!enabled);
+    case ADAPTER.ANDROID_EXTERNAL_LINK: return linkAdapter(id, 'google', !!enabled);
     default: return null;
   }
 }
@@ -183,18 +224,24 @@ export function paymentAdapter(choice = NATIVE_PAYMENT_CHOICE, products = STORE_
 }
 
 // main.js's one entry from the app (startCheckout / manageSubscription refuse the
-// web Stripe path in the app and come here instead). Never throws.
-// deps: { invoke(fnName, body) → {data, error}, sync() → Promise } — supplied by main.js.
+// web Stripe path in the app and come here instead). Never throws. One operation at
+// a time: a second tap while one runs is refused (no second token call or store sheet).
+// deps: { invoke(fnName, body) → {data, error}, sync() → Promise, isSignedIn() → boolean } — from main.js.
+let _busy = false;
 export async function nativePayment(op, tier, deps, choice = NATIVE_PAYMENT_CHOICE, products = STORE_PRODUCTS) {
+  if (!isNative()) return REFUSED('not-native', op);
+  const a = paymentAdapter(choice, products);
+  if (!a || !a.enabled) return REFUSED('not-enabled', op);
+  if (_busy) return REFUSED('busy', op);
+  _busy = true;
   try {
-    if (!isNative()) return REFUSED('not-native');
-    const a = paymentAdapter(choice, products);
-    if (!a || !a.enabled) return REFUSED('not-enabled');
     if (op === 'purchase') return await a.purchase(tier, deps);
     if (op === 'manage') return await a.manage(deps);
     if (op === 'restore') return await a.restore(deps);
-    return REFUSED('unknown-op');
+    return REFUSED('unknown-op', op);
   } catch {
-    return result(false, 'error', 'exception');
+    return result(false, 'error', 'exception', op);
+  } finally {
+    _busy = false;
   }
 }

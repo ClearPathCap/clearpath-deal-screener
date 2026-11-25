@@ -260,10 +260,11 @@ product ids are `REPLACE_…` placeholders.
 
 | Adapter | Platform | When enabled it… | Today |
 |---|---|---|---|
-| `web-stripe` | web | is a descriptor only: the web path stays `main.js` `startCheckout` → `checkout` Edge Function → Stripe page, `manageSubscription` → `portal`, `handleCheckoutReturn` → `reconcile` → server tier. Byte-identical to `b24b95d` (P1) | live path, unchanged |
+| `web-stripe` | web | is a descriptor only: the web path stays `main.js` `startCheckout` → `checkout` Edge Function → Stripe page, `manageSubscription` → `portal`, `handleCheckoutReturn` → `reconcile` → server tier. Unchanged from `b24b95d` outside the two app-only guard lines (pinned by text and by a content hash, P1) | live path, unchanged |
 | `ios-storekit` | iOS | gets a server-issued account token (`store-account-token`), buys the tier's StoreKit product with it as `appAccountToken`, sends the **signed transaction** to `store-verify`, then re-reads the tier; restore re-verifies `currentEntitlements`; manage opens the system subscription sheet | **refused** |
 | `android-play-billing` | Android | the same with Play Billing (`obfuscatedAccountId`, **purchase token**, `queryPurchases`); manage opens Play's subscriptions page in the system browser | **refused** |
-| `ios-external-link` / `android-external-link` | both (U.S.) | open the public web app in the **system** browser (never the in-app browser); the purchase happens on the web; the app learns the tier from the server on its next read | **refused** |
+| `ios-external-link` | iOS (U.S. storefront) | checks StoreKit's storefront is `USA`, then opens the public web app in the **system** browser (never the in-app browser); the purchase happens on the web; the app learns the tier from the server on its next read | **refused** |
+| `android-external-link` | Android (U.S.) | **refused even when chosen** (`LINK_PROGRAM_READY.google = false`): Google's program needs Play Billing Library 8.2.1+, a fresh external-link token and Google's information screen before every link-out, enrollment and transaction reporting, none of which this shell contract has | **refused** |
 
 **Entitlement law (pinned):**
 - The tier is whatever the server reports: `auth.js` `syncEntitlement` → `current_tier` RPC; `tiers.js` `setCachedTier`
@@ -275,23 +276,39 @@ product ids are `REPLACE_…` placeholders.
 - Refusals happen **before** any plugin call, server call, storage write or request (P2), with the message the app
   showed before this module (`Plans can’t be changed in the app yet.`). Both gates hold independently: `nativePayment`
   refuses a disabled adapter, and each adapter refuses itself.
-- `main.js` reaches `nativePayment` only inside its two `if (!paymentsInApp())` guards, which never run on the web.
+- `main.js` loads `payments.js` only through `appPayment` (a dynamic import), called only from its two `if (!paymentsInApp())` guards, which never run on the web. The web never requests the module. Each guard is pinned as the whole line, so nothing else can run on it.
+- In the app: a store purchase or restore refuses a signed-out user before any call ("Sign in first"); one operation runs at a time; each operation has its own failure copy.
 
 **What enabling a store adapter needs (none exists; each is a provider change under its own authorization):**
 1. store products (App Store Connect subscription group; Play subscription + base plan) and their ids in `STORE_PRODUCTS`;
 2. the shell plugin (`DealFitStoreKit` / `DealFitPlayBilling` contracts in `payments.js`, or a vetted third-party
    plugin mapped to the same contract), plus `AppLauncher` for system-browser links;
 3. Edge Functions `store-account-token` (a per-user UUID stored server-side) and `store-verify`:
+   - **account binding (required; the client cannot enforce it):** the proof's `appAccountToken` /
+     `obfuscatedExternalAccountId` must equal the **caller's** stored token. Store the `originalTransactionId` /
+     `purchaseToken` with a unique constraint bound to one user, and refuse it for any other user. Otherwise two DealFit
+     accounts sharing one Apple ID or Google account, or a shared token, would both be granted the plan (restore sends
+     every proof the store holds);
    - Apple: verify the JWS with the App Store Server API / Apple root certificates, check bundle id, product and
      `appAccountToken`;
-   - Google: Play Developer API `purchases.subscriptionsv2.get`, then **acknowledge within 3 days** or Google refunds it;
+   - Google: Play Developer API `purchases.subscriptionsv2.get` (check `obfuscatedExternalAccountId`), then
+     **acknowledge within 3 days** or Google refunds it;
 4. server-to-server renewals and cancellations: App Store Server Notifications V2 and Play Real-time Developer
    Notifications (Pub/Sub) into the same grant table, idempotent like `stripe_events`;
 5. a `source` on each grant (`stripe` / `apple` / `google` / `comp`), so one person cannot be double-billed. A user who
    already has a Stripe plan sees "managed on the web", and the server refuses a store purchase for an entitled user,
    like `checkout`'s `already_entitled`;
 6. a Restore Purchases control in the plans sheet (Apple requires one with IAP);
-7. flipping `NATIVE_PAYMENT_CHOICE` and re-pinning P1 in the same commit.
+7. flipping `NATIVE_PAYMENT_CHOICE` and re-pinning P1 in the same commit. Offering IAP **and** a link-out together on
+   iOS needs a small extension first: today the choice holds one adapter per platform.
+
+**What enabling a link-out needs:**
+- **iOS (U.S.):** a `storefront()` method in the StoreKit plugin (already in the contract; the adapter refuses without
+  it), U.S.-only distribution, and a neutral button label. Re-check Apple's live 3.1.1(a) text first.
+- **Android (U.S.):** enrollment and the declaration form; Play Billing Library 8.2.1+ in the shell; a plugin step that
+  gets a fresh external-link token and shows Google's information screen before **every** link-out; server reporting of
+  every transaction (including $0 trials and renewals) through the external transactions API; then
+  `LINK_PROGRAM_READY.google = true` with P2 re-pinned.
 
 ## 9. Account lifecycle (plan and draft copy; nothing live)
 
@@ -324,11 +341,11 @@ rather than leave CPC holding the email.
 |---|---|
 | the account (`auth.users`) and, by cascade: `entitlements`, `entitlement_grants`, `redemptions`, `redemptions_v2`, `user_markets`, `user_pipeline`, `stripe_customers`, `checkout_attempts`, `deal_share_links` (open share links stop working); `comp_redeem_failures` explicitly; the CRM `account_verified` row (by 0017) | **Stripe's** customer, invoices and payment records: tax/accounting obligations; Stripe holds them under its own policy, no longer linked to a DealFit account |
 | this device's session and DealFit's local data | `stripe_events` ids (no user id; idempotency) |
-| | the CRM `account_deleted` row (user id only, no email) until delivered; CPC's tombstone redacts the email to a non-identifying hash |
+| | the CRM `account_deleted` row (user id only, no email) until delivered; CPC's tombstone replaces the email with a hash (contract §4.5). A hash of an email can still be matched to the address, so privacy text must not call it anonymous |
 | | any funding request the user already sent Clear Path Capital: a CPC business record under CPC's privacy policy, deletable on request there |
 | | provider operational logs (Supabase auth/function logs) for the provider's retention period; **verify the exact retention** before writing the privacy text |
 
-No backups exist to purge (Supabase has no PITR on this project). `privacy.html` needs a deletion section saying all of
+No backups exist to purge: this Supabase project has no provider backup and no point-in-time recovery. `privacy.html` needs a deletion section saying all of
 this, and its Effective Date changes at publication.
 
 **Draft copy** (plain, no legal conclusions; counsel to review before publication):
@@ -399,7 +416,8 @@ Sources and dates are in the owner's feasibility record.
 ## 11. Proven here vs device-only
 
 - **Proven (Node, this branch):** web identity of every seam and of session storage (real client and SDK); the payment
-  adapters (inert on the web, refused in the app, server-only tier when enabled — `payments.test.mjs`); the
+  adapters (inert on the web, refused in the app; with injected mocks, the enabled adapters hand proofs to the server and
+  never set a tier — `store-verify` does not exist, so the server side is unproven — `payments.test.mjs`); the
   native-side logic on a scripted bridge (plugin proxies, share, browser, payment refusal, install hidden, Back into the
   view stack, deep-link mapping and loop guard, status bar and keyboard calls); the secure adapter including the real
   SDK's sign-out and account switch; the `.nojekyll` served-set delta; the accessibility markup; the cold-start asset.

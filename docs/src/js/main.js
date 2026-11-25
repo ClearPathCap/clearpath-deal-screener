@@ -55,7 +55,6 @@ import { initA11y } from './a11y.js';   // native-readiness: keyboard activation
 import { initPlatform, openPaymentPage, paymentsInApp, NATIVE_PAYMENT_MESSAGE } from './platform.js';   // native-readiness: web unchanged; the app's shell seam
 import { canStepBack, topSheet } from './viewstack.js';   // native-readiness: Android Back reads the view stack's model (kept below the engine imports)
 import { AUTH_LINK_PARAMS } from './signinCode.js';   // native-readiness: an app deep link carries the same sign-in link parameters a browser visit would
-import { nativePayment } from './payments.js';   // release prep (native): the app's payment adapters — every one refused until the owner enables it; never reached on the web
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline } from './storage.js';
 
@@ -1774,14 +1773,21 @@ function logFunctionsFailure(op, error) {
   catch { /* diagnostics must never break the flow */ }
 }
 
-// App-only payment dependencies (payments.js). The server is the only source of a tier: an adapter
-// may hand a store proof to a server function and then re-read the tier — it never sets one.
+// App-only payments (release prep, native). payments.js is loaded ONLY here, inside the two
+// if (!paymentsInApp()) guards, so the web never requests it. Every adapter is refused until the
+// owner enables one. The server is the only source of a tier: an adapter may hand a store proof to
+// a server function and then re-read the tier — it never sets one.
 const PAYMENT_DEPS = {
   invoke: (name, body) => supabase.functions.invoke(name, { body }),
   sync: () => syncEntitlement().then(() => refreshTierUI()),
+  isSignedIn: () => isSignedIn(),
 };
+async function appPayment(op, tier) {
+  try { const m = await import('./payments.js'); return (await m.nativePayment(op, tier, PAYMENT_DEPS)).message; }
+  catch { return NATIVE_PAYMENT_MESSAGE; }
+}
 async function startCheckout(tierName) {
-  if (!paymentsInApp()) { showToast((await nativePayment('purchase', tierName, PAYMENT_DEPS)).message); return; }   // native-readiness: no Stripe checkout request from the app; the app's adapter (refused until enabled) answers
+  if (!paymentsInApp()) { showToast(await appPayment('purchase', tierName)); return; }   // native-readiness: no Stripe checkout request from the app; the app's adapter (refused until enabled) answers
   if (!isSignedIn()) { openUpgrade('general'); showToast('Sign in first — your plan attaches to your account.'); return; }
   showToast('Opening secure checkout…');
   try {
@@ -1815,7 +1821,7 @@ async function startCheckout(tierName) {
 // off). One activation = one portal invocation; a comp-only paid tier has no
 // stripe_customers mapping and gets the truthful no_subscription answer.
 async function manageSubscription() {
-  if (!paymentsInApp()) { showToast((await nativePayment('manage', null, PAYMENT_DEPS)).message); return; }   // native-readiness: no Stripe portal request from the app; the app's adapter (refused until enabled) answers
+  if (!paymentsInApp()) { showToast(await appPayment('manage', null)); return; }   // native-readiness: no Stripe portal request from the app; the app's adapter (refused until enabled) answers
   if (manageSubscription._busy) return;
   manageSubscription._busy = true;
   try {

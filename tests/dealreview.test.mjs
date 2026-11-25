@@ -854,11 +854,14 @@ console.log('— §PB analyzer data from a saved deal follows the account —');
     const hmB = mainSrc.match(/function hideForeignAccountData\(\) \{([\s\S]*?)\r?\n\}/);
     const initM = mainSrc.match(/let formAccount = (\(\(\) => \{[\s\S]*?\}\)\(\));/);
     const initOf = (store) => new Function('formAccountStore', 'FORM_ACCOUNT_KEY', 'return ' + initM[1])(store, 'df_form_account');
+    // RE-PINNED in Commercial C2 (review R1-F3, same-commit law): hideForeignAccountData now also ends a pending
+    // C2 save / remembered plan when the forms leave an account (cancelResumeAndPlan) — provided here, and counted.
+    let resumeCancels = 0;
     const run = (persisted, signedIn, uid) => { const cleared = []; let next = null;
       new Function('purgeForeignMarketSlots', 'renderAllSlots', 'renderGuideMarketIntel', 'getReviewingDealId', 'getDeals', 'dropForeignPipeline',
         'cancelDealReview', 'renderPipeline', 'updateAccountUI', 'document', 'analyzerOwner', 'isSignedIn', 'getUserId', 'clearForeignAnalyzer',
-        'formAccount', 'setFormAccount', hmB[1])(() => 0, () => {}, () => {}, () => null, () => [], () => false, () => {}, () => {}, () => {},
-        { getElementById: () => null }, { flip: '', rental: '', ltr: '', brrr: '' }, () => signedIn, () => uid, (t) => cleared.push(t), persisted, (u) => { next = u; });
+        'formAccount', 'setFormAccount', 'cancelResumeAndPlan', hmB[1])(() => 0, () => {}, () => {}, () => null, () => [], () => false, () => {}, () => {}, () => {},
+        { getElementById: () => null }, { flip: '', rental: '', ltr: '', brrr: '' }, () => signedIn, () => uid, (t) => cleared.push(t), persisted, (u) => { next = u; }, () => { resumeCancels++; });
       return cleared.join() + '|' + next; };
     const ALL = 'flip,rental,ltr,brrr';
     ok(!!hmB && !!initM && initOf({ getItem: (k) => (k === 'df_form_account' ? 'u-a' : null) }) === 'u-a' && initOf(null) === '' && initOf({ getItem: () => { throw new Error('blocked'); } }) === '',
@@ -866,6 +869,8 @@ console.log('— §PB analyzer data from a saved deal follows the account —');
     ok(run('u-a', true, 'u-a') === '|u-a', 'PB14b same-account reload: a restored draft is kept');
     ok(run('u-a', true, 'u-b') === ALL + '|u-b' && run('u-a', false, '') === ALL + '|', 'PB14c a reload that finds another account, or none, clears every analyzer');
     ok(run('', true, 'u-a') === '|u-a' && run('', false, '') === '|', 'PB14d a signed-out tab keeps its anonymous draft when an account signs in');
+    { resumeCancels = 0; run('u-a', true, 'u-a'); run('', true, 'u-a'); const kept = resumeCancels; run('u-a', true, 'u-b'); run('u-a', false, '');
+      ok(kept === 0 && resumeCancels === 2, 'PB14f (C2) leaving an account ends a pending save / remembered plan; same account or a first sign-in keeps it'); }
     ok(/formAccountStore\.setItem\(FORM_ACCOUNT_KEY, formAccount\)/.test(mainSrc) && /formAccountStore\.removeItem\(FORM_ACCOUNT_KEY\)/.test(mainSrc)
        && hmB[1].indexOf('setFormAccount(uidNow)') > hmB[1].indexOf('clearForeignAnalyzer(t)') && hmB[1].indexOf('setFormAccount(uidNow)') < hmB[1].indexOf('dropForeignPipeline()'),
        'PB14e source: the account is remembered (removed when signed out) after the clear and before the pipeline drop');

@@ -165,11 +165,14 @@ const fnBody = (name) => {
 const stateBlock = (mj.match(/\nconst planIntent = createPlanIntent[^\n]*\nconst PLAN_NAME[^\n]*\nlet _resumeArmed[^\n]*\n/) || [''])[0];
 ok(!!stateBlock, 'J0 main.js declares the C2 state (plan memory, plan names, resume flags) in one block');
 const PAID_LEAD = (mj.match(/const PAID_PLANS_LEAD\s*=\s*\n?\s*('[^']*');/) || [])[1] || "''";
-const NAMES = ['closeModal', 'armResumeAfterSignIn', 'resumeAfterSignIn', 'continuePlanCheckout', 'renderPlanContinue',
-               'upgradeModalLayout', 'configureUpgradeModal', 'startCheckout'];
+// Review R1-F4: the REAL Save-button wrapper (stale-result law, button state) is in the sandbox too, so a
+// resume and the person's own tap run exactly the production path.
+const NAMES = ['closeModal', 'cancelResume', 'cancelResumeAndPlan', 'armResumeAfterSignIn', 'resumeAfterSignIn', 'continuePlanCheckout',
+               'renderPlanContinue', 'refreshSheetAfterSignIn', 'upgradeModalLayout', 'configureUpgradeModal', 'startCheckout',
+               'saveButtonUI', 'saveDeal'];
 const sandboxSrc = 'let _lastUpgradeTrigger = "general"; let _openModalCount = 1; let _scrollLockY = 0; const PAID_PLANS_LEAD = ' + PAID_LEAD + ';\n'
   + stateBlock + NAMES.map(fnBody).join('\n')
-  + '\nreturn { closeModal, armResumeAfterSignIn, resumeAfterSignIn, continuePlanCheckout, configureUpgradeModal, startCheckout, planIntent,'
+  + '\nreturn { closeModal, armResumeAfterSignIn, resumeAfterSignIn, continuePlanCheckout, configureUpgradeModal, startCheckout, planIntent, saveDeal,'
   + ' armed: () => _resumeArmed };';
 
 const sess = {}; const sessionStore = { getItem: (k) => (k in sess ? sess[k] : null), setItem: (k, v) => { sess[k] = String(v); }, removeItem: (k) => { delete sess[k]; } };
@@ -186,7 +189,9 @@ const env = {
   RESUME_DROP_MSG: RI.RESUME_DROP_MSG, RESUME_WAIT_MSG: RI.RESUME_WAIT_MSG,
   pipelineLoadState: storage.pipelineLoadState, getDeals: storage.getDeals, PIPELINE_ALLOWANCE: storage.PIPELINE_ALLOWANCE,
   currentResultFor: pipeline.currentResultFor, getReviewingDealId: pipeline.getReviewingDealId, analyzerOwner,
-  saveDeal: async (t, o) => { const r = await pipeline.saveDeal(t, o); log.push('save:' + r.status); return r; },
+  _saveDeal: async (t, o) => { const r = await pipeline.saveDeal(t, o); log.push('save:' + r.status); return r; },
+  isStale: () => false, exitReviewUI: () => {}, releaseReviewProtection: () => {}, reviewPendingFor: () => false,
+  getUserId: () => globalThis.__uid, entitlementStatus: () => (globalThis.__entitlementStatus || 'verified'),
   showToast: (m) => toasts.push(m),
   openUpgrade: (t) => { log.push('offer:' + t); holder.api.configureUpgradeModal(t); el('modal-upgrade').classList.add('active'); },
   resetStaleCodeStep: () => {}, applyAccountPriority: () => {},
@@ -195,6 +200,7 @@ const env = {
   logFunctionsFailure: () => {}, location: { href: '' },
 };
 const api = holder.api = new Function(...Object.keys(env), sandboxSrc)(...Object.values(env));
+pipeline.onPipelineReloaded(api.resumeAfterSignIn);   // as main.js does (pinned in §S)
 
 const name = el('ltr-deal-name'), notes = el('ltr-notes');
 const reset = () => { toasts = []; log.length = 0; rpcLog = []; rpcFail = null; checkoutInvokes = []; pipelineOpenUpgrade = []; };
@@ -221,7 +227,7 @@ api.armResumeAfterSignIn();
 await tick();
 ok(!sheetOpen() && api.armed() && RI.pendingSave.peek()?.result === R1 && !rpcLog.some((x) => x.name === 'save_pipeline'),
    'J2 sign-in closes the sheet back to the analysis; nothing is saved before the account\'s own pipeline loads');
-ok(!log.some((e) => e.startsWith('offer')) && el('upgrade-continue').style.display !== '', 'J3 no plan pitch appears at sign-in');
+ok(!log.some((e) => e.startsWith('offer')), 'J3 no plan pitch appears at sign-in');
 await storage.hydratePipeline(); await api.resumeAfterSignIn(); await tick();
 const a = server['u-a'];
 ok(a.length === 3 && a[0].data === R1 && a[0].name === 'Elm St duplex' && a[0].notes === 'typed signed out'
@@ -308,7 +314,7 @@ console.log('— §J plan memory —');
 reset(); signOut(); globalThis.__tier = 'starter';
 await api.startCheckout('investor');
 ok(checkoutInvokes.length === 0 && api.planIntent.peek()?.tier === 'investor', 'J23 Subscribe while signed out remembers the plan and starts no checkout');
-openSheet(); signInAs('u-b'); api.configureUpgradeModal('general');
+openSheet(); signInAs('u-b'); api.armResumeAfterSignIn();
 ok(el('upgrade-continue').style.display === '' && el('upgrade-continue-btn').textContent === 'Continue to Investor checkout'
    && /Continue to Investor checkout/.test(el('upgrade-modal-title').textContent)
    && /Nothing is charged until you confirm/.test(el('upgrade-subhead').textContent) && checkoutInvokes.length === 0,
@@ -319,11 +325,11 @@ ok(checkoutInvokes.length === 1 && checkoutInvokes[0].body.body.tier === 'invest
 reset(); api.continuePlanCheckout(); await tick();
 ok(checkoutInvokes.length === 0, 'J26 a second tap with nothing remembered starts nothing');
 
-reset(); signOut(); await api.startCheckout('pro'); signInAs('u-a'); globalThis.__tier = 'investor'; api.configureUpgradeModal('general');
+reset(); signOut(); await api.startCheckout('pro'); signInAs('u-a'); globalThis.__tier = 'investor'; openSheet(); api.armResumeAfterSignIn();
 ok(api.planIntent.peek() === null && el('upgrade-continue').style.display === 'none' && checkoutInvokes.length === 0,
    'J27 an account that is already paid drops the remembered plan (no second subscription offered)');
 globalThis.__tier = 'starter';
-reset(); signOut(); await api.startCheckout('pro'); signInAs('u-b'); openSheet(); api.configureUpgradeModal('general'); api.closeModal('modal-upgrade');
+reset(); signOut(); await api.startCheckout('pro'); signInAs('u-b'); openSheet(); api.armResumeAfterSignIn(); api.closeModal('modal-upgrade');
 ok(api.planIntent.peek() === null && checkoutInvokes.length === 0, 'J28 closing the signed-in offer declines it (nothing started, nothing remembered)');
 
 // Save + plan: the offer comes only AFTER the save is confirmed
@@ -340,6 +346,58 @@ signInAs('u-full'); await storage.hydratePipeline(); api.armResumeAfterSignIn();
 ok(!log.includes('offer:plan') && api.planIntent.peek()?.tier === 'pro', 'J30 a save that did not happen is never followed by an offer');
 api.planIntent.cancel();
 
+// ── Review round 1 regressions ──
+console.log('— §J review round 1 —');
+// F1: a waiting resume + the person's own Save tap never makes two copies
+reset(); signOut(); server['u-d'] = [];
+const R6 = { verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R6;
+await api.saveDeal('ltr');                                   // the real wrapper, signed out
+openSheet(); signInAs('u-d'); rpcFail = 'get'; api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAfterSignIn();
+ok(api.armed() && toasts.includes(RI.RESUME_WAIT_MSG), 'J31 setup: signed in, pipeline unreachable, the save waits');
+rpcFail = null;
+await api.saveDeal('ltr');                                   // own tap: refused stale, the retry re-load starts
+await tick(); await tick();
+ok(!api.armed() && RI.pendingSave.peek() === null, 'J31 the person\'s own Save tap supersedes the waiting resume');
+await api.saveDeal('ltr');
+await storage.hydratePipeline(); await api.resumeAfterSignIn();   // later auth notifies (visibility, refresh, reconnect)
+ok(server['u-d'].filter((d) => d.data === R6).length === 1, 'J32 the analysis is in the pipeline exactly once (review R1-F1 repro)');
+{ const d = RI.saveResumeDecision({ type: 'ltr', result: R6, dealId: 1 }, { signedIn: true, loadState: 'ok', currentResult: R6, owner: '', reviewing: false, deals: [{ id: 2, data: R6 }], allowance: 25 });
+  ok(d.reason === 'already-saved', 'J33 the same analysis saved under ANY id counts as already saved'); }
+
+// F2: a retry's successful re-load (not an auth event) finishes a waiting save
+reset(); signOut(); server['u-e'] = [];
+const R7 = { verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R7; await api.saveDeal('ltr');
+openSheet(); signInAs('u-e'); rpcFail = 'get'; api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAfterSignIn();
+rpcFail = null;
+{ let fired = 0; pipeline.onPipelineReloaded(() => { fired++; });
+  globalThis.__lastResults.flip = { verdict: 'x', type: 'flip' };
+  el('flip-deal-name').value = 'flip'; el('flip-notes').value = '';
+  await pipeline.saveDeal('flip');                            // a stale pipeline save (not the wrapper) → reloadPipeline()
+  await tick(); await tick(); await tick();
+  ok(fired >= 1, 'J34 a stale-path retry re-load notifies subscribers');
+  ok(server['u-e'].filter((d) => d.data === R7).length === 1 && !api.armed(), 'J35 …and the waiting save finishes on that load, without any auth event (review R1-F2)');
+  globalThis.__lastResults.flip = null; }
+
+// F3: armed for one account, another account appears (other tab / sign-out then in): nothing saved, nothing said
+reset(); signOut(); server['u-f'] = []; server['u-g'] = [];
+const R8 = { verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R8; await api.saveDeal('ltr');
+openSheet(); signInAs('u-f'); rpcFail = 'get'; api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAfterSignIn();
+rpcFail = null; toasts = [];
+signInAs('u-g'); await storage.hydratePipeline(); await api.resumeAfterSignIn();
+ok(server['u-g'].length === 0 && server['u-f'].length === 0 && !api.armed() && RI.pendingSave.peek() === null
+   && !toasts.some((m) => /Signed in/.test(m)), 'J36 a resume armed for one account is dropped silently when another account is signed in (review R1-F3)');
+ok(/if \(leftAccount\) cancelResumeAndPlan\(\);/.test(fnBody('hideForeignAccountData')), 'J37 an account switch also ends both intents at the identity boundary');
+
+// F5: the plan offer needs a sign-in in this tab and a verified plan check
+reset(); signOut(); await api.startCheckout('pro'); signInAs('u-b'); openSheet(); api.configureUpgradeModal('general');
+ok(el('upgrade-continue').style.display === 'none', 'J38 a session not signed in from this tab (restored, other tab) is not offered the remembered plan');
+globalThis.__entitlementStatus = 'unverified'; api.armResumeAfterSignIn(); api.configureUpgradeModal('general');
+ok(el('upgrade-continue').style.display === 'none' && checkoutInvokes.length === 0, 'J39 an unverified plan check (could be a paid account) is never offered a purchase');
+globalThis.__entitlementStatus = 'verified'; api.configureUpgradeModal('general');
+ok(el('upgrade-continue').style.display === '', 'J40 …and is offered once the plan check verifies Starter');
+api.closeModal('modal-upgrade');
+ok(RI.RESUME_DROP_MSG.review === 'Signed in. Finish or cancel the review, then tap Save.', 'J41 the review message never points at overwriting the reviewed deal (review R1-F9)');
+
 // ═══ §S source pins ════════════════════════════════════════════════════════════
 console.log('— §S source pins —');
 {
@@ -350,8 +408,10 @@ console.log('— §S source pins —');
   ok((mj.match(/armResumeAfterSignIn\(\);/g) || []).length === 2 && (mj.match(/armResumeAfterSignIn/g) || []).length === 3, 'S3 nothing else arms a resume (restored sessions, other tabs and refreshes never do)');
   ok(/resumeAfterSignIn\(\);\s*\/\/ Commercial C2/.test(fnBody('syncPipelineOnAuth')) && fnBody('syncPipelineOnAuth').indexOf('await hydratePipeline()') < fnBody('syncPipelineOnAuth').indexOf('resumeAfterSignIn()'),
      'S4 a pending save is re-checked only after the account\'s own pipeline load');
-  ok(/pendingSave\.cancel\(\); planIntent\.cancel\(\);/.test(fnBody('doSignOut')), 'S5 sign-out cancels both intents');
-  ok(/async function saveDeal\(type, opts\)/.test(mj) && /await _saveDeal\(type, opts\)/.test(mj), 'S6 the Save button wrapper (stale-result law first) forwards the resume to pipeline.saveDeal');
+  ok(/cancelResumeAndPlan\(\);/.test(fnBody('doSignOut')), 'S5 sign-out cancels both intents');
+  ok(/\nonPipelineReloaded\(resumeAfterSignIn\);/.test(mj) && (rd('docs/src/js/pipeline.js').match(/reloadPipeline\(\);/g) || []).length === 3,
+     'S12 every retry re-load (save, delete, edit) goes through reloadPipeline, which main.js subscribes to');
+  ok(/async function saveDeal\(type, opts\) \{[\s\S]{0,260}if \(!\(opts && opts\.resume\)\) cancelResume\(\);/.test(mj) && /await _saveDeal\(type, opts\)/.test(mj), 'S6 the Save button wrapper (stale-result law first) forwards the resume to pipeline.saveDeal');
   const auto = ['armResumeAfterSignIn', 'resumeAfterSignIn', 'configureUpgradeModal', 'renderPlanContinue', 'closeModal'].map(fnBody).join('\n');
   ok(!/startCheckout\(|functions\.invoke/.test(auto), 'S7 no automatic path calls checkout — only continuePlanCheckout (a tap) and the Subscribe buttons');
   ok(/onclick="continuePlanCheckout\(\)"/.test(rd('docs/index.html')) && /id="upgrade-continue" style="display:none/.test(rd('docs/index.html')),

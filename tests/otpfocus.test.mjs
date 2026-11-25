@@ -129,7 +129,7 @@ console.log('— §B behaviour: the real sign-in functions from main.js against 
       // Commercial C2: verifySignInCode now calls the resume hook after a successful sign-in (it finishes a
       // pending save; behaviour pinned in tests/commercialc2). Counted here so the sign-in suite still runs
       // the real verifySignInCode unchanged otherwise.
-      armResumeAfterSignIn: () => { st.armed = (st.armed || 0) + 1; },
+      armResumeAfterSignIn: () => { st.armed = (st.armed || 0) + 1; },   // asserted in §B (review R1-F8)
       _signinStore: store, setInterval: () => 0, clearInterval: () => {},
       extractOtp: S.extractOtp, normalizeOtp: S.normalizeOtp, looksComplete: S.looksComplete, looksLikeEmail: S.looksLikeEmail,
       codeSentMessage: S.codeSentMessage, readPending: S.readPending, writePending: S.writePending, clearPending: S.clearPending, resendWaitSeconds: S.resendWaitSeconds,
@@ -207,6 +207,7 @@ console.log('— §B behaviour: the real sign-in functions from main.js against 
     h.el('signin-code').value = ''; h.api.applyPastedCode('Your code is 000000'); await h.flush();
     h.el('signin-code').value = ''; h.api.applyPastedCode('000 000'); await h.flush();
     ok(h.st.verifies.length === 2 && h.st.verifies[1] === '000000', 'B10 a code that failed is never re-sent automatically by another paste');
+    ok(h.st.armed === 1, 'B15 the C2 resume hook runs once per successful sign-in and never for a failed code (review R1-F8)');
     h.el('signin-code').value = ''; h.api.applyPastedCode('123456 or 654321'); await h.flush();
     ok(h.st.verifies.length === 2 && h.el('signin-code').value === '123456', 'B11 an ambiguous paste fills the box and waits for Verify');
     h.el('signin-code').value = ''; h.api.applyPastedCode('Thanks for signing up'); await h.flush();

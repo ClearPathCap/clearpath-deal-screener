@@ -65,23 +65,26 @@ export function createPlanIntent(store, now = () => Date.now()) {
 // The one decision: what to do with a pending save right now.
 //   s.loadState: storage.pipelineLoadState() — 'idle' | 'loading' | 'ok' | 'failed'
 //   s.owner:     the account whose saved deal the form holds ('' = unowned)
+//   s.uid / intentUid: the signed-in account now / the account the resume was armed for (review R1-F3)
 export function saveResumeDecision(intent, s) {
   if (!intent) return { action: 'none' };
   if (!s || !s.signedIn) return { action: 'wait' };
+  if (s.armedUid && s.uid !== s.armedUid) return { action: 'drop', reason: 'account', silent: true };
   if (s.loadState === 'failed') return { action: 'wait', reason: 'unreachable' };
   if (s.loadState !== 'ok') return { action: 'wait' };
   if (s.owner) return { action: 'drop', reason: 'owned' };
   if (s.reviewing) return { action: 'drop', reason: 'review' };
   if (s.currentResult !== intent.result) return { action: 'drop', reason: 'changed' };
   const deals = Array.isArray(s.deals) ? s.deals : [];
-  if (deals.some(d => d && d.id === intent.dealId)) return { action: 'drop', reason: 'already-saved' };
+  // Review R1-F1: the same analysis saved by any path (the person's own Save tap included) is a duplicate.
+  if (deals.some(d => d && (d.id === intent.dealId || d.data === intent.result))) return { action: 'drop', reason: 'already-saved' };
   if (deals.length >= s.allowance) return { action: 'drop', reason: 'full' };
   return { action: 'save' };
 }
 
 export const RESUME_DROP_MSG = {
   owned:           'Signed in. Tap Save to save this deal.',
-  review:          'Signed in. Tap Save to save this deal.',
+  review:          'Signed in. Finish or cancel the review, then tap Save.',
   changed:         'Signed in. The analysis changed — tap Save to save the one on screen.',
   'already-saved': 'Signed in — this deal is already in your pipeline.',
   full:            'Signed in. Your pipeline is full — delete a deal you’re done with, then tap Save.',

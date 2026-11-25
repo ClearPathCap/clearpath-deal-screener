@@ -54,7 +54,7 @@ import { supabase } from './supabaseClient.js';
 import { fetchMarketIntel } from './marketIntel.js';
 import { hydratePipeline, clearPipelineCache, getDeals, dropForeignPipeline,
          pipelineLoadState, PIPELINE_ALLOWANCE } from './storage.js';
-import { currentResultFor } from './pipeline.js';
+import { currentResultFor, onPipelineReloaded } from './pipeline.js';
 import { pendingSave, createPlanIntent, saveResumeDecision,
          RESUME_DROP_MSG, RESUME_WAIT_MSG } from './resumeIntent.js';   // Commercial C2: finish the task that needed sign-in
 
@@ -178,6 +178,9 @@ function saveButtonUI(status) {
 }
 
 async function saveDeal(type, opts) {
+  // Review R1-F1 (Commercial C2): the person's own Save tap supersedes a waiting resume — it is never
+  // also finished later. (Signed out, pipeline.js notes this tap as the new pending save.)
+  if (!(opts && opts.resume)) cancelResume();
   // Stale-result law: a result that no longer matches the form is never saved
   // or used to update a snapshot — analyze again first.
   if (isStale(type)) { showToast('Inputs changed — analyze again before saving'); return { status: 'refused-stale' }; }
@@ -1439,7 +1442,7 @@ function openModal(id)  {
 // Commercial C2 state (declared before closeModal, which reads it; law in resumeIntent.js).
 const planIntent = createPlanIntent((() => { try { return window.sessionStorage; } catch { return null; } })());
 const PLAN_NAME = { investor: 'Investor', pro: 'Pro' };
-let _resumeArmed = false, _resumeRunning = false, _resumeWarned = false, _closingForResume = false;
+let _resumeArmed = false, _resumeRunning = false, _resumeWarned = false, _closingForResume = false, _resumeUid = '', _planArmed = false;
 
 function closeModal(id) {
   const el = document.getElementById(id);
@@ -1455,8 +1458,8 @@ function closeModal(id) {
   }
   el.classList.remove('active');
   if (wasOpen && id === 'modal-upgrade' && !_closingForResume) {   // Commercial C2
-    if (!isSignedIn()) pendingSave.cancel();
-    planIntent.cancel();
+    if (!isSignedIn()) cancelResume();
+    planIntent.cancel(); _planArmed = false;
   }
   if (wasOpen) sheetClosed(el, id);             // design-system wave (a11y): focus returns to the opener
   if (wasOpen) recordSheetClose(id);            // design-system wave: consumes this sheet's History entry
@@ -1693,10 +1696,16 @@ let _lastUpgradeTrigger = 'general';
 // (another tab's sign-in, a restored session or a token refresh never does).
 // (state declared above closeModal, which reads it)
 
+function cancelResume() { pendingSave.cancel(); _resumeArmed = false; _resumeUid = ''; }
+function cancelResumeAndPlan() { cancelResume(); planIntent.cancel(); _planArmed = false; }
+
 function armResumeAfterSignIn() {
   _resumeArmed = !!pendingSave.peek();
+  _resumeUid = _resumeArmed ? (getUserId() || '') : '';   // review R1-F3: finished only for THIS account
   _resumeWarned = false;
-  if (!_resumeArmed) return;
+  // Review R1-F5: the remembered plan is offered only after a sign-in in this tab.
+  _planArmed = !!planIntent.peek();
+  if (!_resumeArmed) { if (_planArmed) refreshSheetAfterSignIn(); return; }
   // Back to the analysis the person was saving — no plan pitch in this moment.
   _closingForResume = true;
   try { closeModal('modal-upgrade'); } finally { _closingForResume = false; }
@@ -1708,7 +1717,7 @@ async function resumeAfterSignIn() {
   const intent = pendingSave.peek();
   if (!intent) { _resumeArmed = false; return; }
   const d = saveResumeDecision(intent, {
-    signedIn: isSignedIn(), loadState: pipelineLoadState(),
+    signedIn: isSignedIn(), loadState: pipelineLoadState(), uid: getUserId() || '', armedUid: _resumeUid,
     currentResult: currentResultFor(intent.type), owner: analyzerOwner[intent.type] || '',
     reviewing: getReviewingDealId() != null, deals: getDeals(), allowance: PIPELINE_ALLOWANCE,
   });
@@ -1716,20 +1725,23 @@ async function resumeAfterSignIn() {
     if (d.reason === 'unreachable' && !_resumeWarned) { _resumeWarned = true; showToast(RESUME_WAIT_MSG, 4200); }
     return;
   }
-  pendingSave.cancel(); _resumeArmed = false;   // single use, before any await
-  if (d.action === 'drop') { showToast(RESUME_DROP_MSG[d.reason] || RESUME_DROP_MSG.owned, 4200); return; }
+  cancelResume();   // single use, before any await
+  if (d.action === 'drop') {
+    if (d.reason === 'account') { planIntent.cancel(); _planArmed = false; return; }   // another account now: say nothing to it
+    showToast(RESUME_DROP_MSG[d.reason] || RESUME_DROP_MSG.owned, 4200); return;
+  }
   _resumeRunning = true;
   let out = null;
   try { out = await saveDeal(intent.type, { resume: intent }); }
   finally { _resumeRunning = false; }
   // Optional offers only AFTER the save is confirmed: a plan chosen before sign-in.
-  if (out && out.status === 'saved' && planIntent.peek()) openUpgrade('plan');
+  if (out && out.status === 'saved' && _planArmed && planIntent.peek()) openUpgrade('plan');
 }
 
 // The remembered plan's button: a further explicit tap is the only thing that starts checkout.
 function continuePlanCheckout() {
-  const p = planIntent.peek();
-  planIntent.cancel();
+  const p = _planArmed ? planIntent.peek() : null;
+  planIntent.cancel(); _planArmed = false;
   if (!p || !isSignedIn()) { configureUpgradeModal(_lastUpgradeTrigger); return { status: 'none' }; }
   startCheckout(p.tier);
   return { status: 'checkout', tier: p.tier };
@@ -1790,7 +1802,7 @@ function configureUpgradeModal(trigger) {
   if (!isSignedIn()) return;
 
   if (tier === 'pro' || tier === 'investor') planIntent.cancel();   // C2: a paid account has nothing to continue to
-  const plan = (tier === 'pro' || tier === 'investor') ? null : planIntent.peek();
+  const plan = (tier === 'pro' || tier === 'investor' || !_planArmed || entitlementStatus() !== 'verified') ? null : planIntent.peek();
   if (plan) {
     renderPlanContinue(plan);
     if (title)   title.textContent = 'Continue to ' + PLAN_NAME[plan.tier] + ' checkout';
@@ -2226,7 +2238,7 @@ async function finishLinkSignIn() {
 async function doSignOut() {
   await signOutAccount();
   try { purgeForeignMarketSlots(''); } catch (e) { console.warn(e); }   // E2: no account's server-held markets stay on a signed-out device (R3: never blocks the reload)
-  pendingSave.cancel(); planIntent.cancel();   // Commercial C2: nothing carries past a sign-out
+  cancelResumeAndPlan();   // Commercial C2: nothing carries past a sign-out
   updateAccountUI();
   location.reload();
 }
@@ -2672,6 +2684,7 @@ function hideForeignAccountData() {
   // N1124 identity boundary: the forms were last shown to a different signed-in account → clear
   // every analyzer, typed-only drafts included (inputs, result, name, notes, review mode).
   const leftAccount = !!formAccount && formAccount !== uidNow;
+  if (leftAccount) cancelResumeAndPlan();   // review R1-F3: nothing pending carries to another account
   for (const t of Object.keys(analyzerOwner)) {
     if (leftAccount || (analyzerOwner[t] && analyzerOwner[t] !== uidNow)) { try { clearForeignAnalyzer(t); } catch (e) { console.warn(e); analyzerOwner[t] = ''; } }
   }
@@ -2716,6 +2729,7 @@ async function syncPipelineOnAuth() {
   }
   resumeAfterSignIn();   // Commercial C2: a save waiting for this account's pipeline
 }
+onPipelineReloaded(resumeAfterSignIn);   // review R1-F2: …and after a retry's re-load too
 
 // UX wave finding 3: pull the account's market slots down (and push local-only
 // slots up) whenever auth resolves, then re-render every slot surface. Sign-out

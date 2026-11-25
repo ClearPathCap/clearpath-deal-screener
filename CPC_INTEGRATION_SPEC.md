@@ -4,14 +4,14 @@
 
 ## The bridge
 Deal Screener "Get Funding" button → opens CPC intake pre-filled:
-`https://clearpathcapfunding.com/?src=dealscreener&tier={tier}&...params#submit`
+`https://clearpathcapfunding.com/?src=dealscreener&...params#submit`
 
 ## Query parameter contract (both sides implement exactly this)
 
 | Param | Screener source field | CPC intake field | Example |
 |---|---|---|---|
 | `src` | constant `dealscreener` | internal: lead source tag | `dealscreener` |
-| `tier` | user tier | internal: priority tag | `starter` / `investor` / `pro` |
+| ~~`tier`~~ | removed (Commercial C2, C2-6) | **never sent.** A paid DealFit plan buys app features only — never funding priority, terms or access. CPC treats an absent tier as plain "Source: DealFit". | — |
 | `pp` | asking/purchase price | Purchase Price | `285000` |
 | `rehab` | repair cost | Rehab Budget | `45000` |
 | `arv` | ARV | ARV | `425000` |
@@ -31,7 +31,7 @@ Rules: all params optional — CPC pre-fills what arrives, leaves the rest blank
 3. Tier handling per MASTER_TRACKER: pro → flag for dedicated-broker follow-up; investor → priority review; starter → standard.
 
 ## Deal Screener side (separate Claude Code task, this repo)
-1. Build `buildCpcUrl(deal, tier)` in `share.js` or new `funding.js` — maps saved-deal fields to the table above.
+1. Build `buildCpcUrl(deal)` in `share.js` or new `funding.js` — maps saved-deal fields to the table above.
 2. "Get Funding" button shows only when deal qualifies for CPC box: loan ≤ 90% LTC AND ≤ 70% ARV AND $150K–$5M.
 3. Open in new tab; keep the existing clipboard deal-summary as fallback.
 

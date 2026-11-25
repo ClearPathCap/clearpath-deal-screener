@@ -103,6 +103,17 @@ export function defaultDealName(type, when) {
   return stamp ? label + ' · ' + stamp : label;
 }
 
+// Review R1-F2 (Commercial C2): the stale-save / stale-delete / stale-edit retries re-load the pipeline
+// here; main.js subscribes so a save waiting for this account's pipeline is re-checked on ANY load.
+const _onReloaded = [];
+export function onPipelineReloaded(fn) { if (typeof fn === 'function') _onReloaded.push(fn); }
+function reloadPipeline() {
+  return hydratePipeline().then(() => {
+    renderPipeline();
+    for (const f of _onReloaded) { try { f(); } catch (e) { console.warn(e); } }
+  }).catch(() => {});
+}
+
 // The analysis currently on screen for an analyzer (null before the first Analyze).
 export function currentResultFor(type) {
   return type === 'flip' ? getLastFlipResult()
@@ -224,7 +235,7 @@ export async function saveDeal(type, opts = {}) {
     // wholesale replace could have erased real deals. Honest + recoverable:
     // nothing changed, a fresh hydrate is kicked off, the user just retries.
     window.showToast && window.showToast(offlineNow(res) ? SAVE_OFFLINE : "Couldn't verify your saved pipeline with the server — nothing was changed. Retry in a moment.", 4200);
-    hydratePipeline().then(() => renderPipeline()).catch(() => {});
+    reloadPipeline();
     return { status: 'save-failed', failureClass: 'stale' };
   }
   window.showToast && window.showToast(offlineNow(res) ? SAVE_OFFLINE : "Couldn't save this deal — connection or server problem. Try again.", 4200);
@@ -288,7 +299,7 @@ export async function confirmDelete() {
   }
   if (res.reason === 'stale') {
     window.showToast && window.showToast(offlineNow(res) ? 'No connection — nothing was deleted. The deal is still in your pipeline.' : "Couldn't verify your saved pipeline with the server — nothing was deleted. Retry in a moment.", 4200);
-    hydratePipeline().then(() => renderPipeline()).catch(() => {});
+    reloadPipeline();
     return { status: 'delete-failed', failureClass: 'stale' };
   }
   window.showToast && window.showToast(offlineNow(res) ? 'No connection — nothing was deleted. The deal is still in your pipeline.' : "Couldn't delete this deal — connection or server problem. It's still in your pipeline.", 4200);
@@ -952,7 +963,7 @@ export async function saveDealEdits(id) {
   if (res.reason === 'auth') { say('Your session has expired — sign in again.'); return { status: 'save-failed', failureClass: 'auth' }; }
   if (res.reason === 'stale') {
     say(offlineNow(res) ? 'No connection — your changes were NOT saved. Try again once you’re back online.' : "Couldn't verify your saved pipeline with the server — nothing was changed. Retry in a moment.");
-    hydratePipeline().then(() => renderPipeline()).catch(() => {});
+    reloadPipeline();
     return { status: 'save-failed', failureClass: 'stale' };
   }
   say(offlineNow(res) ? 'No connection — your changes were NOT saved. Try again once you’re back online.' : "Couldn't save changes — connection or server problem. Try again.");

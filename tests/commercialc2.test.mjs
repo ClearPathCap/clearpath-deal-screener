@@ -458,6 +458,10 @@ reset(); signOut(); server['u-j'] = [{ id: 424242, name: 'old', type: 'ltr', ver
   ok(RI.sameAnalysis(A, jsonb(A)) && JSON.stringify(A) !== JSON.stringify(jsonb(A)), 'J51 a server (jsonb-ordered) copy of an analysis is recognised as the same analysis');
   ok(!RI.sameAnalysis(A, { ...A, verdict: 'Fail' }) && !RI.sameAnalysis({ list: [1, 2] }, { list: [2, 1] }), 'J52 …while different values, or a reordered ARRAY, are not'); }
 
+// ── Review D regression (D1): the after-save offer never opens over another open sheet ──
+{ const src = fnBody('resumeAfterSignIn');
+  ok(/planIntent\.peek\(\) && _openModalCount === 0\) openUpgrade\('plan'\);/.test(src), 'J53 the after-save plan offer requires that no other sheet is open (review D-D1)'); }
+
 // ═══ §S source pins ════════════════════════════════════════════════════════════
 console.log('— §S source pins —');
 {

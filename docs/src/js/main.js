@@ -1742,7 +1742,9 @@ async function resumeAfterSignIn() {
   // Optional offers only AFTER the save is confirmed: a plan chosen before sign-in.
   // Review R2-N1: same gate as the sheet — a plan check that is not 'verified' gets no sheet at all
   // (the remembered plan stays; the late entitlement refresh offers it in an open sheet once verified).
-  if (out && out.status === 'saved' && _planArmed && entitlementStatus() === 'verified' && planIntent.peek()) openUpgrade('plan');
+  // Review D-D1: never open the offer over another open sheet (focus trap / aria-modal). The remembered plan
+  // then waits for the next time the person opens the plan sheet (configureUpgradeModal applies the same gates).
+  if (out && out.status === 'saved' && _planArmed && entitlementStatus() === 'verified' && planIntent.peek() && _openModalCount === 0) openUpgrade('plan');
 }
 
 // The remembered plan's button: a further explicit tap is the only thing that starts checkout.

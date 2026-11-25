@@ -479,8 +479,11 @@ if (haveBase) {
   // funding.js (C2: no tier in funding requests) — pinned by commercialc1 / commercialc2 and designsystem E1.
   // A protected file may differ from 49ec36a ONLY if it is one of BASE_CHANGED and equals INTEGRATION_BASE
   // byte-for-byte, i.e. the difference came from the base, never from this wave. Re-pin on each re-integration.
-  const INTEGRATION_BASE = '77671f8';
-  const BASE_CHANGED = ['docs/src/js/clearpath.js', 'docs/src/js/funding.js'];
+  // Re-pinned 2026-11-25 to the C2 head a885b7a, which also appends the owner-approved 9+-unit referral line to
+  // ltr.js / brrr.js (copy only; Aaron, "RELEASE 1 GO & FINAL INTEGRATION" item 3; pinned by commercialc2 RF1/RF2
+  // and designsystem E1's one-insertion exemption). clearpath.js / funding.js are unchanged since 77671f8.
+  const INTEGRATION_BASE = 'a885b7a';
+  const BASE_CHANGED = ['docs/src/js/clearpath.js', 'docs/src/js/funding.js', 'docs/src/js/ltr.js', 'docs/src/js/brrr.js'];
   let haveInt = false; try { execFileSync('git', ['-C', root, 'cat-file', '-e', INTEGRATION_BASE + '^{commit}'], { stdio: 'ignore' }); haveInt = true; } catch {}
   const fromBase = (p) => { if (!haveInt) return false; try { const n = (x) => x.replace(/\r\n/g, '\n'); return n(execFileSync('git', ['-C', root, 'show', INTEGRATION_BASE + ':' + p], { encoding: 'utf8' })) === n(readFileSync(join(root, p), 'utf8')); } catch { return false; } };
   const forbiddenNow = forbidden.filter(p => !(BASE_CHANGED.includes(p) && fromBase(p)));   // only the base's own named changes are exempt (review R1-8)

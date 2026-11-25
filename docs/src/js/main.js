@@ -525,6 +525,7 @@ onDealReviewEnded((type) => { if (type) { exitReviewUI(type); releaseReviewProte
 const STALE_FIELDS = Object.fromEntries(Object.entries(REVIEW_FIELDS).map(([t, rows]) =>
   [t, rows.map(r => r[0]).concat(SELF_ID[t] ? [SELF_ID[t]] : [])]));   // address included: the saved record + handoff carry it
 const staleSignature = { flip: null, rental: null, ltr: null, brrr: null };   // null = no watch armed
+const _presetMarket = { flip: null, rental: null, ltr: null, brrr: null };    // C2 T1: the market whose preset each analyzer last applied
 function formSignature(type) {
   return (STALE_FIELDS[type] || []).map(id => {
     const e = document.getElementById(id);
@@ -830,7 +831,21 @@ function renderMarketSlots(containerId, tabType) {
 
   // Auto-load the active slot's preset on render
   const activeId = getMarketForSlot(_activeSlot);
-  if (activeId) {
+  // Commercial C2 device-test finding T1 (2026-11-25): a re-render for the SAME market (sign-in's market
+  // hydration, a sub-tab switch, a re-tap of the active slot) used to re-run the preset, which late-fills a
+  // still-empty, untyped field from a value typed since (LTR/BRRR tax = price or ARV × the market rate). That
+  // silently made a live result stale, so the save waiting for sign-in was refused ("Inputs changed").
+  // While a result is live (its stale watch is armed) and the market has not changed, the preset is not
+  // re-applied: the inputs behind the result the person is looking at stay as they were. A different market,
+  // Clear & New Deal (clears the watch first) and every render without a live result behave as before.
+  if (!activeId) _presetMarket[tabType] = null;   // no market: the next one is always applied
+  const keepInputs = !!activeId && staleSignature[tabType] != null && _presetMarket[tabType] === activeId;
+  if (activeId && keepInputs) {
+    const el = container.querySelector('[data-slot="' + _activeSlot + '"]');
+    if (el) el.classList.add(tabType === 'flip' ? 'active' : 'slot-active');   // what the preset call would add
+    if (tabType === 'rental') updateRentRangeHint(activeId);                    // display only
+  } else if (activeId) {
+    _presetMarket[tabType] = activeId;
     const el = container.querySelector('[data-slot="' + _activeSlot + '"]');
     if (tabType === 'flip') {
       setFlipPreset(activeId, el);

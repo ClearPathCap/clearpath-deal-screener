@@ -469,6 +469,48 @@ reset(); signOut(); server['u-j'] = [{ id: 424242, name: 'old', type: 'ltr', ver
 { const src = fnBody('resumeAfterSignIn');
   ok(/planIntent\.peek\(\) && _openModalCount === 0\) openUpgrade\('plan'\);/.test(src), 'J53 the after-save plan offer requires that no other sheet is open (review D-D1)'); }
 
+// ── Device-test finding T1 (2026-11-25, synthetic browser run): a same-market re-render (sign-in's market
+// hydration, a sub-tab switch) re-ran the LTR/BRRR preset, which late-filled the empty tax from the typed
+// price, staled the live result, and refused the save waiting for sign-in. The REAL renderMarketSlots runs here.
+{ const calls = []; const classes = [];
+  const el = { classList: { add: (c) => classes.push(c) } };
+  const container = { innerHTML: '', querySelector: () => el };
+  let market = 'charlotte-nc';
+  const envT = {
+    document: { getElementById: () => container },
+    getUnlockedSlotCount: () => 2, getMarketForSlot: (i) => (i === 0 ? market : null),
+    getMarketLabel: () => 'Charlotte, NC', slotDisplayName: (s) => s, getActiveTier: () => 'starter', hasAnalyzedOnce: () => false,
+    setFlipPreset: (id) => calls.push('flip:' + id), setLtrPreset: (id) => calls.push('ltr:' + id),
+    setBrrrPreset: (id) => calls.push('brrr:' + id), setRentalPreset: (id) => calls.push('rental:' + id),
+    updateRentRangeHint: (id) => calls.push('hint:' + id), updateRepairRangesForMarket: (id) => calls.push('repair:' + id),
+  };
+  const srcT = 'let _activeSlot = 0;\n'
+    + (mj.match(/\nconst staleSignature = [^\n]*\n/) || [''])[0]
+    + (mj.match(/\nconst _presetMarket = [^\n]*\n/) || ['\nconst _presetMarket = {};\n'])[0]   // absent before T1: the checks fail, never crash
+    + fnBody('renderMarketSlots') + '\nreturn { renderMarketSlots, staleSignature, _presetMarket };';
+  const T = new Function(...Object.keys(envT), srcT)(...Object.values(envT));
+  const render = (t) => { calls.length = 0; classes.length = 0; T.renderMarketSlots(t + '-slots', t); return calls.slice(); };
+  ok(JSON.stringify(render('ltr')) === '["ltr:charlotte-nc"]' && JSON.stringify(render('ltr')) === '["ltr:charlotte-nc"]',
+    'T1a no live result: every render applies the market preset, as before');
+  T.staleSignature.ltr = 'sig';
+  ok(JSON.stringify(render('ltr')) === '[]' && classes.includes('slot-active'),
+    'T1b a live LTR result + the same market: the re-render keeps the inputs (no preset) and still marks the active slot');
+  market = 'raleigh-nc';
+  ok(JSON.stringify(render('ltr')) === '["ltr:raleigh-nc"]', 'T1c a live result but a DIFFERENT market: the preset applies (the stale law then flags the result)');
+  market = null; render('ltr'); market = 'raleigh-nc';
+  ok(JSON.stringify(render('ltr')) === '["ltr:raleigh-nc"]', 'T1d the market went away and came back: the preset applies again');
+  T.staleSignature.ltr = null;
+  ok(JSON.stringify(render('ltr')) === '["ltr:raleigh-nc"]', 'T1e the watch cleared (Clear & New Deal / no result): the preset applies');
+  render('brrr'); T.staleSignature.brrr = 'sig';
+  ok(JSON.stringify(render('brrr')) === '[]', 'T1f BRRR: the same rule (its tax follows the ARV)');
+  render('flip'); T.staleSignature.flip = 'sig';
+  ok(JSON.stringify(render('flip')) === '[]' && classes.includes('active'), 'T1g Flip: no preset re-run, and the slot keeps the class the preset adds (active)');
+  render('rental'); T.staleSignature.rental = 'sig';
+  ok(JSON.stringify(render('rental')) === '["hint:raleigh-nc"]', 'T1h STR: no preset re-run; the display-only rent-range hint still updates');
+  const cnd = fnBody('clearNewDeal');
+  ok(cnd.indexOf('clearStaleWatch(type)') > 0 && cnd.indexOf('clearStaleWatch(type)') < cnd.indexOf("renderMarketSlots('ltr-slots', 'ltr')"),
+    'T1i Clear & New Deal clears the stale watch BEFORE it re-renders, so the next deal gets the market preset'); }
+
 // ── 9+-unit referral disclaimer (owner-approved copy-only engine exemption, 2026-11-25) ──
 { const LINE = 'Estimate only — not a loan offer, approval, or guarantee of terms. Business-purpose, non-owner-occupied investment property only. Clear Path Capital is a broker; final terms come from the lender.';
   for (const [f, bid] of [['ltr.js', 'l-manual-review-btn'], ['brrr.js', 'b-manual-review-btn']]) {

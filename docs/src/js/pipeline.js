@@ -109,7 +109,7 @@ const _onReloaded = [];
 export function onPipelineReloaded(fn) { if (typeof fn === 'function') _onReloaded.push(fn); }
 function reloadPipeline() {
   return hydratePipeline().then(() => {
-    renderPipeline();
+    try { renderPipeline(); } catch (e) { console.warn(e); }   // review R2-N6: never skips the subscribers
     for (const f of _onReloaded) { try { f(); } catch (e) { console.warn(e); } }
   }).catch(() => {});
 }

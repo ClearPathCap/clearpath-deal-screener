@@ -178,9 +178,10 @@ function saveButtonUI(status) {
 }
 
 async function saveDeal(type, opts) {
-  // Review R1-F1 (Commercial C2): the person's own Save tap supersedes a waiting resume — it is never
-  // also finished later. (Signed out, pipeline.js notes this tap as the new pending save.)
-  if (!(opts && opts.resume)) cancelResume();
+  // Review R1-F1 / R2-N2 (Commercial C2): the person's own Save tap on the SAME analyzer supersedes a
+  // waiting resume — it is never also finished later. A Save on another analyzer leaves it waiting.
+  // (Signed out, pipeline.js notes this tap as the new pending save.)
+  if (!(opts && opts.resume) && pendingSave.peek()?.type === type) cancelResume();
   // Stale-result law: a result that no longer matches the form is never saved
   // or used to update a snapshot — analyze again first.
   if (isStale(type)) { showToast('Inputs changed — analyze again before saving'); return { status: 'refused-stale' }; }
@@ -1735,7 +1736,9 @@ async function resumeAfterSignIn() {
   try { out = await saveDeal(intent.type, { resume: intent }); }
   finally { _resumeRunning = false; }
   // Optional offers only AFTER the save is confirmed: a plan chosen before sign-in.
-  if (out && out.status === 'saved' && _planArmed && planIntent.peek()) openUpgrade('plan');
+  // Review R2-N1: same gate as the sheet — a plan check that is not 'verified' gets no sheet at all
+  // (the remembered plan stays; the late entitlement refresh offers it in an open sheet once verified).
+  if (out && out.status === 'saved' && _planArmed && entitlementStatus() === 'verified' && planIntent.peek()) openUpgrade('plan');
 }
 
 // The remembered plan's button: a further explicit tap is the only thing that starts checkout.

@@ -27,8 +27,8 @@ Rules: all params optional — CPC pre-fills what arrives, leaves the rest blank
 
 ## CPC site side (Claude Code task — added to CLAUDE_CODE_HANDOFF.md as Edit 7)
 1. On page load, parse `window.location.search`; if `src=dealscreener`, pre-fill the mapped intake fields and scroll to `#submit`.
-2. Append to the internal-summary block of the submission email: `Source: Deal Screener — [Starter|Investor — Priority Review|Pro — Dedicated Broker Requested]`.
-3. Tier handling per MASTER_TRACKER: pro → flag for dedicated-broker follow-up; investor → priority review; starter → standard.
+2. Append to the internal-summary block of the submission email: `Source: DealFit` (provenance only).
+3. No tier is received (Commercial C2, C2-6). A paid DealFit plan buys app features only — never priority review, a dedicated broker, terms or access.
 
 ## Deal Screener side (separate Claude Code task, this repo)
 1. Build `buildCpcUrl(deal)` in `share.js` or new `funding.js` — maps saved-deal fields to the table above.

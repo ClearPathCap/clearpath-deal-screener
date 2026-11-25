@@ -33,11 +33,11 @@ globalThis.__supabaseStub = {
     rpcLog.push({ name, uid });
     if (name === 'get_pipeline') {
       if (rpcFail === 'get') return { data: null, error: { message: 'unreachable' }, status: 503 };
-      return { data: (server[uid] || []).slice(), error: null, status: 200 };
+      return { data: JSON.parse(JSON.stringify(server[uid] || [])), error: null, status: 200 };   // fresh objects, as over the wire (review R2-N3)
     }
     if (name === 'save_pipeline') {
       if (rpcFail === 'save') return { data: null, error: { message: 'server error' }, status: 500 };
-      server[uid] = args.p_deals.slice();
+      server[uid] = JSON.parse(JSON.stringify(args.p_deals));
       return { data: null, error: null, status: 200 };
     }
     return { data: null, error: null, status: 200 };
@@ -137,7 +137,7 @@ console.log('— §R resumeIntent law —');
   let threw = false; try { pt.note('pro'); pt.peek(); pt.cancel(); } catch { threw = true; }
   ok(!threw && pt.peek() === null, 'R15 blocked storage never throws (the plan is simply not remembered)');
 
-  const D = (o) => RI.saveResumeDecision({ type: 'ltr', result: R, dealId: 77 }, { signedIn: true, loadState: 'ok', currentResult: R, owner: '', reviewing: false, deals: [], allowance: 25, ...o });
+  const D = (o) => RI.saveResumeDecision({ type: 'ltr', result: R, dealId: 77 }, { signedIn: true, loadState: 'ok', uid: 'u', armedUid: 'u', currentResult: R, owner: '', reviewing: false, deals: [], allowance: 25, ...o });
   ok(RI.saveResumeDecision(null, {}).action === 'none', 'R16 no intent → nothing');
   ok(D({ signedIn: false }).action === 'wait', 'R17 not signed in → wait');
   ok(D({ loadState: 'loading' }).action === 'wait' && D({ loadState: 'idle' }).action === 'wait', 'R18 the account\'s pipeline has not loaded → wait (never build a save on an unconfirmed pipeline)');
@@ -208,6 +208,7 @@ const signOut = () => { globalThis.__authState.signedIn = false; globalThis.__ui
 const signInAs = (uid) => { globalThis.__authState.signedIn = true; globalThis.__uid = uid; storage.dropForeignPipeline(); };
 const openSheet = () => el('modal-upgrade').classList.add('active');
 const sheetOpen = () => el('modal-upgrade').classList.contains('active');
+const same = (d, R) => !!d && JSON.stringify(d.data) === JSON.stringify(R);
 const deal = (i, extra) => ({ id: 1000 + i, name: 'existing ' + i, type: 'ltr', verdict: 'v', cls: 'warm', data: {}, stats: [], date: '', notes: '', ...extra });
 
 server['u-a'] = [deal(1), deal(2)];
@@ -217,7 +218,7 @@ server['u-c'] = [deal(50, { name: 'C private deal', notes: 'C-only notes' })];
 
 // J1–J5: the happy path for account A
 reset(); signOut();
-const R1 = { verdict: 'Pass', cls: 'good', type: 'ltr' };
+const R1 = { n: 1, verdict: 'Pass', cls: 'good', type: 'ltr' };
 globalThis.__lastResults.ltr = R1; name.value = 'Elm St duplex'; notes.value = 'typed signed out';
 let r = await pipeline.saveDeal('ltr');
 ok(r.status === 'refused-auth' && pipelineOpenUpgrade[0] === 'save' && RI.pendingSave.peek()?.result === R1, 'J1 signed out: Save opens sign-in and remembers this analysis');
@@ -230,7 +231,7 @@ ok(!sheetOpen() && api.armed() && RI.pendingSave.peek()?.result === R1 && !rpcLo
 ok(!log.some((e) => e.startsWith('offer')), 'J3 no plan pitch appears at sign-in');
 await storage.hydratePipeline(); await api.resumeAfterSignIn(); await tick();
 const a = server['u-a'];
-ok(a.length === 3 && a[0].data === R1 && a[0].name === 'Elm St duplex' && a[0].notes === 'typed signed out'
+ok(a.length === 3 && same(a[0], R1) && a[0].name === 'Elm St duplex' && a[0].notes === 'typed signed out'
    && a.slice(1).map((d) => d.id).join() === '1001,1002', 'J4 after the load, the deal is saved ONCE into A, first, with A\'s own deals intact');
 ok(toasts.includes(RI.RESUME_SAVED_MSG) && !api.armed() && RI.pendingSave.peek() === null, 'J5 the save is confirmed ("deal saved to your pipeline") and the intent is spent');
 const savedId = a[0].id;
@@ -247,7 +248,7 @@ ok(!rpcLog.some((x) => x.name === 'save_pipeline') && server['u-b'].length === 0
 
 // J9: the analysis changed before sign-in finished → dropped, nothing written
 reset(); signOut();
-const R2 = { verdict: 'Pass', type: 'ltr' };
+const R2 = { n: 2, verdict: 'Pass', type: 'ltr' };
 globalThis.__lastResults.ltr = R2; await pipeline.saveDeal('ltr');
 globalThis.__lastResults.ltr = { verdict: 'Fail', type: 'ltr' };   // re-analyzed with other numbers
 openSheet(); signInAs('u-b'); api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAfterSignIn();
@@ -267,11 +268,12 @@ api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAft
 ok(toasts.filter((m) => m === RI.RESUME_WAIT_MSG).length === 1 && !rpcLog.some((x) => x.name === 'save_pipeline') && RI.pendingSave.peek(),
    'J11 the pipeline is unreachable: nothing is written, the person is told once, the intent waits');
 rpcFail = null; await storage.hydratePipeline(); await api.resumeAfterSignIn();
-ok(server['u-b'].length === 1 && server['u-b'][0].data === R2, 'J12 …and it saves once the pipeline loads');
+ok(server['u-b'].length === 1 && same(server['u-b'][0], R2), 'J12 …and it saves once the pipeline loads');
 
 // J13: the save itself fails → spent, no automatic retry, no duplicate; a manual Save still works
-reset(); signOut(); const R3 = { verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R3; await pipeline.saveDeal('ltr');
+reset(); signOut(); const R3 = { n: 3, verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R3; await pipeline.saveDeal('ltr');
 openSheet(); signInAs('u-b'); await storage.hydratePipeline(); rpcFail = 'save'; api.armResumeAfterSignIn(); await tick(); await tick();
+await tick(); await tick(); await tick();   // the real Save wrapper adds awaits before the RPC settles
 ok(server['u-b'].length === 1 && rpcLog.filter((x) => x.name === 'save_pipeline').length === 1 && RI.pendingSave.peek() === null && !api.armed(),
    'J13 a failed save is tried once (spent, no retry loop) and leaves the server unchanged');
 rpcFail = null; await storage.hydratePipeline(); await api.resumeAfterSignIn();
@@ -333,14 +335,14 @@ reset(); signOut(); await api.startCheckout('pro'); signInAs('u-b'); openSheet()
 ok(api.planIntent.peek() === null && checkoutInvokes.length === 0, 'J28 closing the signed-in offer declines it (nothing started, nothing remembered)');
 
 // Save + plan: the offer comes only AFTER the save is confirmed
-reset(); signOut(); const R4 = { verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R4;
+reset(); signOut(); const R4 = { n: 4, verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R4;
 await pipeline.saveDeal('ltr'); await api.startCheckout('pro'); openSheet();
 signInAs('u-b'); api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAfterSignIn(); await tick();
 const iSave = log.indexOf('save:saved'), iOffer = log.indexOf('offer:plan');
 ok(iSave >= 0 && iOffer > iSave && !log.some((e) => e.startsWith('checkout')) && el('upgrade-continue-btn').textContent === 'Continue to Pro checkout',
    'J29 saving AND a chosen plan: the deal is saved first, then "Continue to Pro checkout" is offered — never started');
 reset(); el('modal-upgrade').classList.remove('active'); api.planIntent.cancel();
-signOut(); const R5 = { verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R5;
+signOut(); const R5 = { n: 5, verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R5;
 await pipeline.saveDeal('ltr'); await api.startCheckout('pro'); openSheet();
 signInAs('u-full'); await storage.hydratePipeline(); api.armResumeAfterSignIn(); await tick();
 ok(!log.includes('offer:plan') && api.planIntent.peek()?.tier === 'pro', 'J30 a save that did not happen is never followed by an offer');
@@ -350,7 +352,7 @@ api.planIntent.cancel();
 console.log('— §J review round 1 —');
 // F1: a waiting resume + the person's own Save tap never makes two copies
 reset(); signOut(); server['u-d'] = [];
-const R6 = { verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R6;
+const R6 = { n: 6, verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R6;
 await api.saveDeal('ltr');                                   // the real wrapper, signed out
 openSheet(); signInAs('u-d'); rpcFail = 'get'; api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAfterSignIn();
 ok(api.armed() && toasts.includes(RI.RESUME_WAIT_MSG), 'J31 setup: signed in, pipeline unreachable, the save waits');
@@ -360,27 +362,27 @@ await tick(); await tick();
 ok(!api.armed() && RI.pendingSave.peek() === null, 'J31 the person\'s own Save tap supersedes the waiting resume');
 await api.saveDeal('ltr');
 await storage.hydratePipeline(); await api.resumeAfterSignIn();   // later auth notifies (visibility, refresh, reconnect)
-ok(server['u-d'].filter((d) => d.data === R6).length === 1, 'J32 the analysis is in the pipeline exactly once (review R1-F1 repro)');
-{ const d = RI.saveResumeDecision({ type: 'ltr', result: R6, dealId: 1 }, { signedIn: true, loadState: 'ok', currentResult: R6, owner: '', reviewing: false, deals: [{ id: 2, data: R6 }], allowance: 25 });
-  ok(d.reason === 'already-saved', 'J33 the same analysis saved under ANY id counts as already saved'); }
+ok(server['u-d'].filter((d) => same(d, R6)).length === 1, 'J32 the analysis is in the pipeline exactly once (review R1-F1 repro)');
+{ const d = RI.saveResumeDecision({ type: 'ltr', result: R6, dealId: 1 }, { signedIn: true, loadState: 'ok', uid: 'u', armedUid: 'u', currentResult: R6, owner: '', reviewing: false, deals: [{ id: 2, data: R6 }], allowance: 25 });
+  ok(d.reason === 'already-saved', 'J33 the same analysis object already in this session\'s cache (any id) counts as already saved'); }
 
 // F2: a retry's successful re-load (not an auth event) finishes a waiting save
 reset(); signOut(); server['u-e'] = [];
-const R7 = { verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R7; await api.saveDeal('ltr');
+const R7 = { n: 7, verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R7; await api.saveDeal('ltr');
 openSheet(); signInAs('u-e'); rpcFail = 'get'; api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAfterSignIn();
 rpcFail = null;
 { let fired = 0; pipeline.onPipelineReloaded(() => { fired++; });
   globalThis.__lastResults.flip = { verdict: 'x', type: 'flip' };
   el('flip-deal-name').value = 'flip'; el('flip-notes').value = '';
-  await pipeline.saveDeal('flip');                            // a stale pipeline save (not the wrapper) → reloadPipeline()
+  await api.saveDeal('flip');                                 // the person saves ANOTHER analyzer: stale → reloadPipeline()
   await tick(); await tick(); await tick();
-  ok(fired >= 1, 'J34 a stale-path retry re-load notifies subscribers');
-  ok(server['u-e'].filter((d) => d.data === R7).length === 1 && !api.armed(), 'J35 …and the waiting save finishes on that load, without any auth event (review R1-F2)');
+  ok(fired >= 1, 'J34 a Save on another analyzer leaves the waiting save; its stale retry re-load notifies subscribers');
+  ok(server['u-e'].filter((d) => same(d, R7)).length === 1 && !api.armed(), 'J35 …and the waiting save finishes on that load, without any auth event (review R1-F2)');
   globalThis.__lastResults.flip = null; }
 
 // F3: armed for one account, another account appears (other tab / sign-out then in): nothing saved, nothing said
 reset(); signOut(); server['u-f'] = []; server['u-g'] = [];
-const R8 = { verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R8; await api.saveDeal('ltr');
+const R8 = { n: 8, verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R8; await api.saveDeal('ltr');
 openSheet(); signInAs('u-f'); rpcFail = 'get'; api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAfterSignIn();
 rpcFail = null; toasts = [];
 signInAs('u-g'); await storage.hydratePipeline(); await api.resumeAfterSignIn();
@@ -398,6 +400,39 @@ ok(el('upgrade-continue').style.display === '', 'J40 …and is offered once the 
 api.closeModal('modal-upgrade');
 ok(RI.RESUME_DROP_MSG.review === 'Signed in. Finish or cancel the review, then tap Save.', 'J41 the review message never points at overwriting the reviewed deal (review R1-F9)');
 
+// ── Review round 2 regressions ──
+console.log('— §J review round 2 —');
+// N2: saving another analyzer while the LTR save waits — the LTR save still happens, the flip is the person's own
+reset(); signOut(); server['u-h'] = [];
+const R9 = { n: 9, verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R9; await api.saveDeal('ltr');
+openSheet(); signInAs('u-h'); rpcFail = 'get'; api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAfterSignIn();
+rpcFail = null;
+const F9 = { n: 90, verdict: 'x', type: 'flip' }; globalThis.__lastResults.flip = F9; el('flip-deal-name').value = 'my flip';
+await api.saveDeal('flip'); await tick(); await tick(); await tick();
+ok(api.armed() === false && server['u-h'].filter((d) => same(d, R9)).length === 1, 'J42 the waiting LTR save still finishes after the person saves a flip (review R2-N2)');
+await api.saveDeal('flip');
+ok(server['u-h'].filter((d) => same(d, F9)).length === 1 && server['u-h'].filter((d) => same(d, R9)).length === 1, 'J43 …each analysis exactly once');
+globalThis.__lastResults.flip = null;
+// N1: resume save with a remembered plan and an UNVERIFIED plan check → no sheet at all
+reset(); signOut(); server['u-i'] = [];
+const R10 = { n: 10, verdict: 'Pass', type: 'ltr' }; globalThis.__lastResults.ltr = R10;
+await api.saveDeal('ltr'); await api.startCheckout('pro'); openSheet();
+globalThis.__entitlementStatus = 'unverified';
+signInAs('u-i'); api.armResumeAfterSignIn(); await storage.hydratePipeline(); await api.resumeAfterSignIn(); await tick();
+ok(log.includes('save:saved') && !log.includes('offer:plan') && !sheetOpen() && api.planIntent.peek()?.tier === 'pro',
+   'J44 saved; with the plan check unverified no sheet opens at all, and the remembered plan waits (review R2-N1)');
+globalThis.__entitlementStatus = 'verified'; openSheet(); api.configureUpgradeModal('general');
+ok(el('upgrade-continue').style.display === '' && checkoutInvokes.length === 0, 'J45 …once verified, an open sheet offers it (still only a tap starts checkout)');
+api.closeModal('modal-upgrade');
+// N4: an intent armed with no account id is never finished
+{ const d = RI.saveResumeDecision({ type: 'ltr', result: R10, dealId: 3 }, { signedIn: true, loadState: 'ok', uid: 'u-x', armedUid: '', currentResult: R10, owner: '', reviewing: false, deals: [], allowance: 25 });
+  ok(d.action === 'drop' && d.reason === 'account', 'J46 a resume with no recorded account is dropped, never saved to whoever is signed in (review R2-N4)'); }
+// N3: after a re-load (fresh objects) a resume's fixed id still prevents a duplicate
+reset(); signInAs('u-i'); await storage.hydratePipeline();
+{ const saved = storage.getDeals().find((d) => same(d, R10));
+  const d = RI.saveResumeDecision({ type: 'ltr', result: R10, dealId: saved.id }, { signedIn: true, loadState: 'ok', uid: 'u-i', armedUid: 'u-i', currentResult: R10, owner: '', reviewing: false, deals: storage.getDeals(), allowance: 25 });
+  ok(saved.data !== R10 && d.reason === 'already-saved', 'J47 after a re-load the cache holds server copies; the fixed id is what blocks a duplicate'); }
+
 // ═══ §S source pins ════════════════════════════════════════════════════════════
 console.log('— §S source pins —');
 {
@@ -411,7 +446,7 @@ console.log('— §S source pins —');
   ok(/cancelResumeAndPlan\(\);/.test(fnBody('doSignOut')), 'S5 sign-out cancels both intents');
   ok(/\nonPipelineReloaded\(resumeAfterSignIn\);/.test(mj) && (rd('docs/src/js/pipeline.js').match(/reloadPipeline\(\);/g) || []).length === 3,
      'S12 every retry re-load (save, delete, edit) goes through reloadPipeline, which main.js subscribes to');
-  ok(/async function saveDeal\(type, opts\) \{[\s\S]{0,260}if \(!\(opts && opts\.resume\)\) cancelResume\(\);/.test(mj) && /await _saveDeal\(type, opts\)/.test(mj), 'S6 the Save button wrapper (stale-result law first) forwards the resume to pipeline.saveDeal');
+  ok(/async function saveDeal\(type, opts\) \{[\s\S]{0,400}if \(!\(opts && opts\.resume\) && pendingSave\.peek\(\)\?\.type === type\) cancelResume\(\);/.test(mj) && /await _saveDeal\(type, opts\)/.test(mj), 'S6 the Save button wrapper (stale-result law first) forwards the resume to pipeline.saveDeal');
   const auto = ['armResumeAfterSignIn', 'resumeAfterSignIn', 'configureUpgradeModal', 'renderPlanContinue', 'closeModal'].map(fnBody).join('\n');
   ok(!/startCheckout\(|functions\.invoke/.test(auto), 'S7 no automatic path calls checkout — only continuePlanCheckout (a tap) and the Subscribe buttons');
   ok(/onclick="continuePlanCheckout\(\)"/.test(rd('docs/index.html')) && /id="upgrade-continue" style="display:none/.test(rd('docs/index.html')),

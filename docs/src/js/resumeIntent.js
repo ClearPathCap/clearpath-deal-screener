@@ -69,14 +69,15 @@ export function createPlanIntent(store, now = () => Date.now()) {
 export function saveResumeDecision(intent, s) {
   if (!intent) return { action: 'none' };
   if (!s || !s.signedIn) return { action: 'wait' };
-  if (s.armedUid && s.uid !== s.armedUid) return { action: 'drop', reason: 'account', silent: true };
+  if (s.uid !== s.armedUid || !s.armedUid) return { action: 'drop', reason: 'account', silent: true };   // review R2-N4
   if (s.loadState === 'failed') return { action: 'wait', reason: 'unreachable' };
   if (s.loadState !== 'ok') return { action: 'wait' };
   if (s.owner) return { action: 'drop', reason: 'owned' };
   if (s.reviewing) return { action: 'drop', reason: 'review' };
   if (s.currentResult !== intent.result) return { action: 'drop', reason: 'changed' };
   const deals = Array.isArray(s.deals) ? s.deals : [];
-  // Review R1-F1: the same analysis saved by any path (the person's own Save tap included) is a duplicate.
+  // Review R1-F1: the same analysis OBJECT already in this session's cache (saved by any path) is a duplicate.
+  // After a re-load the cache holds the server's copies, so the fixed id is the durable check (R2-N3).
   if (deals.some(d => d && (d.id === intent.dealId || d.data === intent.result))) return { action: 'drop', reason: 'already-saved' };
   if (deals.length >= s.allowance) return { action: 'drop', reason: 'full' };
   return { action: 'save' };

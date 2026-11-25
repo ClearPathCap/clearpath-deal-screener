@@ -329,5 +329,20 @@ for (const p of ALL) {
   ok(!INDUSTRY.test(strip(app)) && !INDUSTRY.test(strip(mainY)), "Y3 no 'markets typically run' / 'Typical range:' industry norm in the shell or main.js");
 }
 
+// ── Z — plan copy never claims unlimited saves (Commercial C1 follow-up, agreed with Organic Growth) ──
+// Every tier holds the same 25 saved deals (storage.js PIPELINE_ALLOWANCE). The risk-evaluation FAQ
+// answer (FAQPage JSON-LD + visible text) said "unlimited pipeline saves and exports"; it now matches
+// the homepage offer. A9 keeps the JSON-LD answer visible verbatim.
+{
+  for (const p of ALL) {
+    const h = src(p.file);
+    ok(!/unlimited pipeline/i.test(h) && !/unlimited[^.;]*saves/i.test(h), `Z1 ${p.file}: no "unlimited pipeline" / unlimited … saves claim`);
+  }
+  const re = src("docs/risk-evaluation/index.html");
+  const SENT = "Paid plans add more markets, market data, and shareable deal summaries; they never change access to financing from Clear Path Capital.";
+  ok(re.split(SENT).length - 1 === 2, "Z2 risk-evaluation carries the corrected plan sentence in the FAQPage JSON-LD and the visible answer");
+  ok(/PIPELINE_ALLOWANCE = 25;/.test(src("docs/src/js/storage.js")), "Z3 the saved-deal allowance the copy relies on is still one uniform 25");
+}
+
 console.log(`seo: ${pass} passed, ${fail} failed`);
 if (fail) { for (const f of fails) console.log("  ✗ " + f); process.exit(1); }

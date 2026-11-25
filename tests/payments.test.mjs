@@ -301,6 +301,30 @@ for (const t of ['starter', 'admin', '', undefined]) {
   nativeAnswer = () => ({});
 }
 {
+  // A store sheet that never answers releases the guard after the timeout (review R2-1).
+  capValue = bridge('ios'); calls.length = 0;
+  PAY.setNativeCallTimeout?.(30);
+  nativeAnswer = (p, m) => (m === 'purchase' ? new Promise(() => {}) : {});
+  const d = mkDeps({ 'store-account-token': { data: { token: 't' } } });
+  const hung = await Promise.race([PAY.nativePayment('purchase', 'pro', d, IOS, PRODUCTS), new Promise(res => setTimeout(() => res({ reason: 'still-hung' }), 500))]);
+  ok(hung.status === 'error' && hung.message === PAY.PAYMENT_MESSAGES.error && !d.invokes.some(i => i[0] === 'store-verify'), 'P3 a store sheet that never answers ends as an error after the timeout (nothing verified)');
+  nativeAnswer = (p, m) => (m === 'currentEntitlements' ? { signedTransactions: [] } : {});
+  const next = await PAY.nativePayment('restore', null, mkDeps(), IOS, PRODUCTS);
+  ok(next.reason !== 'busy' && next.ok, 'P3 … and the one-operation guard is free again (not stuck for the session)');
+  PAY.setNativeCallTimeout?.(120000);
+  nativeAnswer = () => ({});
+}
+{
+  // iOS link-out restore re-reads the tier from the server (review R2-2).
+  capValue = bridge('ios'); calls.length = 0;
+  const d = mkDeps();
+  const r = await PAY.nativePayment('restore', null, d, { ios: 'ios-external-link', android: null }, PRODUCTS);
+  ok(r.ok && r.status === 'submitted' && d.syncs === 1 && calls.length === 0 && d.invokes.length === 0, 'P3 iOS link-out restore: one server tier re-read, no plugin or server call');
+  d.signedIn = false;
+  const r2 = await PAY.nativePayment('restore', null, d, { ios: 'ios-external-link', android: null }, PRODUCTS);
+  ok(r2.reason === 'signed-out' && d.syncs === 1, 'P3 … and signed out it says "Sign in first" instead');
+}
+{
   // Android restore (review R1-9).
   capValue = bridge('android'); calls.length = 0;
   nativeAnswer = (p, m) => (m === 'queryPurchases' ? { purchaseTokens: ['p1', null, 'p2'] } : {});

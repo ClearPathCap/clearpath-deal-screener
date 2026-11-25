@@ -115,6 +115,21 @@ async function verifyWithServer(deps, platform, proof) {
 }
 async function settle(deps) { try { await deps.sync(); } catch { /* the next load re-reads the tier */ } }
 
+// Every native call is bounded (review R2-1): a store sheet or bridge that never answers must not
+// hold the one-operation guard for the rest of the session. A timeout is an error result; if the
+// store later completes the purchase, the server learns it from the store's own notification and
+// Restore re-verifies it — the app never assumes a grant.
+let NATIVE_CALL_TIMEOUT_MS = 120000;
+export function setNativeCallTimeout(ms) { NATIVE_CALL_TIMEOUT_MS = ms; }   // tests
+const TIMED_OUT = Symbol('timed-out');
+async function bounded(P, method, opts) {
+  let timer = null;
+  const out = await Promise.race([call(P, method, opts), new Promise(r => { timer = setTimeout(() => r(TIMED_OUT), NATIVE_CALL_TIMEOUT_MS); })]);
+  clearTimeout(timer);
+  if (out === TIMED_OUT) throw new Error('native call timed out');
+  return out;
+}
+
 function storeAdapter(id, store, enabled, products) {
   const P = () => plugin(STORE_PLUGIN[store]);
   const proofKey = store === 'apple' ? 'signedTransaction' : 'purchaseToken';
@@ -132,7 +147,7 @@ function storeAdapter(id, store, enabled, products) {
       const token = tok && !tok.error && tok.data && typeof tok.data.token === 'string' ? tok.data.token : null;
       if (!token) return result(false, 'error', 'no-account-token', 'purchase');
       const opts = store === 'apple' ? { productId, appAccountToken: token } : { productId, obfuscatedAccountId: token };
-      const out = await call(P(), 'purchase', opts);
+      const out = await bounded(P(), 'purchase', opts);
       if (!out || out.status === 'cancelled') return result(false, 'cancelled', 'user-cancelled', 'purchase');
       if (out.status === 'pending') return result(false, 'pending', 'store-pending', 'purchase');
       const proof = out[proofKey];
@@ -148,7 +163,7 @@ function storeAdapter(id, store, enabled, products) {
       if (!enabled) return REFUSED('not-enabled', 'restore');
       if (!signedIn(deps)) return REFUSED('signed-out', 'restore');
       if (!ready()) return REFUSED('no-plugin', 'restore');
-      const out = await call(P(), store === 'apple' ? 'currentEntitlements' : 'queryPurchases', {});
+      const out = await bounded(P(), store === 'apple' ? 'currentEntitlements' : 'queryPurchases', {});
       const list = out && Array.isArray(out[proofKey + 's']) ? out[proofKey + 's'].filter(s => typeof s === 'string' && s) : [];
       let anyFailed = false;
       for (const p of list) { if (!(await verifyWithServer(deps, store, { [proofKey]: p }))) anyFailed = true; }
@@ -159,7 +174,7 @@ function storeAdapter(id, store, enabled, products) {
       if (!enabled) return REFUSED('not-enabled', 'manage');
       if (store === 'apple') {
         if (!ready()) return REFUSED('no-plugin', 'manage');
-        await call(P(), 'showManageSubscriptions', {});
+        await bounded(P(), 'showManageSubscriptions', {});
         return result(true, 'opened', 'store-manage', 'manage');
       }
       return openSystem(PLAY_SUBSCRIPTIONS_URL, 'manage');
@@ -170,7 +185,7 @@ function storeAdapter(id, store, enabled, products) {
 async function openSystem(url, op) {
   const L = plugin(SYSTEM_BROWSER_PLUGIN);
   if (!L) return REFUSED('no-plugin', op);
-  await call(L, 'openUrl', { url });
+  await bounded(L, 'openUrl', { url });
   return result(true, 'opened', 'system-browser', op);
 }
 function linkAdapter(id, store, enabled) {
@@ -179,7 +194,7 @@ function linkAdapter(id, store, enabled) {
     if (!LINK_PROGRAM_READY[store]) return REFUSED('program-not-integrated', op);
     if (store === 'apple') {
       const S = plugin(STORE_PLUGIN.apple);
-      const sf = S ? await call(S, 'storefront', {}) : null;
+      const sf = S ? await bounded(S, 'storefront', {}) : null;
       if (!sf || sf.countryCode !== 'USA') return REFUSED('not-us-storefront', op);
     }
     return openSystem(EXTERNAL_PLANS_URL, op);
@@ -188,7 +203,14 @@ function linkAdapter(id, store, enabled) {
   // next entitlement read (resume / sign-in), never from the link.
   return Object.freeze({
     id, kind: 'external-link', store, enabled, purchase: go('purchase'), manage: go('manage'),
-    restore: async () => (!enabled ? REFUSED('not-enabled', 'restore') : !LINK_PROGRAM_READY[store] ? REFUSED('program-not-integrated', 'restore') : result(true, 'submitted', 'server-read', 'restore')),
+    // Restore for a link-out is a server re-read: a web purchase is already on the account (review R2-2).
+    restore: async (deps) => {
+      if (!enabled) return REFUSED('not-enabled', 'restore');
+      if (!LINK_PROGRAM_READY[store]) return REFUSED('program-not-integrated', 'restore');
+      if (!signedIn(deps)) return REFUSED('signed-out', 'restore');
+      await settle(deps);
+      return result(true, 'submitted', 'server-read', 'restore');
+    },
   });
 }
 

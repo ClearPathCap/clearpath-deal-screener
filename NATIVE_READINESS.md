@@ -277,7 +277,7 @@ product ids are `REPLACE_…` placeholders.
   showed before this module (`Plans can’t be changed in the app yet.`). Both gates hold independently: `nativePayment`
   refuses a disabled adapter, and each adapter refuses itself.
 - `main.js` loads `payments.js` only through `appPayment` (a dynamic import), called only from its two `if (!paymentsInApp())` guards, which never run on the web. The web never requests the module. Each guard is pinned as the whole line, so nothing else can run on it.
-- In the app: a store purchase or restore refuses a signed-out user before any call ("Sign in first"); one operation runs at a time; each operation has its own failure copy.
+- In the app: a store purchase or restore refuses a signed-out user before any call ("Sign in first"); one operation runs at a time, and every native call is bounded (120 s), so a store sheet that never answers cannot hold that guard; each operation has its own failure copy. A link-out restore is a server re-read.
 
 **What enabling a store adapter needs (none exists; each is a provider change under its own authorization):**
 1. store products (App Store Connect subscription group; Play subscription + base plan) and their ids in `STORE_PRODUCTS`;

@@ -229,7 +229,8 @@ function showLtrManualReview(units, info) {
   notice.innerHTML =
     '<div class="band-notice-title">9+ unit multifamily — commercial review</div>'
     + '<div class="band-notice-body">A ' + (units || '9+') + '-unit building is financed as a commercial multifamily deal, not a standard DSCR loan. DealFit doesn\'t auto-screen it — submit through Clear Path Capital and we\'ll route it to the right lender.</div>'
-    + '<button class="btn-get-funding" id="l-manual-review-btn" type="button"><span class="funding-btn-label">Submit for Review</span></button>';
+    + '<button class="btn-get-funding" id="l-manual-review-btn" type="button"><span class="funding-btn-label">Submit for Review</span></button>'
+    + '<div style="font-size:11px;color:#9aa4b2;margin-top:6px;line-height:1.45">Estimate only — not a loan offer, approval, or guarantee of terms. Business-purpose, non-owner-occupied investment property only. Clear Path Capital is a broker; final terms come from the lender.</div>';
   const btn = elv('l-manual-review-btn');
   if (btn) btn.addEventListener('click', () => {
     const deal = {

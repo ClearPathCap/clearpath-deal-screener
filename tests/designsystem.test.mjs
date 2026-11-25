@@ -431,7 +431,20 @@ if (base) {
     for (const [now, was] of C2_SWAPS) cur = cur.split(now).join(was);
     return cur === prod;
   };
-  const forbiddenNow = forbidden.filter(f => !c1Only(f));
+  // OWNER-APPROVED EXEMPTION (Aaron, 2026-11-25, "RELEASE 1 GO & FINAL INTEGRATION" item 3; Review D §3): ltr.js and
+  // brrr.js may differ from production ONLY by the standard estimate / business-purpose / broker line appended after the
+  // 9+-unit "Submit for Review" button. Remove exactly that one appended string; the rest must equal production byte for byte
+  // (no calculation, band, URL parameter or handler change).
+  const REFERRAL_LINE = "'\n    + '<div style=\"font-size:11px;color:#9aa4b2;margin-top:6px;line-height:1.45\">Estimate only — not a loan offer, approval, or guarantee of terms. Business-purpose, non-owner-occupied investment property only. Clear Path Capital is a broker; final terms come from the lender.</div>';";
+  const referralOnly = (f) => {
+    if (!/\/(ltr|brrr)\.js$/.test(f)) return false;
+    const norm = (t) => t.replace(/\r\n/g, '\n');
+    const prod = norm(execFileSync('git', ['-C', root, 'show', base + ':' + f], { encoding: 'utf8' }));
+    const cur = norm(readFileSync(join(root, f), 'utf8'));
+    if (cur.split(REFERRAL_LINE).length !== 2) return false;   // exactly one insertion per engine file
+    return cur.split(REFERRAL_LINE).join("';") === prod;
+  };
+  const forbiddenNow = forbidden.filter(f => !c1Only(f) && !referralOnly(f));
   ok(forbiddenNow.length === 0, 'E1 engines, sign-in, Supabase, vendor, tier/storage and legal files are byte-identical to production (' + forbiddenNow.join(', ') + ')');
   const acct = (h) => { const a = h.indexOf('id="account-block"'); return h.slice(a, h.indexOf('id="redeem-block"', a)); };
   const baseHtml = execFileSync('git', ['-C', root, 'show', base + ':docs/index.html'], { encoding: 'utf8' });

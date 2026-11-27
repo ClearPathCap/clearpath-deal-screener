@@ -457,11 +457,11 @@ if (base) {
   const SIGNIN_OWNER_BASE = '66bfeec';
   let haveOwner = false; try { execFileSync('git', ['-C', root, 'cat-file', '-e', SIGNIN_OWNER_BASE + '^{commit}'], { stdio: 'ignore' }); haveOwner = true; } catch {}
   const ownerHtml = haveOwner ? execFileSync('git', ['-C', root, 'show', SIGNIN_OWNER_BASE + ':docs/index.html'], { encoding: 'utf8' }) : html;
-  ok(acct(baseHtml).replace(/\r/g, '') === acct(ownerHtml).replace(/\r/g, ''), 'E2 the sign-in markup (#account-block) was unchanged by this wave (through 66bfeec)');
+  ok(acct(baseHtml).replace(/\r/g, '') === acct(ownerHtml).replace(/\r/g, ''), 'E2 (historical record: compares two fixed commits; the live guard is signinsheet F2/F5/F6) the sign-in markup was unchanged by this wave through 66bfeec');
   const sig = (c) => (c.match(/^[^\n]*signin[^\n]*$/gm) || []).join('\n').replace(/\r/g, '');
   const baseCss = execFileSync('git', ['-C', root, 'show', base + ':docs/src/css/styles.css'], { encoding: 'utf8' });
   const ownerCss = haveOwner ? execFileSync('git', ['-C', root, 'show', SIGNIN_OWNER_BASE + ':docs/src/css/styles.css'], { encoding: 'utf8' }) : css;
-  ok(sig(baseCss) === sig(ownerCss), 'E3 every sign-in CSS line was unchanged by this wave (through 66bfeec)');
+  ok(sig(baseCss) === sig(ownerCss), 'E3 (historical record: compares two fixed commits) every sign-in CSS line was unchanged by this wave through 66bfeec');
 } else {
   ok(true, 'E1–E3 skipped: production base commit not in this clone');
 }
@@ -607,6 +607,12 @@ U.items[1].focus(); [r, e] = tab();
 ok(r === true && e.defaultPrevented && at() === 'modal-upgrade-item0', 'F19b Tab is kept inside the open sign-in sheet');
 U.items[0].focus(); close(U, 'modal-upgrade');
 ok(at() === 'opener', 'F19c closing the sign-in sheet returns focus to the control that opened it');
+sf._resetSheetFocus();
+opener.focus(); open(A, 'modal-a'); A.items[1].focus(); open(U, 'modal-upgrade');
+ok(at() === 'modal-upgrade-surface', 'F19d the sign-in sheet opened over another sheet takes focus (review L5)');
+close(U, 'modal-upgrade');
+ok(at() === 'modal-a-item1', 'F19e closing it returns focus into the sheet below, to the control that opened it');
+close(A, 'modal-a');
 
 sf._resetSheetFocus();
 opener.focus(); open(Z, 'modal-z'); [r, e] = tab();

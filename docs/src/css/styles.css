@@ -1028,6 +1028,11 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{box-shadow:0 0 0
   .modal-backdrop > .modal-picker::before{margin:8px auto 0}
   .modal-backdrop[data-required] > .modal::before{display:none}   /* a required sheet cannot be dismissed: no grabber */
   #modal-maxoffer .modal-actions,#modal-upgrade .modal-actions{bottom:calc(-22px - var(--safe-bottom));padding-bottom:calc(14px + var(--safe-bottom))}
+  /* DF-SIGNIN-SHEET review M1: while the phone keyboard is up (viewstack.js sets body.kb-open on touch
+     devices as soon as a text field takes focus), the sign-in sheet rises to the top of the screen, so
+     the short code step's box is never left under the keyboard for iOS to pan a scroll-locked page. */
+  body.kb-open #modal-upgrade{align-items:flex-start}
+  body.kb-open #modal-upgrade > .modal{border-radius:var(--r-xl);border-bottom:1px solid var(--border-strong)}
 }
 @supports (height:1dvh){
   @media (max-width:600px){ .modal-backdrop > .modal{max-height:92dvh} }

@@ -494,7 +494,7 @@ if (haveBase) {
   // sign-in redesign owns #account-block after that.
   let ownerHtml = src('docs/index.html');
   try { ownerHtml = execFileSync('git', ['-C', root, 'show', '66bfeec:docs/index.html'], { encoding: 'utf8' }); } catch {}
-  ok(acct(baseHtml) === acct(ownerHtml), 'E8 the sign-in markup (#account-block) was unchanged by this wave (through 66bfeec)');
+  ok(acct(baseHtml) === acct(ownerHtml), 'E8 (historical record: compares two fixed commits; the live guard is signinsheet F2/F5/F6) the sign-in markup was unchanged by this wave through 66bfeec');
   const sbDiff = execFileSync('git', ['-C', root, 'diff', DESIGN_BASE, '--', 'docs/src/js/supabaseClient.js'], { encoding: 'utf8' }).split('\n').filter(l => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l));
   ok(sbDiff.length > 0 && sbDiff.every(l => /^\+/.test(l)) && sbDiff.filter(l => !/^\+\s*\/\//.test(l)).map(l => '+' + l.slice(1).trim()).join('|') === "+import { authStorageOption } from './sessionStore.js';|+...authStorageOption(),",
     'E9 supabaseClient.js only GAINS the storage import and the spread (plus comments); nothing removed');

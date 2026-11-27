@@ -48,6 +48,9 @@ ok(/\.signin-focus #signin-hint,\.signin-focus #upgrade-plans-toggle\{display:no
 
 console.log('— §C phone presentation —');
 ok(!/:not\(#modal-upgrade\)/.test(css), 'C1 the sign-in sheet is no longer excluded from the phone sheet rules');
+{ const phone = css.slice(css.indexOf('@media (max-width:600px){\n  .modal-backdrop{align-items:flex-end'), css.indexOf('@media (max-width:600px){\n  .modal-backdrop{align-items:flex-end') + 4000);
+  ok(/body\.kb-open #modal-upgrade\{align-items:flex-start\}/.test(phone.slice(0, phone.indexOf('\n}'))),
+     'C1b with the phone keyboard up (body.kb-open) the sheet rises to the top, so its field stays above the keyboard (review M1)'); }
 { const phone = css.slice(css.indexOf('@media (max-width:600px){\n  .modal-backdrop{align-items:flex-end'));
   ok(phone.length > 0 && /#modal-maxoffer \.modal-actions,#modal-upgrade \.modal-actions\{bottom:calc\(-22px - var\(--safe-bottom\)\);padding-bottom:calc\(14px \+ var\(--safe-bottom\)\)\}/.test(phone),
      'C2 on a phone the sheet rises from the bottom and its sticky "Not Now" row clears the home indicator'); }
@@ -112,7 +115,8 @@ console.log('— §E behaviour of the new helpers (real functions, fake page) �
     const outside = { id: 'page-button', parentNode: null, getClientRects: () => [] }; doc.activeElement = outside; f.keepSheetFocus();
     ok(doc.activeElement === outside, 'E8 focus outside the sheet is never touched'); }
 }
-ok(/applyAccountPriority\(layout\.accountFirst\);\n\s*setPaidPlansOpen\(false\);/.test(fnBody(mj, 'configureUpgradeModal')), 'E9 every open of the sheet starts with the plans folded');
+ok(/applyAccountPriority\(layout\.accountFirst\);\n(\s*\/\/[^\n]*\n)*\s*setPaidPlansOpen\(_lastUpgradeTrigger === 'region'\);/.test(fnBody(mj, 'configureUpgradeModal')),
+   'E9 every open folds the plans, except a paid-feature tap (trigger \'region\'), which opens them (review L1)');
 ok(/togglePaidPlans,/.test(mj.slice(mj.indexOf('Object.assign(window, {'))), 'E10 the control\'s handler is published for its onclick');
 
 console.log('— §F what must not change (vs live 66bfeec) —');
@@ -132,7 +136,8 @@ if (have) {
   ok(diffFns.length === 0, 'F2 every sign-in, code, session, resume, checkout, redeem and sheet open/close function is byte-identical to 66bfeec (' + diffFns.join(', ') + ')');
   { const b = fnBody(bmj, 'configureUpgradeModal').split('\n'), c = fnBody(mj, 'configureUpgradeModal').split('\n');
     const added = c.filter(l => !b.includes(l)), removed = b.filter(l => !c.includes(l));
-    ok(removed.length === 0 && added.length === 1 && /^\s*setPaidPlansOpen\(false\);/.test(added[0]), 'F3 configureUpgradeModal gains exactly one line (fold the plans) and loses none'); }
+    const code = added.filter(l => !/^\s*\/\//.test(l));
+    ok(removed.length === 0 && code.length === 1 && /^\s*setPaidPlansOpen\(_lastUpgradeTrigger === 'region'\);/.test(code[0]), 'F3 configureUpgradeModal gains exactly one statement (fold or open the plans) and loses none'); }
   { const b = fnBody(bmj, 'upgradeModalLayout'), c = fnBody(mj, 'upgradeModalLayout');
     const strip = (s) => s.replace(/\n\s*\/\/ DF-SIGNIN-SHEET[^\n]*/, '').replace(/subhead:\s*'[^']*',/, "subhead: '',");
     ok(strip(b.replace(/subhead:\s*'Your pipeline[^']*',/, "subhead: '',")) === strip(c), 'F4 upgradeModalLayout changes only the signed-out subhead (titles, plans lead-in, ordering flag unchanged)'); }

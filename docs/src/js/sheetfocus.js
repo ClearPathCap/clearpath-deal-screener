@@ -21,6 +21,10 @@
 // wins: the code box is focused inside the Send code tap (otpfocus suite), after
 // the sheet is already open, and a resumed code step focuses the box right after
 // openModal(). FOCUS_EXCLUDED stays as the mechanism, empty.
+// STACKING (review L2): sheets share z-index 100 and paint in page order, and
+// #modal-upgrade comes BEFORE the market picker, market confirm and max-offer
+// sheets in index.html. Never open it over one of those (close them first —
+// every current path does), or Tab would be kept in a sheet painted behind.
 // A sheet whose title element is re-rendered must keep the id its
 // aria-labelledby names (the market picker re-uses #picker-headline).
 // Pure DOM, no imports; main.js calls sheetOpened / sheetClosed from openModal /

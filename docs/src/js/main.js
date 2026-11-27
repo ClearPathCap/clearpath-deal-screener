@@ -1849,7 +1849,9 @@ function configureUpgradeModal(trigger) {
   if (manageBtn) manageBtn.style.display = 'none';   // paid tiers only (R4A3A)
 
   applyAccountPriority(layout.accountFirst);
-  setPaidPlansOpen(false);   // DF-SIGNIN-SHEET: signed out, every open starts with the plans folded
+  // DF-SIGNIN-SHEET: signed out, every open starts with the plans folded, except a tap on a paid
+  // feature (trigger 'region', "Upgrade to Unlock"), which came for the plans (review L1).
+  setPaidPlansOpen(_lastUpgradeTrigger === 'region');
 
   // Signed out, the tier branches below cannot apply: they describe YOUR plan,
   // and there is no account to hold one. Returning here also means a stale tier

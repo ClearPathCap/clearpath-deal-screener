@@ -334,6 +334,10 @@ ok(el('upgrade-continue').style.display === '' && el('upgrade-continue-btn').tex
    && /Continue to Investor checkout/.test(el('upgrade-modal-title').textContent)
    && /Nothing is charged until you confirm/.test(el('upgrade-subhead').textContent) && checkoutInvokes.length === 0,
    'J24 after sign-in the sheet offers "Continue to Investor checkout" — and still nothing is started or charged');
+// DF-C2-PLAN-FUNDING-LINE (2026-11-27): the funding sentence stays with the plan cards on the remembered-plan sheet.
+ok(el('upgrade-plans-lead').style.display === '' && /funding stays free on every tier/.test(el('upgrade-plans-lead').textContent)
+   && el('upgrade-compare').style.display === '',
+   'J24b the remembered-plan sheet shows "funding stays free on every tier" with the plan cards');
 api.continuePlanCheckout(); await tick();
 ok(checkoutInvokes.length === 1 && checkoutInvokes[0].body.body.tier === 'investor' && api.planIntent.peek() === null,
    'J25 only the explicit tap opens checkout, once, for the remembered plan; the memory is spent');

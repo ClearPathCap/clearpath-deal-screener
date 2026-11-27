@@ -1865,6 +1865,9 @@ function configureUpgradeModal(trigger) {
     renderPlanContinue(plan);
     if (title)   title.textContent = 'Continue to ' + PLAN_NAME[plan.tier] + ' checkout';
     if (subhead) subhead.textContent = 'You picked ' + PLAN_NAME[plan.tier] + ' before signing in. Nothing is charged until you confirm on the secure checkout page.';
+    // DF-C2-PLAN-FUNDING-LINE (2026-11-27): the subhead now speaks to the remembered plan, so the funding
+    // sentence moves to the plans' lead-in and still sits with the plan cards and the checkout button.
+    if (plansLead) { plansLead.textContent = PAID_PLANS_LEAD; plansLead.style.display = ''; }
   }
 
   if (tier === 'pro') {

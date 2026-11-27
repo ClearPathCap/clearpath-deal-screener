@@ -137,7 +137,9 @@ if (have) {
   { const b = fnBody(bmj, 'configureUpgradeModal').split('\n'), c = fnBody(mj, 'configureUpgradeModal').split('\n');
     const added = c.filter(l => !b.includes(l)), removed = b.filter(l => !c.includes(l));
     const code = added.filter(l => !/^\s*\/\//.test(l));
-    ok(removed.length === 0 && code.length === 1 && /^\s*setPaidPlansOpen\(_lastUpgradeTrigger === 'region'\);/.test(code[0]), 'F3 configureUpgradeModal gains exactly one statement (fold or open the plans) and loses none'); }
+    ok(removed.length === 0 && code.length === 2 && /^\s*setPaidPlansOpen\(_lastUpgradeTrigger === 'region'\);/.test(code[0])
+       && code[1].trim() === "if (plansLead) { plansLead.textContent = PAID_PLANS_LEAD; plansLead.style.display = ''; }",
+       'F3 configureUpgradeModal gains exactly two statements (fold or open the plans; the funding sentence on the remembered-plan sheet) and loses none'); }
   { const b = fnBody(bmj, 'upgradeModalLayout'), c = fnBody(mj, 'upgradeModalLayout');
     const strip = (s) => s.replace(/\n\s*\/\/ DF-SIGNIN-SHEET[^\n]*/, '').replace(/subhead:\s*'[^']*',/, "subhead: '',");
     ok(strip(b.replace(/subhead:\s*'Your pipeline[^']*',/, "subhead: '',")) === strip(c), 'F4 upgradeModalLayout changes only the signed-out subhead (titles, plans lead-in, ordering flag unchanged)'); }

@@ -1676,7 +1676,8 @@ export function upgradeModalLayout(signedIn, trigger) {
     return {
       accountFirst: true,
       title:     'Sign in or create a free account',
-      subhead:   'Your pipeline lives with your free account. Sign in or create one to save deals and track them across all your devices.',
+      // DF-SIGNIN-SHEET: one line on what the account is for; "how" is the hint under the field.
+      subhead:   'Save the deals you analyze and pick them up on any device.',
       plansLead: PAID_PLANS_LEAD,
     };
   }
@@ -1698,14 +1699,44 @@ function applyAccountPriority(accountFirst) {
   if (shell?.classList?.toggle) shell.classList.toggle('account-first', !!accountFirst);
 
   const account = document.getElementById('account-block');
-  const anchor  = accountFirst
-    ? document.getElementById('upgrade-compare')   // above the plan cards
-    : document.getElementById('redeem-block');     // back to its authored slot
   const parent  = account?.parentNode;
+  // DF-SIGNIN-SHEET: signed out, the account goes above the whole plans group (the "Compare paid
+  // plans" control, the funding lead-in, the cards) — the first anchor that sits in the same tree.
+  const anchor  = accountFirst
+    ? ['upgrade-plans-toggle', 'upgrade-plans-lead', 'upgrade-compare']
+        .map(id => document.getElementById(id)).find(n => n && parent && n.parentNode === parent)
+    : document.getElementById('redeem-block');     // back to its authored slot
   if (!parent || !anchor || !account || typeof parent.insertBefore !== 'function') return;
   if (anchor.parentNode !== parent) return;        // unexpected tree — leave it alone
   if (account.nextSibling === anchor) return;      // already in place
   parent.insertBefore(account, anchor);
+}
+
+// DF-SIGNIN-SHEET — signed out, the paid plans (funding lead-in + cards) are folded behind one
+// quiet control so the free account is the sheet's one primary action. CSS does the hiding
+// (.account-first:not(.plans-open)); signed in the control is hidden and the plans always show.
+function setPaidPlansOpen(open) {
+  const shell = document.getElementById('upgrade-modal-body');
+  if (shell?.classList?.toggle) shell.classList.toggle('plans-open', !!open);
+  const t = document.getElementById('upgrade-plans-toggle');
+  if (t?.setAttribute) t.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function togglePaidPlans() {
+  const shell = document.getElementById('upgrade-modal-body');
+  setPaidPlansOpen(!shell?.classList?.contains('plans-open'));
+}
+// A re-configured sheet can hide the control that had focus (a signed-out Subscribe folds the
+// plans; a finished sign-in hides the code box). Focus then goes to the sheet itself — never to a
+// text field, which would raise the phone keyboard — so Tab starts again from the top.
+function keepSheetFocus() {
+  try {
+    const sheet = document.getElementById('upgrade-modal-body');
+    const a = document.activeElement;
+    if (!sheet || !a || a === sheet || typeof sheet.contains !== 'function' || !sheet.contains(a)) return;
+    if (typeof a.getClientRects === 'function' && a.getClientRects().length > 0) return;
+    if (!sheet.hasAttribute('tabindex')) sheet.setAttribute('tabindex', '-1');
+    sheet.focus({ preventScroll: true });
+  } catch {}
 }
 
 // trigger: 'region' | 'save' | 'cap' | 'general'
@@ -1818,6 +1849,7 @@ function configureUpgradeModal(trigger) {
   if (manageBtn) manageBtn.style.display = 'none';   // paid tiers only (R4A3A)
 
   applyAccountPriority(layout.accountFirst);
+  setPaidPlansOpen(false);   // DF-SIGNIN-SHEET: signed out, every open starts with the plans folded
 
   // Signed out, the tier branches below cannot apply: they describe YOUR plan,
   // and there is no account to hold one. Returning here also means a stale tier
@@ -2049,7 +2081,7 @@ function setSigninFocus(on) {
 // Review R6: on EVERY signed-in refresh while the sheet is open (a late or failed plan check changes it too).
 function refreshSheetAfterSignIn() {
   if (!isSignedIn()) return;   // the auth refresh that follows calls this again via updateAccountUI
-  if (document.getElementById('modal-upgrade')?.classList?.contains('active')) configureUpgradeModal(_lastUpgradeTrigger);
+  if (document.getElementById('modal-upgrade')?.classList?.contains('active')) { configureUpgradeModal(_lastUpgradeTrigger); keepSheetFocus(); }
 }
 function codeStepOpen() {
   const codeStep = document.getElementById('signin-code-step');
@@ -2371,6 +2403,7 @@ function applyTierToUI() {
 function openUpgrade(trigger) {
   configureUpgradeModal(trigger || 'general');   // resets a stale code step (review R1)
   openModal('modal-upgrade');
+  keepSheetFocus();                              // DF-SIGNIN-SHEET: never leave focus on a now-hidden control
 }
 
 function _kFmt(v) { return '$' + Math.round(v / 1000) + 'k'; }
@@ -2571,6 +2604,7 @@ Object.assign(window, {
   setRepairTier: (name, el) => { setRepairTier(name, el); refreshStale('flip'); },
   startCheckout,
   continuePlanCheckout,
+  togglePaidPlans,          // DF-SIGNIN-SHEET: the signed-out "Compare paid plans" control
   manageSubscription,
   calcRepair,
   useRepairEstimate: (...a) => { const r = useRepairEstimate(...a); refreshStale('flip'); return r; },

@@ -1216,13 +1216,17 @@
 
 <!-- Upgrade — context-aware, tier-aware (item 3) -->
 <div class="modal-backdrop" id="modal-upgrade">
-  <div class="modal modal-upgrade" id="upgrade-modal-body">
+  <div class="modal modal-upgrade" id="upgrade-modal-body" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title">
     <h3 id="upgrade-modal-title">Upgrade Your Plan</h3>
     <p id="upgrade-subhead" style="margin-bottom:12px">Paid plans unlock real market data for the markets you invest in — funding stays free on every tier.</p>
     <!-- D-1 P1-B: when the account block leads (signed-out), the paid framing
          sentence moves here so the "funding stays free on every tier" statement
          still sits with the plans it qualifies. Hidden in the signed-in view,
          where the same sentence remains the subhead. -->
+    <!-- DF-SIGNIN-SHEET: signed out, the plans (this lead-in and the cards) wait behind one quiet
+         control, so the free account is the sheet's one primary action. Every price, plan line and
+         Subscribe action is unchanged one tap away. Signed in it is hidden and the plans show. -->
+    <button type="button" class="plans-toggle" id="upgrade-plans-toggle" aria-expanded="false" aria-controls="upgrade-plans-lead upgrade-compare" onclick="togglePaidPlans()">Compare paid plans</button>
     <p id="upgrade-plans-lead" style="display:none;margin-bottom:12px"></p>
     <!-- Commercial C2: the plan picked before signing in. Shown only to a signed-in Starter; tapping
          it opens the secure checkout page, where the purchase is confirmed. Never automatic. -->
@@ -1265,23 +1269,24 @@
     <!-- Account — passwordless magic-link sign-in (tiers verified server-side) -->
     <div class="redeem-block" id="account-block">
       <div id="signin-row">
-        <!-- This row renders ONLY when signed out (updateAccountUI), so its
-             label is the first thing a signed-out visitor reads: it must say
-             the account is free rather than describe post-sign-in chores. -->
-        <div class="redeem-label" id="signin-label">Free account — we'll email you a sign-in code</div>
+        <!-- This row renders ONLY when signed out (updateAccountUI). DF-SIGNIN-SHEET: the sheet's
+             title already says the account is free; this is the field's own visible label, and the
+             hint under the field says what happens next. -->
+        <label class="sheet-field-label" id="signin-label" for="signin-email">Email</label>
         <!-- iPhone UAT follow-up: while a code is pending the sheet shows ONLY this step (main.js
              setSigninFocus) — no email box, plan cards or "Have a code?" box competing with it. -->
         <h4 id="signin-code-title" class="signin-code-title" hidden>Enter the code from your email</h4>
         <div class="redeem-row" id="signin-email-step">
-          <input type="email" id="signin-email" placeholder="you@email.com" autocomplete="email" inputmode="email" spellcheck="false" onkeydown="if(event.key==='Enter')sendSignInCode()">
+          <input type="email" id="signin-email" placeholder="you@email.com" autocomplete="email" inputmode="email" spellcheck="false" aria-describedby="signin-hint" onkeydown="if(event.key==='Enter')sendSignInCode()">
           <button class="btn-redeem btn-redeem-fixed" onclick="sendSignInCode()">Send code</button>
         </div>
+        <p id="signin-hint" class="signin-hint">No password. We'll email you a code to sign in.</p>
         <div class="redeem-row" id="signin-code-step" style="display:none;margin-top:8px">
           <label for="signin-code" class="sr-only">Sign-in code from your email</label>
           <input type="text" id="signin-code" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" autocapitalize="off" autocorrect="off" enterkeyhint="go" maxlength="64" placeholder="Enter your code" spellcheck="false" aria-describedby="signin-msg" onkeydown="if(event.key==='Enter')verifySignInCode()">
           <button class="btn-redeem btn-redeem-fixed" id="signin-verify-btn" onclick="verifySignInCode()">Verify</button>
         </div>
-        <div id="signin-code-help" class="signin-help" style="display:none">Sent to <strong id="signin-sent-to"></strong> · <button type="button" class="signin-link" id="signin-resend" onclick="resendSignInCode()">Send a new code</button> · <button type="button" class="signin-link" onclick="changeSignInEmail()">Use a different email</button></div>
+        <div id="signin-code-help" class="signin-help" style="display:none"><span class="signin-sent">Sent to <strong id="signin-sent-to"></strong></span><span class="signin-actions"><button type="button" class="signin-link" id="signin-resend" onclick="resendSignInCode()">Send a new code</button><button type="button" class="signin-link" onclick="changeSignInEmail()">Use a different email</button></span></div>
         <div id="signin-link-step" class="signin-help" style="display:none"><button type="button" class="btn-redeem" id="signin-link-btn" onclick="finishLinkSignIn()">Finish signing in</button> <span>to DealFit with the link from your email.</span></div>
         <div id="signin-msg" class="redeem-msg" role="status" aria-live="polite"></div>
       </div>
@@ -1293,10 +1298,10 @@
 
     <!-- Redeem code — server-validated comp / testing access -->
     <div class="redeem-block" id="redeem-block">
-      <div class="redeem-label">Have a code?</div>
+      <label class="sheet-field-label" for="redeem-code-input">Have a code?</label>
       <div class="redeem-row">
         <input type="text" id="redeem-code-input" placeholder="Enter code" autocomplete="off" autocapitalize="characters" spellcheck="false" onkeydown="if(event.key==='Enter')redeemTierCode()">
-        <button class="btn-redeem" onclick="redeemTierCode()">Redeem</button>
+        <button class="btn-redeem btn-redeem-quiet" onclick="redeemTierCode()">Redeem</button>
       </div>
       <div id="redeem-msg" class="redeem-msg"></div>
     </div>

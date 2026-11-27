@@ -389,7 +389,8 @@ ok(/if \(lab\.textContent === 'Monthly Rent'\) lab\.textContent = 'Monthly rent'
 ok(/for \(let i = unlocked; i < 6; i\+\+\) if \(getMarketForSlot\(i\)\) \{ heldBeyond = true; break; \}/.test(mainJs) && /hasAnalyzedOnce\(\) \|\| heldBeyond \? '' : ' hidden'/.test(mainJs) && !/hasAnalyzedOnce\(\) \|\| heldBeyond \? '' : ' hidden'/.test('anything at all'), 'D42 a downgraded account that still holds markets in locked slots sees the line at once');
 ok(/padding-top:env\(safe-area-inset-top\)/.test((css.match(/(^|\n)body\{[^}]*\}/) || [''])[0]) && /margin-top:calc\(-1 \* var\(--safe-top\)\);padding:var\(--safe-top\)/.test(rule('.appbar')) && !/:has\(/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')), 'D43 legal, SEO and shared pages keep the status-bar inset on <body>; the app bar pulls over it and carries it as padding (no :has() dependency)');
 ok(/body\.kb-open \.tabbar\{[^}]*visibility:hidden/.test(css), 'D44 the stepped-aside tab bar leaves the focus and screen-reader order');
-ok(/\.modal-backdrop:not\(#modal-upgrade\)\[data-required\] > \.modal::before\{display:none\}/.test(css), 'D45 a required sheet shows no grabber');
+// RE-PINNED 2026-11-27 (DF-SIGNIN-SHEET): the sheet rules no longer exclude #modal-upgrade.
+ok(/\.modal-backdrop\[data-required\] > \.modal::before\{display:none\}/.test(css), 'D45 a required sheet shows no grabber');
 
 // ─── §E what this wave does not touch ───────────────────────────────────────
 console.log('— §E boundaries —');
@@ -451,14 +452,21 @@ if (base) {
   ok(forbiddenNow.length === 0, 'E1 engines, sign-in, Supabase, vendor, tier/storage and legal files are byte-identical to production (' + forbiddenNow.join(', ') + ')');
   const acct = (h) => { const a = h.indexOf('id="account-block"'); return h.slice(a, h.indexOf('id="redeem-block"', a)); };
   const baseHtml = execFileSync('git', ['-C', root, 'show', base + ':docs/index.html'], { encoding: 'utf8' });
-  ok(acct(baseHtml).replace(/\r/g, '') === acct(html).replace(/\r/g, ''), 'E2 the sign-in markup (#account-block) is unchanged');
+  // RE-PINNED 2026-11-27 (DF-SIGNIN-SHEET): this wave left sign-in alone up to its last release, 66bfeec; the
+  // sign-in redesign owns the markup and CSS after that, so E2/E3 compare the base with 66bfeec, not the tree.
+  const SIGNIN_OWNER_BASE = '66bfeec';
+  let haveOwner = false; try { execFileSync('git', ['-C', root, 'cat-file', '-e', SIGNIN_OWNER_BASE + '^{commit}'], { stdio: 'ignore' }); haveOwner = true; } catch {}
+  const ownerHtml = haveOwner ? execFileSync('git', ['-C', root, 'show', SIGNIN_OWNER_BASE + ':docs/index.html'], { encoding: 'utf8' }) : html;
+  ok(acct(baseHtml).replace(/\r/g, '') === acct(ownerHtml).replace(/\r/g, ''), 'E2 the sign-in markup (#account-block) was unchanged by this wave (through 66bfeec)');
   const sig = (c) => (c.match(/^[^\n]*signin[^\n]*$/gm) || []).join('\n').replace(/\r/g, '');
   const baseCss = execFileSync('git', ['-C', root, 'show', base + ':docs/src/css/styles.css'], { encoding: 'utf8' });
-  ok(sig(baseCss) === sig(css), 'E3 every sign-in CSS line is unchanged');
+  const ownerCss = haveOwner ? execFileSync('git', ['-C', root, 'show', SIGNIN_OWNER_BASE + ':docs/src/css/styles.css'], { encoding: 'utf8' }) : css;
+  ok(sig(baseCss) === sig(ownerCss), 'E3 every sign-in CSS line was unchanged by this wave (through 66bfeec)');
 } else {
   ok(true, 'E1–E3 skipped: production base commit not in this clone');
 }
-ok(/\.modal-backdrop:not\(#modal-upgrade\)/.test(css), 'E4 the sign-in / plans sheet keeps its presentation this wave (owned by the sign-in redesign)');
+// RE-PINNED 2026-11-27: the sign-in redesign (DF-SIGNIN-SHEET) moved the sheet onto the shared phone sheet.
+ok(!/:not\(#modal-upgrade\)/.test(css) && /#modal-upgrade \.modal-actions\{bottom:calc\(-22px - var\(--safe-bottom\)\)/.test(css), 'E4 the sign-in / plans sheet uses the shared phone sheet (DF-SIGNIN-SHEET)');
 ok(/PAID_PLANS_LEAD/.test(mainJs) && /funding stays free on every tier/.test(mainJs), 'E5 tier law copy is untouched');
 
 console.log('— §F accessibility (375px audit, 2026-11-24) —');
@@ -591,14 +599,14 @@ sf._resetSheetFocus();
 opener.focus(); open(A, 'modal-a'); other.focus(); close(A, 'modal-a');
 ok(at() === 'other', 'F18 focus the code already moved elsewhere on purpose is left alone on close');
 
+// RE-PINNED 2026-11-27 (DF-SIGNIN-SHEET): the sign-in / plans sheet is no longer excluded from the focus law.
 sf._resetSheetFocus();
 opener.focus(); open(U, 'modal-upgrade');
-ok(at() === 'opener' && !('tabindex' in U.surf.attrs), 'F19 the sign-in / plans sheet is excluded: no focus move, no tabindex (its focus belongs to the sign-in flow)');
-open(A, 'modal-a'); A.items[2].focus(); [r, e] = tab();
-ok(r === false && !e.defaultPrevented, 'F19b while the sign-in sheet is open no Tab is trapped');
-close(U, 'modal-upgrade'); [r, e] = tab();
-ok(r === true && at() === 'modal-a-item0', 'F19c once it closes the sheet below traps Tab again');
-close(A, 'modal-a');
+ok(at() === 'modal-upgrade-surface' && U.surf.attrs.tabindex === '-1', 'F19 the sign-in / plans sheet takes focus on its surface like every sheet (never the email field: no keyboard)');
+U.items[1].focus(); [r, e] = tab();
+ok(r === true && e.defaultPrevented && at() === 'modal-upgrade-item0', 'F19b Tab is kept inside the open sign-in sheet');
+U.items[0].focus(); close(U, 'modal-upgrade');
+ok(at() === 'opener', 'F19c closing the sign-in sheet returns focus to the control that opened it');
 
 sf._resetSheetFocus();
 opener.focus(); open(Z, 'modal-z'); [r, e] = tab();
@@ -619,7 +627,7 @@ sf._resetSheetFocus();
 // F21 wiring in main.js and the module's purity.
 const sfSrc = src('docs/src/js/sheetfocus.js');
 ok(!/^\s*import\s/m.test(stripLineComments(sfSrc)), 'F21 sheetfocus.js is pure DOM with no imports');
-ok(/FOCUS_EXCLUDED = new Set\(\['modal-upgrade'\]\)/.test(sfSrc), 'F21b #modal-upgrade is the one excluded sheet');
+ok(/FOCUS_EXCLUDED = new Set\(\);/.test(sfSrc), 'F21b no sheet is excluded from the focus law (DF-SIGNIN-SHEET brought #modal-upgrade in)');
 const om = (mainJs.match(/function openModal\(id\)\s*\{[\s\S]*?\n\}/) || [''])[0];
 const cm = (mainJs.match(/function closeModal\(id\)\s*\{[\s\S]*?\n\}/) || [''])[0];
 ok(om.indexOf("el.classList.add('active')") > -1 && om.indexOf('sheetOpened(el, id)') > om.indexOf("el.classList.add('active')"), 'F21c openModal moves focus after the sheet is shown');

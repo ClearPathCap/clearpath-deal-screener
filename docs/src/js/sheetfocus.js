@@ -16,12 +16,11 @@
 // Screen readers: aria-modal is the signal; the page behind is not made inert
 // (no `inert` on the app shell yet — banked), so a swipe reader may still reach
 // it on engines that ignore aria-modal.
-// EXCLUDED: #modal-upgrade (sign-in / plans). Its focus is owned by the sign-in
-// session (code-field focus, otpfocus suite): it is never managed here, and Tab
-// is not trapped while it is open. RULE: close a managed sheet before opening
-// #modal-upgrade (every current path does — pipeline.js closes first; the other
-// callers are on pages): aria-modal on a sheet left open beneath it would hide
-// the sign-in sheet from screen readers.
+// DF-SIGNIN-SHEET (2026-11-27): #modal-upgrade (sign-in / plans), excluded until
+// its redesign, is now managed like every other sheet. Its own field focus still
+// wins: the code box is focused inside the Send code tap (otpfocus suite), after
+// the sheet is already open, and a resumed code step focuses the box right after
+// openModal(). FOCUS_EXCLUDED stays as the mechanism, empty.
 // A sheet whose title element is re-rendered must keep the id its
 // aria-labelledby names (the market picker re-uses #picker-headline).
 // Pure DOM, no imports; main.js calls sheetOpened / sheetClosed from openModal /
@@ -30,7 +29,7 @@
 // keydown, so every export swallows its own errors (bookkeeping happens first,
 // so a later DOM failure cannot strand a sheet in the open list).
 
-export const FOCUS_EXCLUDED = new Set(['modal-upgrade']);
+export const FOCUS_EXCLUDED = new Set();
 export const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
 const NON_TEXT_INPUT = /^(button|submit|reset|checkbox|radio|range|color|file|image)$/i;
 

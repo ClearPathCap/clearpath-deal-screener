@@ -490,7 +490,11 @@ if (haveBase) {
   ok(forbiddenNow.length === 0, 'E7 engines, sign-in, tier, storage, hand-off, Supabase, vendor and legal files are byte-identical to 49ec36a, or to the integration base ' + INTEGRATION_BASE + ' where it changed them (' + forbiddenNow.join(', ') + ')');
   const acct = (h) => { const a = h.indexOf('id="account-block"'); return h.slice(a, h.indexOf('id="redeem-block"', a)).replace(/\r/g, ''); };
   const baseHtml = execFileSync('git', ['-C', root, 'show', DESIGN_BASE + ':docs/index.html'], { encoding: 'utf8' });
-  ok(acct(baseHtml) === acct(src('docs/index.html')), 'E8 the sign-in markup (#account-block) is unchanged');
+  // RE-PINNED 2026-11-27 (DF-SIGNIN-SHEET): this wave left sign-in alone through its release 66bfeec; the
+  // sign-in redesign owns #account-block after that.
+  let ownerHtml = src('docs/index.html');
+  try { ownerHtml = execFileSync('git', ['-C', root, 'show', '66bfeec:docs/index.html'], { encoding: 'utf8' }); } catch {}
+  ok(acct(baseHtml) === acct(ownerHtml), 'E8 the sign-in markup (#account-block) was unchanged by this wave (through 66bfeec)');
   const sbDiff = execFileSync('git', ['-C', root, 'diff', DESIGN_BASE, '--', 'docs/src/js/supabaseClient.js'], { encoding: 'utf8' }).split('\n').filter(l => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l));
   ok(sbDiff.length > 0 && sbDiff.every(l => /^\+/.test(l)) && sbDiff.filter(l => !/^\+\s*\/\//.test(l)).map(l => '+' + l.slice(1).trim()).join('|') === "+import { authStorageOption } from './sessionStore.js';|+...authStorageOption(),",
     'E9 supabaseClient.js only GAINS the storage import and the spread (plus comments); nothing removed');
@@ -501,8 +505,7 @@ if (haveBase) {
 // ─── §F accessibility and cold-start weight (375 px audit fixes) ────────────
 console.log('— §F accessibility + cold start —');
 const html = src('docs/index.html');
-const signIn = (() => { const a = html.indexOf('id="account-block"'); const r = html.indexOf('id="redeem-block"', a); return [a, html.indexOf('</div>', html.indexOf('id="redeem-code-input"', r))]; })();
-const controls = [...html.matchAll(/<(input|select|textarea)\b[^>]*>/g)].filter(m => !/type="hidden"/.test(m[0]) && !(m.index > signIn[0] && m.index < signIn[1]));
+const controls = [...html.matchAll(/<(input|select|textarea)\b[^>]*>/g)].filter(m => !/type="hidden"/.test(m[0]));   // RE-PINNED 2026-11-27: sign-in fields are labelled now (DF-SIGNIN-SHEET), so they are audited too
 const unnamed = controls.filter(m => {
   const tag = m[0]; const id = (tag.match(/\bid="([^"]+)"/) || [])[1];
   if (/aria-label(ledby)?="[^"]+"/.test(tag)) return false;
@@ -517,10 +520,10 @@ const unnamed = controls.filter(m => {
 ok(controls.length > 80 && unnamed.length === 0, 'F1 every analyzer field, select and toggle has an accessible name (' + unnamed.join(', ') + ')');
 const dialogs = [...html.matchAll(/<div class="modal[^"]*"[^>]*role="dialog"[^>]*>/g)].map(m => m[0]);
 const dlgOk = dialogs.filter(d => /aria-modal="true"/.test(d) && (/aria-label="[^"]+"/.test(d) || (() => { const id = (d.match(/aria-labelledby="([^"]+)"/) || [])[1]; return id && html.includes(`id="${id}"`); })()));
-ok(dialogs.length === 8 && dlgOk.length === 8, 'F2 eight sheets are announced as modal dialogs with a title (' + dlgOk.length + '/' + dialogs.length + ')');
+ok(dialogs.length === 9 && dlgOk.length === 9, 'F2 nine sheets (the sign-in sheet joined in DF-SIGNIN-SHEET) are announced as modal dialogs with a title (' + dlgOk.length + '/' + dialogs.length + ')');
 ok(/class="modal modal-picker" role="dialog" aria-modal="true" aria-labelledby="picker-headline"/.test(html) && /id="picker-headline"/.test(html) && /class="picker-title" id="picker-headline"/.test(mainJs),
   'F2 the market picker is named by its title (#picker-headline, kept by the design wave when the title becomes a state code)');
-ok(!/class="modal modal-upgrade"[^>]*role=/.test(html), 'F2 the sign-in / plans sheet is left as it is (sign-in is closed to speculative change)');
+ok(/class="modal modal-upgrade" id="upgrade-modal-body" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title"/.test(html), 'F2 the sign-in / plans sheet is a modal dialog named by its title (DF-SIGNIN-SHEET)');
 ok((html.match(/<div class="tier( active)?" role="button" tabindex="0" onclick="setRepairTier\(/g) || []).length === 3, 'F3 the three repair tiers are keyboard buttons');
 ok((mainJs.match(/class="picker-item[^"]*" role="button" tabindex="0" onclick="pickerSelect/g) || []).length === 3 && /initA11y\(\);/.test(mainJs), 'F3 market-picker rows are keyboard buttons; main.js starts the key handler');
 const AY = await import('../docs/src/js/a11y.js');

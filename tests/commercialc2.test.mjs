@@ -202,6 +202,9 @@ const env = {
   showToast: (m) => toasts.push(m),
   openUpgrade: (t) => { log.push('offer:' + t); holder.api.configureUpgradeModal(t); el('modal-upgrade').classList.add('active'); },
   resetStaleCodeStep: () => {}, applyAccountPriority: () => {},
+  // DF-SIGNIN-SHEET (2026-11-27): two presentation-only helpers (fold the signed-out plans; keep focus off a
+  // control the sheet just hid). Stubbed like applyAccountPriority — they touch no plan, resume or checkout state.
+  setPaidPlansOpen: () => {}, keepSheetFocus: () => {},
   sheetClosed: () => {}, recordSheetClose: () => {},
   supabase: { functions: { invoke: async (name, body) => { checkoutInvokes.push({ name, body }); log.push('checkout:' + body.body.tier); return { data: { url: 'https://checkout.stripe.test/x' }, error: null }; } } },
   logFunctionsFailure: () => {}, location: { href: '' },

@@ -447,7 +447,7 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 #signin-email{text-transform:none}   /* an email shown in capitals reads as a mistake (shared redeem-row style uppercases) */
 .signin-help{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5}
 /* iPhone UAT follow-up: a pending code gets the whole sheet — nothing competes with the one box */
-.signin-focus #upgrade-modal-title,.signin-focus #upgrade-subhead,.signin-focus #upgrade-plans-lead,.signin-focus #upgrade-compare,.signin-focus #upgrade-toptier-note,.signin-focus #manage-sub-btn,.signin-focus #redeem-block,.signin-focus #signin-label,.signin-focus #signin-email-step{display:none!important}
+.signin-focus #upgrade-modal-title,.signin-focus #upgrade-subhead,.signin-focus #upgrade-plans-lead,.signin-focus #upgrade-compare,.signin-focus #upgrade-toptier-note,.signin-focus #manage-sub-btn,.signin-focus #redeem-block,.signin-focus #signin-label,.signin-focus #signin-email-step,.signin-focus #signin-hint,.signin-focus #upgrade-plans-toggle{display:none!important}
 .signin-focus #account-block{margin-top:0;padding-top:0;border-top:0}
 .signin-code-title{font-family:var(--font);font-size:18px;font-weight:800;color:var(--text);margin:0 0 10px}
 .signin-code-title[hidden]{display:none}
@@ -456,6 +456,29 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
 .signin-link[aria-disabled="true"]{color:var(--muted);text-decoration:none;cursor:default}
 .redeem-msg.ok{color:var(--accent)}
 .redeem-msg.err{color:var(--danger)}
+
+/* ── DF-SIGNIN-SHEET (2026-11-27) · one primary action per step ─────────────
+   Signed out, the sheet asks for one thing: the email, with Send code as its
+   only filled (accent) button. The field has a visible label and a one-line
+   hint; the paid plans wait behind one quiet "Compare paid plans" control
+   (main.js togglePaidPlans), and Redeem is a quiet secondary button in both
+   states. Both fields use the same sentence-case label (.sheet-field-label). Nothing here changes what a control does. */
+.sheet-field-label{display:block;font-size:var(--fs-label);font-weight:var(--fw-semibold);color:var(--text-2);letter-spacing:var(--tr-label);line-height:var(--lh-snug);margin-bottom:6px}
+#signin-email-step input,#signin-email-step .btn-redeem,#signin-code-step .btn-redeem{height:var(--control-h)}
+.modal .signin-hint{font-size:12px;color:var(--text-2);line-height:var(--lh-body);margin:var(--sp-2) 0 0}
+.signin-help .signin-sent{display:block}
+.signin-help .signin-actions{display:flex;flex-wrap:wrap;column-gap:var(--sp-4)}
+.btn-redeem-quiet{background:var(--surface2);border:1px solid var(--border-strong);color:var(--text)}
+.btn-redeem-quiet:hover{border-color:var(--accent);color:var(--accent)}
+.btn-redeem:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.plans-toggle{display:none;align-items:center;justify-content:space-between;gap:var(--sp-3);width:100%;min-height:var(--control-h);margin-top:var(--sp-2);padding:0 var(--sp-4);background:transparent;border:1px solid var(--border);border-radius:var(--r-md);color:var(--text);font-family:var(--font);font-size:var(--fs-label);font-weight:var(--fw-bold);text-align:left;cursor:pointer}
+.modal-upgrade.account-first .plans-toggle{display:flex}   /* signed out only */
+.plans-toggle::after{content:'';flex:0 0 auto;width:7px;height:7px;border-right:2px solid var(--text-2);border-bottom:2px solid var(--text-2);transform:translateY(-2px) rotate(45deg)}
+.plans-toggle[aria-expanded="true"]::after{transform:translateY(2px) rotate(-135deg)}
+.plans-toggle:hover{border-color:var(--border-strong)}
+.plans-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.modal-upgrade.account-first:not(.plans-open) #upgrade-plans-lead,.modal-upgrade.account-first:not(.plans-open) #upgrade-compare{display:none!important}
+.modal-upgrade.account-first #upgrade-plans-lead{margin:var(--sp-3) 0!important}
 
 /* ── D-1 P1-B · signed-out account priority + narrow-screen ergonomics ───────
    A signed-out visitor arriving from Sign in / Save / Pipeline used to meet the
@@ -482,6 +505,7 @@ select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='htt
      rendered size is the fix that keeps PINCH ZOOM INTACT — the viewport tag is
      untouched, no maximum-scale / user-scalable change anywhere. */
   #signin-email,#signin-code{font-size:16px}
+  #signin-email,#signin-email-step .btn-redeem-fixed,#signin-code-step .btn-redeem-fixed{height:48px}
   /* Side by side, the 150px action left the field 112px of text width for a
      133px placeholder (measured at 375px, 16px DM Mono): "YOU@EMAIL.COM" was
      clipped mid-word, and at the old 13px it was already clipping. Wrapping the
@@ -987,8 +1011,8 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{box-shadow:0 0 0
 
 /* ── Sheets ── on a phone every modal presents as a bottom sheet with a grabber
    (detent = content height up to 92% of the visible viewport). The sign-in /
-   plans sheet (#modal-upgrade) is EXCLUDED in this wave: sign-in is being
-   redesigned in a separate session and keeps its centered presentation. */
+   DF-SIGNIN-SHEET (2026-11-27): the sign-in / plans sheet (#modal-upgrade), excluded
+   until its own redesign, now uses the same phone sheet as every other sheet. */
 @keyframes df-fade-in{from{opacity:0}to{opacity:1}}
 @keyframes df-sheet-in{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes df-pop-in{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
@@ -996,17 +1020,17 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{box-shadow:0 0 0
 .modal-backdrop.active > .modal{animation:df-pop-in var(--dur-base) var(--ease-standard)}
 .modal h3{font-size:var(--fs-title3)}
 @media (max-width:600px){
-  .modal-backdrop:not(#modal-upgrade){align-items:flex-end;padding:calc(var(--sp-8) + var(--safe-top)) 0 0}
-  .modal-backdrop:not(#modal-upgrade) > .modal{max-width:none;width:100%;border-radius:var(--r-xl) var(--r-xl) 0 0;border-bottom:none;padding-bottom:calc(22px + var(--safe-bottom));box-shadow:var(--shadow-sheet);max-height:92vh}
-  .modal-backdrop:not(#modal-upgrade) > .modal-picker{padding-bottom:var(--safe-bottom)}
-  .modal-backdrop:not(#modal-upgrade).active > .modal{animation:df-sheet-in var(--dur-sheet) var(--ease-sheet)}
-  .modal-backdrop:not(#modal-upgrade) > .modal::before{content:'';display:block;width:36px;height:5px;border-radius:3px;background:var(--border-strong);margin:-10px auto 14px}
-  .modal-backdrop:not(#modal-upgrade) > .modal-picker::before{margin:8px auto 0}
-  .modal-backdrop:not(#modal-upgrade)[data-required] > .modal::before{display:none}   /* a required sheet cannot be dismissed: no grabber */
-  #modal-maxoffer .modal-actions{bottom:calc(-22px - var(--safe-bottom));padding-bottom:calc(14px + var(--safe-bottom))}
+  .modal-backdrop{align-items:flex-end;padding:calc(var(--sp-8) + var(--safe-top)) 0 0}
+  .modal-backdrop > .modal{max-width:none;width:100%;border-radius:var(--r-xl) var(--r-xl) 0 0;border-bottom:none;padding-bottom:calc(22px + var(--safe-bottom));box-shadow:var(--shadow-sheet);max-height:92vh}
+  .modal-backdrop > .modal-picker{padding-bottom:var(--safe-bottom)}
+  .modal-backdrop.active > .modal{animation:df-sheet-in var(--dur-sheet) var(--ease-sheet)}
+  .modal-backdrop > .modal::before{content:'';display:block;width:36px;height:5px;border-radius:3px;background:var(--border-strong);margin:-10px auto 14px}
+  .modal-backdrop > .modal-picker::before{margin:8px auto 0}
+  .modal-backdrop[data-required] > .modal::before{display:none}   /* a required sheet cannot be dismissed: no grabber */
+  #modal-maxoffer .modal-actions,#modal-upgrade .modal-actions{bottom:calc(-22px - var(--safe-bottom));padding-bottom:calc(14px + var(--safe-bottom))}
 }
 @supports (height:1dvh){
-  @media (max-width:600px){ .modal-backdrop:not(#modal-upgrade) > .modal{max-height:92dvh} }
+  @media (max-width:600px){ .modal-backdrop > .modal{max-height:92dvh} }
 }
 
 /* ── Toast ── rides above the tab bar. */

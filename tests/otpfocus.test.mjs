@@ -75,7 +75,7 @@ console.log('— §N native paste only (real-device UAT 2026-11-24) ─');
 
 console.log('— §H the sheet after sign-in ─');
 { const r = fnBody('refreshSheetAfterSignIn');
-  ok(/if \(!isSignedIn\(\)\) return;/.test(r) && /classList\?\.contains\('active'\)\) configureUpgradeModal\(_lastUpgradeTrigger\);/.test(r)
+  ok(/if \(!isSignedIn\(\)\) return;/.test(r) && /classList\?\.contains\('active'\)\) \{ configureUpgradeModal\(_lastUpgradeTrigger\); keepSheetFocus\(\); \}/.test(r)
      && /setSigninFocus\(false\); refreshSheetAfterSignIn\(\); \}/.test(fnBody('updateAccountUI')),
      'H1 every signed-in refresh re-configures the open sheet (review R6: also after a late or failed plan check), so no "Sign in or create" heading sits above "Signed in as"');
 }
@@ -126,6 +126,7 @@ console.log('— §B behaviour: the real sign-in functions from main.js against 
       sendOtpCode: (email) => { const d = deferred(); st.sends.push({ email, focusAtSend: doc.activeElement && doc.activeElement.id, d }); log.push('send:' + email); return d.p; },
       verifyOtpCode: async (email, code) => { st.verifies.push(code); return code === '000000' ? { ok: false, msg: 'That code didn’t work' } : { ok: true, msg: 'Signed in' }; },
       configureUpgradeModal: (t) => { st.configured.push(t); st.api.resetStaleCodeStep(); }, openModal: () => {},
+      keepSheetFocus: () => {},   // DF-SIGNIN-SHEET (2026-11-27): presentation-only focus courtesy, pinned in tests/signinsheet
       // Commercial C2: verifySignInCode now calls the resume hook after a successful sign-in (it finishes a
       // pending save; behaviour pinned in tests/commercialc2). Counted here so the sign-in suite still runs
       // the real verifySignInCode unchanged otherwise.

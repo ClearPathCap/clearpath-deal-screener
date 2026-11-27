@@ -137,8 +137,10 @@ for (const t of TRIGGERS) {
   const out = layoutOf(false, t);
   ok(`[DEFECT-CLOSING] signed-out (${t}) puts the account first`, out.accountFirst === true);
   ok(`[DEFECT-CLOSING] signed-out (${t}) headline offers a free account`, /free account/i.test(out.title));
-  ok(`[DEFECT-CLOSING] signed-out (${t}) says the pipeline lives with the free account`,
-     out.subhead === 'Your pipeline lives with your free account. Sign in or create one to save deals and track them across all your devices.');
+  // RE-PINNED 2026-11-27 (DF-SIGNIN-SHEET, same-commit law): the subhead now says in one line what the free
+  // account is for; "how" (no password, a code by email) moved to the hint under the field.
+  ok(`[DEFECT-CLOSING] signed-out (${t}) says what the free account is for`,
+     out.subhead === 'Save the deals you analyze and pick them up on any device.');
   ok(`[COMPLIANCE] signed-out (${t}) keeps "funding stays free on every tier" with the plans`,
      /funding stays free on every tier/.test(out.plansLead));
   const inn = layoutOf(true, t);
